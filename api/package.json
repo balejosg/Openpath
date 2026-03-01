@@ -105,8 +105,8 @@
     ]
   },
   "devDependencies": {
-    "@stryker-mutator/core": "^9.4.0",
-    "@stryker-mutator/typescript-checker": "^9.4.0",
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/typescript-checker": "^9.6.0",
     "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
