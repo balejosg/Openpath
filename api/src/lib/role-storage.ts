@@ -6,11 +6,12 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { eq, sql, and, count } from 'drizzle-orm';
+import { eq, sql, and, count, inArray } from 'drizzle-orm';
 import { db, roles } from '../db/index.js';
 import { logger } from './logger.js';
 import type { UserRole } from '../types/index.js';
 import type { IRoleStorage, AssignRoleData, Role } from '../types/storage.js';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 // =============================================================================
 // Types
@@ -38,14 +39,32 @@ export interface TeacherInfo {
 // =============================================================================
 
 function toRoleType(db: DBRole): Role {
+  const role = normalizeUserRoleString(db.role);
+  if (!role) {
+    logger.warn('Unknown role value in DB; defaulting to student', {
+      userId: db.userId,
+      role: db.role,
+    });
+  }
   return {
     id: db.id,
     userId: db.userId,
-    role: db.role as UserRole,
+    role: role ?? 'student',
     groupIds: db.groupIds ?? [],
     createdAt: db.createdAt?.toISOString() ?? new Date().toISOString(),
     expiresAt: null,
   };
+}
+
+function getDbRoleValues(role: UserRole): string[] {
+  switch (role) {
+    case 'admin':
+      return ['admin', 'openpath-admin'];
+    case 'teacher':
+      return ['teacher'];
+    case 'student':
+      return ['student', 'user', 'viewer'];
+  }
 }
 
 // =============================================================================
@@ -59,7 +78,10 @@ export async function getUserRoles(userId: string): Promise<DBRole[]> {
 }
 
 export async function getUsersByRole(role: UserRole): Promise<DBRole[]> {
-  const result = await db.select().from(roles).where(eq(roles.role, role));
+  const result = await db
+    .select()
+    .from(roles)
+    .where(inArray(roles.role, getDbRoleValues(role)));
 
   return result;
 }
@@ -83,7 +105,7 @@ export async function hasAnyAdmins(): Promise<boolean> {
   const result = await db
     .select({ id: roles.id })
     .from(roles)
-    .where(eq(roles.role, 'admin'))
+    .where(inArray(roles.role, getDbRoleValues('admin')))
     .limit(1);
 
   return result.length > 0;
@@ -100,7 +122,7 @@ export async function hasRole(userId: string, role: UserRole): Promise<boolean> 
   const result = await db
     .select({ id: roles.id })
     .from(roles)
-    .where(and(eq(roles.userId, userId), eq(roles.role, role)))
+    .where(and(eq(roles.userId, userId), inArray(roles.role, getDbRoleValues(role))))
     .limit(1);
 
   return result.length > 0;
@@ -161,7 +183,7 @@ export async function getApprovalGroups(userId: string): Promise<string[] | 'all
 
 /**
  * Assign a role to a user.
- * If the user already has the role, their group list is updated.
+ * If the user already has a role row, it is updated (DB enforces one role row per user).
  *
  * @param roleData - Role assignment data
  * @returns Promise resolving to the created or updated role
@@ -171,18 +193,25 @@ export async function assignRole(
 ): Promise<DBRole> {
   const { userId, role, groupIds, createdBy } = roleData;
 
-  // Check if role already exists
-  const existing = await db
-    .select()
-    .from(roles)
-    .where(and(eq(roles.userId, userId), eq(roles.role, role)))
-    .limit(1);
+  // DB schema enforces UNIQUE(user_id) on roles, meaning a user can only have
+  // one role row at a time. Treat assignment as an upsert by userId.
+  const existing = await db.select().from(roles).where(eq(roles.userId, userId)).limit(1);
 
   if (existing[0]) {
-    // Update existing role with new groups
+    const updateValues: Partial<typeof roles.$inferInsert> = {
+      // Self-heal legacy DB roles by rewriting to canonical value.
+      role,
+      groupIds,
+    };
+
+    if (createdBy !== undefined) {
+      updateValues.createdBy = createdBy;
+    }
+
+    // Update existing role with new role + groups
     const [updated] = await db
       .update(roles)
-      .set({ groupIds: groupIds })
+      .set(updateValues)
       .where(eq(roles.id, existing[0].id))
       .returning();
 
@@ -329,9 +358,11 @@ export async function getStats(): Promise<RoleStats> {
     const cnt = row.count;
     stats.total += cnt;
     stats.active += cnt;
-    if (row.role === 'admin') stats.admins = cnt;
-    if (row.role === 'teacher') stats.teachers = cnt;
-    if (row.role === 'student') stats.students = cnt;
+
+    const role = normalizeUserRoleString(row.role);
+    if (role === 'admin') stats.admins += cnt;
+    if (role === 'teacher') stats.teachers += cnt;
+    if (role === 'student') stats.students += cnt;
   });
 
   return stats;

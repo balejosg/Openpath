@@ -9,9 +9,10 @@ import * as auth from '../lib/auth.js';
 import * as resetTokenStorage from '../lib/reset-token-storage.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
-import type { AuthUser, LoginResponse, UserRole } from '../types/index.js';
+import type { AuthUser, LoginResponse, RoleInfo } from '../types/index.js';
 import type { CreateUserData } from '../types/storage.js';
 import { getErrorMessage } from '@openpath/shared';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 const googleClient = new OAuth2Client();
 
@@ -71,10 +72,13 @@ export async function register(input: CreateUserData): Promise<AuthResult<{ user
     }
 
     const roles = await roleStorage.getUserRoles(user.id);
-    const roleInfo = roles.map((r) => ({
-      role: r.role as UserRole,
-      groupIds: r.groupIds ?? [],
-    }));
+    const roleInfo: RoleInfo[] = roles
+      .map((r) => {
+        const role = normalizeUserRoleString(r.role);
+        if (!role) return null;
+        return { role, groupIds: r.groupIds ?? [] };
+      })
+      .filter((r): r is RoleInfo => r !== null);
 
     const authUser: AuthUser = {
       id: user.id,
@@ -107,10 +111,13 @@ export async function login(email: string, password: string): Promise<AuthResult
     }
 
     const roles = await roleStorage.getUserRoles(user.id);
-    const roleInfo = roles.map((r) => ({
-      role: r.role as UserRole,
-      groupIds: r.groupIds ?? [],
-    }));
+    const roleInfo: RoleInfo[] = roles
+      .map((r) => {
+        const role = normalizeUserRoleString(r.role);
+        if (!role) return null;
+        return { role, groupIds: r.groupIds ?? [] };
+      })
+      .filter((r): r is RoleInfo => r !== null);
 
     const tokens = auth.generateTokens(user, roleInfo);
 
@@ -152,13 +159,15 @@ export async function refresh(refreshToken: string): Promise<AuthResult<TokenPai
 
   await auth.blacklistToken(refreshToken);
   const roles = await roleStorage.getUserRoles(user.id);
-  const tokens = auth.generateTokens(
-    user,
-    roles.map((r) => ({
-      role: r.role as 'admin' | 'teacher' | 'student',
-      groupIds: r.groupIds ?? [],
-    }))
-  );
+  const roleInfo: RoleInfo[] = roles
+    .map((r) => {
+      const role = normalizeUserRoleString(r.role);
+      if (!role) return null;
+      return { role, groupIds: r.groupIds ?? [] };
+    })
+    .filter((r): r is RoleInfo => r !== null);
+
+  const tokens = auth.generateTokens(user, roleInfo);
 
   return { ok: true, data: tokens as TokenPair };
 }
@@ -185,10 +194,13 @@ export async function getProfile(userId: string): Promise<AuthResult<{ user: Aut
   }
 
   const roles = await roleStorage.getUserRoles(user.id);
-  const roleInfo = roles.map((r) => ({
-    role: r.role as UserRole,
-    groupIds: r.groupIds ?? [],
-  }));
+  const roleInfo: RoleInfo[] = roles
+    .map((r) => {
+      const role = normalizeUserRoleString(r.role);
+      if (!role) return null;
+      return { role, groupIds: r.groupIds ?? [] };
+    })
+    .filter((r): r is RoleInfo => r !== null);
 
   const authUser: AuthUser = {
     id: user.id,
@@ -412,10 +424,13 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
     }
 
     const roles = await roleStorage.getUserRoles(user.id);
-    const roleInfo = roles.map((r) => ({
-      role: r.role as UserRole,
-      groupIds: r.groupIds ?? [],
-    }));
+    const roleInfo: RoleInfo[] = roles
+      .map((r) => {
+        const role = normalizeUserRoleString(r.role);
+        if (!role) return null;
+        return { role, groupIds: r.groupIds ?? [] };
+      })
+      .filter((r): r is RoleInfo => r !== null);
 
     const tokens = auth.generateTokens(user, roleInfo);
 

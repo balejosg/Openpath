@@ -96,7 +96,7 @@ const options: SwaggerOptions = {
             id: { type: 'string', format: 'uuid' },
             email: { type: 'string', format: 'email' },
             name: { type: 'string' },
-            role: { type: 'string', enum: ['admin', 'teacher', 'user'] },
+            role: { type: 'string', enum: ['admin', 'teacher', 'student'] },
           },
         },
         Classroom: {

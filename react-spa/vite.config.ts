@@ -27,6 +27,7 @@ export default defineConfig({
         __dirname,
         '../shared/src/rules-validation.ts'
       ),
+      '@openpath/shared/roles': path.resolve(__dirname, '../shared/src/roles.ts'),
     },
   },
   build: {

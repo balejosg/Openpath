@@ -12,6 +12,7 @@ import {
 describe('roles helpers', () => {
   it('maps backend role strings to UserRole', () => {
     expect(mapBackendRoleToUserRole('admin')).toBe(UserRole.ADMIN);
+    expect(mapBackendRoleToUserRole('openpath-admin')).toBe(UserRole.ADMIN);
     expect(mapBackendRoleToUserRole('teacher')).toBe(UserRole.TEACHER);
     expect(mapBackendRoleToUserRole('student')).toBe(UserRole.STUDENT);
     expect(mapBackendRoleToUserRole('user')).toBe(UserRole.STUDENT);
@@ -23,11 +24,12 @@ describe('roles helpers', () => {
     expect(getPrimaryRole(['teacher'])).toBe('teacher');
     expect(getPrimaryRole(['student', 'teacher'])).toBe('teacher');
     expect(getPrimaryRole(['admin', 'teacher'])).toBe('admin');
-    expect(getPrimaryRole(['viewer'])).toBe('user');
+    expect(getPrimaryRole(['viewer'])).toBe('student');
   });
 
   it('returns human-readable labels for raw role strings', () => {
     expect(getRoleDisplayLabel('admin')).toBe('Admin');
+    expect(getRoleDisplayLabel('openpath-admin')).toBe('Admin');
     expect(getRoleDisplayLabel('teacher')).toBe('Profesor');
     expect(getRoleDisplayLabel('student')).toBe('Usuario');
     expect(getRoleDisplayLabel('viewer')).toBe('Usuario');

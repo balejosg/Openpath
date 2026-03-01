@@ -7,6 +7,7 @@ import * as roleStorage from '../lib/role-storage.js';
 import type { User, SafeUser, UserRole, Role } from '../types/index.js';
 import type { UpdateUserData, CreateUserData } from '../types/storage.js';
 import { getErrorMessage } from '@openpath/shared';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 // =============================================================================
 // Types
@@ -39,10 +40,11 @@ interface DBRole {
 }
 
 function mapDBRoleToRole(r: DBRole): Role {
+  const role = normalizeUserRoleString(r.role);
   return {
     id: r.id,
     userId: r.userId,
-    role: r.role as UserRole,
+    role: role ?? 'student',
     groupIds: r.groupIds ?? [],
     createdAt: r.createdAt?.toISOString() ?? new Date().toISOString(),
     expiresAt: r.expiresAt?.toISOString() ?? null,

@@ -1,4 +1,5 @@
 import { UserRole } from '../types';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 export const CREATE_USER_ROLES = ['teacher', 'admin'] as const;
 export type CreateUserRole = (typeof CREATE_USER_ROLES)[number];
@@ -12,29 +13,27 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function mapBackendRoleToUserRole(role: string): UserRole {
-  switch (role) {
-    case 'admin':
-      return UserRole.ADMIN;
-    case 'teacher':
-      return UserRole.TEACHER;
-    case 'student':
-    case 'user':
-    case 'viewer':
-      return UserRole.STUDENT;
-    default:
-      return UserRole.NO_ROLES;
-  }
+  const normalized = normalizeUserRoleString(role);
+  if (normalized === 'admin') return UserRole.ADMIN;
+  if (normalized === 'teacher') return UserRole.TEACHER;
+  if (normalized === 'student') return UserRole.STUDENT;
+  return UserRole.NO_ROLES;
 }
 
 export function getPrimaryRole(roles: readonly string[]): string {
-  if (roles.includes('admin')) return 'admin';
-  if (roles.includes('teacher')) return 'teacher';
-  return 'user';
+  const normalized = roles
+    .map((r) => normalizeUserRoleString(r))
+    .filter((r): r is 'admin' | 'teacher' | 'student' => r !== null);
+
+  if (normalized.includes('admin')) return 'admin';
+  if (normalized.includes('teacher')) return 'teacher';
+  return 'student';
 }
 
 export function getRoleDisplayLabel(role: string): string {
-  if (role === 'admin') return 'Admin';
-  if (role === 'teacher') return 'Profesor';
-  if (role === 'student' || role === 'viewer' || role === 'user') return 'Usuario';
+  const normalized = normalizeUserRoleString(role);
+  if (normalized === 'admin') return 'Admin';
+  if (normalized === 'teacher') return 'Profesor';
+  if (normalized === 'student') return 'Usuario';
   return role;
 }

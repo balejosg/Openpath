@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { getTokenStore } from './token-store.js';
 import { logger } from './logger.js';
 import type { User, JWTPayload, RoleInfo } from '../types/index.js';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 // =============================================================================
 // Types
@@ -139,9 +140,38 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
       return null;
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET, {
+    const decodedRaw: unknown = jwt.verify(token, JWT_SECRET, {
       issuer: 'openpath-api',
-    }) as JWTPayload;
+    });
+
+    if (decodedRaw === null || typeof decodedRaw !== 'object') {
+      return null;
+    }
+
+    const decoded = decodedRaw as JWTPayload;
+
+    if (decoded.type === 'access') {
+      const rawRoles = (decodedRaw as { roles?: unknown }).roles;
+      const normalized: RoleInfo[] = [];
+
+      if (Array.isArray(rawRoles)) {
+        for (const raw of rawRoles) {
+          if (raw === null || typeof raw !== 'object') continue;
+          const rawRole = (raw as { role?: unknown }).role;
+          const role = normalizeUserRoleString(rawRole);
+          if (!role) continue;
+
+          const rawGroupIds = (raw as { groupIds?: unknown }).groupIds;
+          const groupIds = Array.isArray(rawGroupIds)
+            ? rawGroupIds.filter((g): g is string => typeof g === 'string')
+            : [];
+
+          normalized.push({ role, groupIds });
+        }
+      }
+
+      decoded.roles = normalized;
+    }
 
     return decoded;
   } catch {

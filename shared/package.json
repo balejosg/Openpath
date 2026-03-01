@@ -17,6 +17,10 @@
     "./rules-validation": {
       "types": "./dist/rules-validation.d.ts",
       "import": "./dist/rules-validation.js"
+    },
+    "./roles": {
+      "types": "./dist/roles.d.ts",
+      "import": "./dist/roles.js"
     }
   },
   "scripts": {

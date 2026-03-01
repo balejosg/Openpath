@@ -65,6 +65,17 @@ describe('Auth functions', () => {
       expect(isAdmin()).toBe(true);
     });
 
+    it('should treat legacy openpath-admin role as admin', () => {
+      const user: User = {
+        id: '1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        roles: [{ role: 'openpath-admin' }],
+      };
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      expect(isAdmin()).toBe(true);
+    });
+
     it('should return false if user does not have admin role', () => {
       const user: User = {
         id: '1',
@@ -97,6 +108,17 @@ describe('Auth functions', () => {
         email: 'student@example.com',
         name: 'Student',
         roles: [{ role: 'student' }],
+      };
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      expect(isStudent()).toBe(true);
+    });
+
+    it('should treat legacy user/viewer roles as student', () => {
+      const user: User = {
+        id: '1',
+        email: 'student@example.com',
+        name: 'Student',
+        roles: [{ role: 'user' }, { role: 'viewer' }],
       };
       localStorage.setItem(USER_KEY, JSON.stringify(user));
       expect(isStudent()).toBe(true);

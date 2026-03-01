@@ -3,6 +3,7 @@ import * as auth from '../lib/auth.js';
 import type { JWTPayload } from '../lib/auth.js';
 import * as roleStorage from '../lib/role-storage.js';
 import { logger } from '../lib/logger.js';
+import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 export interface Context {
   user: JWTPayload | null;
@@ -63,13 +64,17 @@ export async function createContext({ req, res }: CreateExpressContextOptions): 
   ) {
     try {
       const dbRoles = await roleStorage.getUserRoles(user.sub);
-      if (dbRoles.length > 0) {
+      const normalizedRoles: JWTPayload['roles'] = [];
+      for (const r of dbRoles) {
+        const role = normalizeUserRoleString(r.role);
+        if (!role) continue;
+        normalizedRoles.push({ role, groupIds: r.groupIds ?? [] });
+      }
+
+      if (normalizedRoles.length > 0) {
         user = {
           ...user,
-          roles: dbRoles.map((r) => ({
-            role: r.role as 'admin' | 'teacher' | 'student',
-            groupIds: r.groupIds ?? [],
-          })),
+          roles: normalizedRoles,
         } as JWTPayload;
       }
     } catch (err) {
