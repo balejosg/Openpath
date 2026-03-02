@@ -666,7 +666,7 @@ const Classrooms = () => {
                   Horario del Aula
                 </h3>
                 <button
-                  onClick={() => openScheduleCreate(undefined, '08:00')}
+                  onClick={() => openScheduleCreate()}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors shadow-sm font-medium"
                 >
                   <Plus size={16} /> Nuevo
@@ -802,6 +802,7 @@ const Classrooms = () => {
       {/* Modal: Configurar Horario */}
       {scheduleFormOpen && selectedClassroom && (
         <ScheduleFormModal
+          key={editingSchedule?.id ?? 'create'}
           schedule={editingSchedule}
           defaultDay={scheduleFormDay}
           defaultStartTime={scheduleFormStartTime}

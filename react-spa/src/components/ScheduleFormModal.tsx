@@ -93,7 +93,7 @@ const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
 
   const handleSubmit = () => {
     setLocalError('');
-    if (!dayOfWeek) {
+    if (dayOfWeek === null) {
       setLocalError('Selecciona un dia');
       return;
     }
