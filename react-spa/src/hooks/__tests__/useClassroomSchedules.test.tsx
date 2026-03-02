@@ -91,6 +91,25 @@ describe('useClassroomSchedules', () => {
     expect(result.current.scheduleFormStartTime).toBeUndefined();
   });
 
+  it('defaults create form to Monday 08:00 when args are omitted', async () => {
+    const { result } = renderHook(() =>
+      useClassroomSchedules({ selectedClassroomId: 'classroom-1' })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loadingSchedules).toBe(false);
+    });
+
+    act(() => {
+      result.current.openScheduleCreate();
+    });
+
+    expect(result.current.scheduleFormOpen).toBe(true);
+    expect(result.current.editingSchedule).toBeNull();
+    expect(result.current.scheduleFormDay).toBe(1);
+    expect(result.current.scheduleFormStartTime).toBe('08:00');
+  });
+
   it('creates a schedule and refreshes list on save', async () => {
     const { result } = renderHook(() =>
       useClassroomSchedules({ selectedClassroomId: 'classroom-1' })

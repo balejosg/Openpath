@@ -64,10 +64,18 @@ export const useClassroomSchedules = ({
   }, [selectedClassroomId, fetchSchedules]);
 
   const openScheduleCreate = useCallback((dayOfWeek?: number, startTime?: string) => {
+    const normalizedDay =
+      typeof dayOfWeek === 'number' &&
+      Number.isInteger(dayOfWeek) &&
+      dayOfWeek >= 1 &&
+      dayOfWeek <= 5
+        ? dayOfWeek
+        : 1;
+    const normalizedStartTime = startTime ?? '08:00';
     setScheduleError('');
     setEditingSchedule(null);
-    setScheduleFormDay(dayOfWeek);
-    setScheduleFormStartTime(startTime);
+    setScheduleFormDay(normalizedDay);
+    setScheduleFormStartTime(normalizedStartTime);
     setScheduleFormOpen(true);
   }, []);
 

@@ -143,6 +143,7 @@ describe('ScheduleFormModal Component', () => {
     );
 
     expect(screen.getByText('Editar Horario')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mar' })).toHaveClass('bg-blue-600');
     expect(screen.getByRole('button', { name: /guardar cambios/i })).toBeInTheDocument();
   });
 });
