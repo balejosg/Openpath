@@ -157,8 +157,10 @@ log_error() {
 }
 
 log_debug() {
-    # Only if DEBUG is enabled
-    [ "${DEBUG:-0}" = "1" ] && log "$1" "DEBUG"
+    if [ "${DEBUG:-0}" = "1" ]; then
+        log "$1" "DEBUG"
+    fi
+    return 0
 }
 
 # Create necessary directories
