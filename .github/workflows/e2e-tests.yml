@@ -64,21 +64,32 @@ jobs:
           sleep 5  # Reduced from 15s - systemd boots quickly in privileged mode
 
           # Wait for e2e-tests.service to complete (max 8 minutes)
+          # NOTE: this is a oneshot unit with RemainAfterExit, so `is-active` stays "active" even after completion.
           for i in {1..96}; do
-            status=$(docker exec e2e-test systemctl is-active e2e-tests.service 2>/dev/null || echo "unknown")
-            if [ "$status" = "inactive" ] || [ "$status" = "failed" ]; then
-              echo "  Service completed with status: $status"
+            exit_ts=$(docker exec e2e-test systemctl show e2e-tests.service --property=ExecMainExitTimestampMonotonic --value 2>/dev/null || true)
+            if [ -n "$exit_ts" ] && [ "$exit_ts" != "0" ]; then
+              echo "  Service completed"
               break
             fi
             if [ "$((i % 12))" = "0" ]; then
-              echo "  [$i/96] Tests still running (${i}*5s = $((i*5))s elapsed)..."
+              active_state=$(docker exec e2e-test systemctl show e2e-tests.service --property=ActiveState --value 2>/dev/null || true)
+              sub_state=$(docker exec e2e-test systemctl show e2e-tests.service --property=SubState --value 2>/dev/null || true)
+              echo "  [$i/96] Tests still running (${i}*5s = $((i*5))s elapsed)... (state=${active_state:-unknown}/${sub_state:-unknown})"
             fi
             sleep 5
           done
 
+          # Did the service actually finish?
+          exit_ts=$(docker exec e2e-test systemctl show e2e-tests.service --property=ExecMainExitTimestampMonotonic --value 2>/dev/null || true)
+          timed_out=0
+          if [ -z "$exit_ts" ] || [ "$exit_ts" = "0" ]; then
+            timed_out=1
+            echo "❌ Timed out waiting for e2e-tests.service to finish"
+          fi
+
           echo ""
           echo "📋 Test output:"
-          docker exec e2e-test journalctl -u e2e-tests.service --no-pager -n 100 || true
+          docker exec e2e-test journalctl -u e2e-tests.service --no-pager -n 200 || true
 
           echo ""
           echo "🔍 Checking service result..."
@@ -87,15 +98,18 @@ jobs:
           result=$(docker exec e2e-test systemctl show e2e-tests.service --property=Result --value 2>/dev/null || echo "failed")
           echo "Service Result: $result"
 
-          # Cleanup (force, ignore errors)
-          docker stop e2e-test 2>/dev/null || true
-          docker rm -f e2e-test 2>/dev/null || true
-
-          if [ "$result" = "success" ]; then
+          # Cleanup on success only. Keep container for the "Debug on failure" step.
+          if [ "$timed_out" = "0" ] && [ "$result" = "success" ]; then
+            docker stop e2e-test 2>/dev/null || true
+            docker rm -f e2e-test 2>/dev/null || true
             echo "✅ E2E tests passed"
             exit 0
           else
-            echo "❌ E2E tests failed (result: $result)"
+            if [ "$timed_out" = "1" ]; then
+              echo "❌ E2E tests did not finish within the timeout window"
+            else
+              echo "❌ E2E tests failed (result: $result)"
+            fi
             exit 1
           fi
 
@@ -135,7 +149,21 @@ jobs:
         if: failure()
         run: |
           echo "📋 Debug information..."
+          docker ps -a || true
           docker logs e2e-test 2>/dev/null || echo "Container logs not available"
+          echo ""
+          echo "📋 Systemd status (e2e-tests.service):"
+          docker exec e2e-test systemctl status e2e-tests.service --no-pager 2>/dev/null || true
+          echo ""
+          echo "📋 Systemd properties (e2e-tests.service):"
+          docker exec e2e-test systemctl show e2e-tests.service \
+            -p ActiveState -p SubState -p Result -p ExecMainStatus -p ExecMainCode -p ExecMainPID \
+            --no-pager 2>/dev/null || true
+          echo ""
+          echo "📋 Systemd journal tail (e2e-tests.service):"
+          docker exec e2e-test journalctl -u e2e-tests.service --no-pager -n 400 2>/dev/null || true
+
+          # Cleanup
           docker rm -f e2e-test 2>/dev/null || true
 
   # ============================================

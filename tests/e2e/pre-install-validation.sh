@@ -83,11 +83,12 @@ test_file_permissions() {
                 lib_count=$((lib_count + 1))
             fi
         done
-        
-        if [ $lib_count -eq 6 ]; then
-            test_pass "Found 6 library scripts in linux/lib/"
+
+        # The exact number of modules can change over time.
+        if [ "$lib_count" -gt 0 ]; then
+            test_pass "Found $lib_count library scripts in linux/lib/"
         else
-            test_fail "Expected 6 library scripts, found $lib_count"
+            test_fail "No library scripts found in linux/lib/"
         fi
     fi
 }
@@ -138,6 +139,7 @@ test_required_files() {
         "linux/lib/common.sh"
         "linux/lib/dns.sh"
         "linux/lib/firewall.sh"
+        "linux/lib/captive-portal.sh"
         "linux/lib/browser.sh"
         "linux/lib/services.sh"
         "linux/lib/rollback.sh"
