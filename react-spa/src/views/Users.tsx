@@ -136,8 +136,8 @@ const UsersView = () => {
     const rows = filteredUsers.map((user) => [
       user.name,
       user.email,
-      user.roles.join('|'),
-      user.status,
+      user.roles.map((role) => USER_ROLE_LABELS[role]).join('|'),
+      user.status === 'Active' ? 'Activo' : 'Inactivo',
     ]);
 
     const csvContent = toCsv([headers, ...rows]);

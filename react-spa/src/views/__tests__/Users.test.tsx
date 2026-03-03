@@ -37,6 +37,10 @@ const { mockUsersList, mockCreateUser, mockDeleteUser } = vi.hoisted(() => ({
   mockDeleteUser: vi.fn(),
 }));
 
+const { mockDownloadFile } = vi.hoisted(() => ({
+  mockDownloadFile: vi.fn<(content: string, filename: string, mimeType: string) => void>(),
+}));
+
 vi.mock('../../lib/trpc', () => ({
   trpc: {
     users: {
@@ -55,6 +59,15 @@ vi.mock('../../lib/trpc', () => ({
     },
   },
 }));
+
+vi.mock('../../lib/exportRules', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../lib/exportRules')>('../../lib/exportRules');
+  return {
+    ...actual,
+    downloadFile: mockDownloadFile,
+  };
+});
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -160,6 +173,44 @@ describe('Users View', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
 
     expect(screen.getByRole('status')).toHaveTextContent('No hay usuarios para exportar');
+  });
+
+  it('exports users with localized role and status values', async () => {
+    mockUsersList.mockResolvedValue([
+      {
+        id: 'user-1',
+        name: 'Admin QA',
+        email: 'admin@example.com',
+        isActive: true,
+        roles: [{ role: 'admin' }],
+      },
+      {
+        id: 'user-2',
+        name: 'Teacher QA',
+        email: 'teacher@example.com',
+        isActive: false,
+        roles: [{ role: 'teacher' }],
+      },
+    ]);
+
+    renderUsersView();
+
+    await screen.findByText('Admin QA');
+    await screen.findByText('Teacher QA');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
+
+    await waitFor(() => {
+      expect(mockDownloadFile).toHaveBeenCalledTimes(1);
+    });
+
+    const [csvContent, filename, mimeType] = mockDownloadFile.mock.calls[0];
+
+    expect(filename).toBe('usuarios.csv');
+    expect(mimeType).toBe('text/csv;charset=utf-8');
+    expect(csvContent).toContain('Nombre,Email,Roles,Estado');
+    expect(csvContent).toContain('Admin QA,admin@example.com,Administrador,Activo');
+    expect(csvContent).toContain('Teacher QA,teacher@example.com,Profesor,Inactivo');
   });
 
   it('shows specific message when email format is invalid', async () => {
