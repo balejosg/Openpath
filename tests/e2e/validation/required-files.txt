@@ -1,0 +1,34 @@
+# Format: "required|optional <path>" (repo-relative)
+
+# Core installers
+required linux/install.sh
+required linux/uninstall.sh
+
+# Library modules
+required linux/lib/common.sh
+required linux/lib/dns.sh
+required linux/lib/firewall.sh
+required linux/lib/captive-portal.sh
+required linux/lib/browser.sh
+required linux/lib/services.sh
+required linux/lib/rollback.sh
+
+# Runtime scripts
+required linux/scripts/runtime/openpath-update.sh
+required linux/scripts/runtime/dnsmasq-watchdog.sh
+required linux/scripts/runtime/captive-portal-detector.sh
+required linux/scripts/runtime/openpath-cmd.sh
+
+# Firefox extension
+required firefox-extension/manifest.json
+required firefox-extension/dist/background.js
+required firefox-extension/dist/lib/logger.js
+required firefox-extension/popup/popup.html
+required firefox-extension/dist/popup.js
+required firefox-extension/popup/popup.css
+required firefox-extension/blocked/blocked.html
+required firefox-extension/blocked/blocked.css
+required firefox-extension/blocked/blocked.js
+required firefox-extension/native/openpath-native-host.py
+required firefox-extension/native/openpath_native_host.json
+required firefox-extension/native/install-native-host.sh
