@@ -176,7 +176,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, windows-2019]
+        os: [windows-2022]
     # Note: Windows failures now visible but don't block Linux-only users
 
     steps:
