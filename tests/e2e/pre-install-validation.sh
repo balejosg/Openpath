@@ -25,6 +25,7 @@ WARNINGS=0
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MANIFEST_DIR="$SCRIPT_DIR/validation"
 
 # ============== Helper Functions ==============
 
@@ -48,32 +49,52 @@ test_section() {
     echo -e "${BLUE}[$1]${NC} $2"
 }
 
+read_manifest_entries() {
+    local file="$1"
+
+    if [ ! -f "$file" ]; then
+        test_fail "Manifest missing: ${file#$PROJECT_ROOT/}"
+        return 0
+    fi
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        [[ -z "${line//[[:space:]]/}" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        printf '%s\n' "$line"
+    done < "$file"
+}
+
 # ============== Validation Tests ==============
 
 test_file_permissions() {
     test_section "1/6" "Script execution permissions"
-    
-    local scripts=(
-        "linux/install.sh"
-        "linux/uninstall.sh"
-        "linux/scripts/runtime/openpath-update.sh"
-        "linux/scripts/runtime/dnsmasq-watchdog.sh"
-        "linux/scripts/runtime/captive-portal-detector.sh"
-        "linux/scripts/runtime/openpath-cmd.sh"
-    )
-    
-    for script in "${scripts[@]}"; do
+
+    while IFS= read -r entry; do
+        local mode
+        local script
+        mode="${entry%%[[:space:]]*}"
+        script="${entry#*[[:space:]]}"
         local script_path="$PROJECT_ROOT/$script"
+
         if [ -f "$script_path" ]; then
             if [ -x "$script_path" ]; then
                 test_pass "$script has execute permission"
             else
-                test_fail "$script missing execute permission (needs chmod +x)"
+                if [ "$mode" = "optional" ]; then
+                    test_warn "$script missing execute permission (needs chmod +x)"
+                else
+                    test_fail "$script missing execute permission (needs chmod +x)"
+                fi
             fi
         else
-            test_warn "$script not found (may be optional)"
+            if [ "$mode" = "optional" ]; then
+                test_warn "$script not found (optional)"
+            else
+                test_fail "$script missing"
+            fi
         fi
-    done
+    done < <(read_manifest_entries "$MANIFEST_DIR/executables.txt")
     
     # Check lib scripts
     if [ -d "$PROJECT_ROOT/linux/lib" ]; then
@@ -95,84 +116,46 @@ test_file_permissions() {
 
 test_required_directories() {
     test_section "2/6" "Required directory structure"
-    
-    local required_dirs=(
-        "linux/lib"
-        "linux/scripts"
-        "linux/scripts/runtime"
-        "linux/scripts/build"
-        "linux/scripts/dev"
-        "firefox-extension"
-        "firefox-extension/icons"
-        "firefox-extension/popup"
-        "firefox-extension/native"
-        "windows"
-        "windows/lib"
-        "windows/scripts"
-        "tests"
-        "tests/e2e"
-    )
-    
-    for dir in "${required_dirs[@]}"; do
+
+    while IFS= read -r entry; do
+        local mode
+        local dir
+        mode="${entry%%[[:space:]]*}"
+        dir="${entry#*[[:space:]]}"
         local dir_path="$PROJECT_ROOT/$dir"
+
         if [ -d "$dir_path" ]; then
             test_pass "Directory $dir exists"
         else
-            if [[ "$dir" == "windows"* ]]; then
-                test_warn "Directory $dir missing (Windows-specific)"
+            if [ "$mode" = "optional" ]; then
+                test_warn "Directory $dir missing (optional)"
             else
                 test_fail "Directory $dir missing"
             fi
         fi
-    done
+    done < <(read_manifest_entries "$MANIFEST_DIR/required-dirs.txt")
 }
 
 test_required_files() {
     test_section "3/6" "Critical installation files"
-    
-    local required_files=(
-        # Core installers
-        "linux/install.sh"
-        "linux/uninstall.sh"
-        
-        # Library modules
-        "linux/lib/common.sh"
-        "linux/lib/dns.sh"
-        "linux/lib/firewall.sh"
-        "linux/lib/captive-portal.sh"
-        "linux/lib/browser.sh"
-        "linux/lib/services.sh"
-        "linux/lib/rollback.sh"
-        
-        # Runtime scripts
-        "linux/scripts/runtime/openpath-update.sh"
-        "linux/scripts/runtime/dnsmasq-watchdog.sh"
-        "linux/scripts/runtime/captive-portal-detector.sh"
-        "linux/scripts/runtime/openpath-cmd.sh"
-        
-        # Firefox extension
-        "firefox-extension/manifest.json"
-        "firefox-extension/dist/background.js"
-        "firefox-extension/dist/lib/logger.js"
-        "firefox-extension/popup/popup.html"
-        "firefox-extension/dist/popup.js"
-        "firefox-extension/popup/popup.css"
-        "firefox-extension/blocked/blocked.html"
-        "firefox-extension/blocked/blocked.css"
-        "firefox-extension/blocked/blocked.js"
-        "firefox-extension/native/openpath-native-host.py"
-        "firefox-extension/native/openpath_native_host.json"
-        "firefox-extension/native/install-native-host.sh"
-    )
-    
-    for file in "${required_files[@]}"; do
+
+    while IFS= read -r entry; do
+        local mode
+        local file
+        mode="${entry%%[[:space:]]*}"
+        file="${entry#*[[:space:]]}"
         local file_path="$PROJECT_ROOT/$file"
+
         if [ -f "$file_path" ]; then
             test_pass "File $file exists"
         else
-            test_fail "File $file missing"
+            if [ "$mode" = "optional" ]; then
+                test_warn "File $file missing (optional)"
+            else
+                test_fail "File $file missing"
+            fi
         fi
-    done
+    done < <(read_manifest_entries "$MANIFEST_DIR/required-files.txt")
 }
 
 test_firefox_extension_structure() {
@@ -219,15 +202,14 @@ test_firefox_extension_structure() {
 
 test_release_tarball_simulation() {
     test_section "5/6" "Release tarball contents simulation"
-    
+
     # Simulate what would be in the Linux release tarball
-    local tarball_contents=(
-        "linux/install.sh"
-        "linux/uninstall.sh"
-        "linux/lib/"
-        "linux/scripts/"
-        "firefox-extension/"
-    )
+    local tarball_contents=()
+    while IFS= read -r entry; do
+        local item
+        item="${entry#*[[:space:]]}"
+        tarball_contents+=("$item")
+    done < <(read_manifest_entries "$MANIFEST_DIR/tarball-contents.txt")
     
     echo -e "  ${BLUE}Checking if tarball would contain all required files...${NC}"
     

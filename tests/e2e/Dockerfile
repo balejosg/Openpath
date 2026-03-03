@@ -7,27 +7,14 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV container=docker
 
-# Install systemd and required packages
+# Install systemd and minimal packages.
+# Note: Avoid pre-installing most OpenPath dependencies so the installer
+# is exercised in E2E runs.
 RUN apt-get update && apt-get install -y \
-    # Systemd
     systemd \
     systemd-sysv \
-    # DNS and networking
-    dnsmasq \
-    iptables \
     iproute2 \
-    ipset \
-    dnsutils \
-    conntrack \
-    curl \
-    wget \
-    # System utilities
-    libcap2-bin \
-    sudo \
-    # Firefox for extension tests
-    firefox \
-    # Python for native messaging host
-    python3 \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Remove unnecessary systemd services that won't work in container
@@ -45,11 +32,20 @@ RUN systemctl mask systemd-resolved.service systemd-resolved.socket
 # Create working directory
 WORKDIR /openpath
 
-# Copy entire project
-COPY . .
+# Copy only what the Linux E2E image needs
+COPY VERSION ./VERSION
+COPY linux/ ./linux/
+COPY windows/ ./windows/
+COPY tests/e2e/ ./tests/e2e/
+COPY firefox-extension/manifest.json ./firefox-extension/manifest.json
+COPY firefox-extension/dist/ ./firefox-extension/dist/
+COPY firefox-extension/popup/ ./firefox-extension/popup/
+COPY firefox-extension/blocked/ ./firefox-extension/blocked/
+COPY firefox-extension/native/ ./firefox-extension/native/
+COPY firefox-extension/icons/ ./firefox-extension/icons/
 
-# Make scripts executable
-RUN chmod +x linux/*.sh linux/scripts/**/*.sh tests/e2e/*.sh linux/lib/*.sh 2>/dev/null || true
+# Make scripts executable (find is more reliable than globstar in /bin/sh)
+RUN find linux tests/e2e -type f -name "*.sh" -exec chmod +x {} +
 
 # Create the test runner service
 RUN echo '[Unit]\n\

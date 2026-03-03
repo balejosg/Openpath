@@ -139,21 +139,35 @@ BLOCKED_PATHS=()
 log() {
     local level="${2:-INFO}"
     local caller="${FUNCNAME[1]:-main}"
-    printf '[%s] [%s] [%s] [%d] %s\n' \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$caller" "$$" "$1" \
-        | tee -a "$LOG_FILE"
+    local ts
+    ts="$(date '+%Y-%m-%d %H:%M:%S')"
+    local line="[${ts}] [${level}] [${caller}] [$$] ${1}"
+
+    # Always print to stdout (journald/console) and best-effort append to file.
+    # IMPORTANT: logging must never abort installers or services running under `set -e`.
+    printf '%s\n' "$line" || true
+
+    if [ -n "${LOG_FILE:-}" ]; then
+        mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+        printf '%s\n' "$line" >> "$LOG_FILE" 2>/dev/null || true
+    fi
+
+    return 0
 }
 
 log_info() {
     log "$1" "INFO"
+    return 0
 }
 
 log_warn() {
     log "$1" "WARN"
+    return 0
 }
 
 log_error() {
     log "$1" "ERROR"
+    return 0
 }
 
 log_debug() {

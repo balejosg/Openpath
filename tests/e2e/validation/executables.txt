@@ -1,0 +1,14 @@
+# Format: "required|optional <path>" (repo-relative)
+
+required linux/install.sh
+required linux/uninstall.sh
+
+required linux/scripts/runtime/openpath-update.sh
+required linux/scripts/runtime/dnsmasq-watchdog.sh
+required linux/scripts/runtime/captive-portal-detector.sh
+required linux/scripts/runtime/openpath-cmd.sh
+required linux/scripts/runtime/smoke-test.sh
+
+required tests/e2e/pre-install-validation.sh
+required tests/e2e/docker-e2e-runner.sh
+required tests/e2e/linux-e2e-tests.sh

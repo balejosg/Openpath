@@ -1,0 +1,19 @@
+# Format: "required|optional <path>" (repo-relative)
+
+required linux/lib
+required linux/scripts
+required linux/scripts/runtime
+required linux/scripts/build
+required linux/scripts/dev
+
+required firefox-extension
+required firefox-extension/icons
+required firefox-extension/popup
+required firefox-extension/native
+
+optional windows
+optional windows/lib
+optional windows/scripts
+
+required tests
+required tests/e2e

@@ -1,0 +1,7 @@
+# Format: "required|optional <path>" (repo-relative)
+
+required linux/install.sh
+required linux/uninstall.sh
+required linux/lib/
+required linux/scripts/
+required firefox-extension/

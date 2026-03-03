@@ -74,16 +74,30 @@ teardown() {
 
 @test "log writes to log file" {
     export LOG_FILE="$TEST_TMP_DIR/test.log"
-    
-    # Mock de log function si existe, o crear una básica
-    log() {
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
-    }
-    
-    log "Test message"
-    
+
+    log_info "Test message"
+
     [ -f "$LOG_FILE" ]
     grep -q "Test message" "$LOG_FILE"
+}
+
+@test "log functions never abort under set -e when log path is unwritable" {
+    local unwritable_dir="$TEST_TMP_DIR/unwritable"
+    mkdir -p "$unwritable_dir"
+    chmod 500 "$unwritable_dir"
+
+    run bash -c '
+        set -euo pipefail
+        export LOG_FILE="'"$unwritable_dir"'/openpath.log"
+        source "'"$PROJECT_DIR"'/linux/lib/common.sh"
+        log_info "hello"
+        log_warn "warn"
+        log_error "err"
+        DEBUG=1 log_debug "debug"
+    '
+
+    chmod 700 "$unwritable_dir"
+    [ "$status" -eq 0 ]
 }
 
 # ============== Validation tests ==============
