@@ -42,6 +42,19 @@ export default tseslint.config(
       quotes: ['error', 'single', { avoidEscape: true }],
     },
   },
+  // Enforce centralized error reporting in SPA app code.
+  {
+    files: ['react-spa/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+  {
+    files: ['react-spa/src/lib/reportError.ts'],
+    rules: {
+      'no-console': ['error', { allow: ['error'] }],
+    },
+  },
   // Test anti-pattern rules for all test files
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
@@ -51,6 +64,7 @@ export default tseslint.config(
     rules: {
       // Prevent .only() which would skip other tests
       'no-only-tests/no-only-tests': 'error',
+      'no-console': 'off',
     },
   }
 );

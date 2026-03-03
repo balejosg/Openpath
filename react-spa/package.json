@@ -13,6 +13,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint --config ../eslint.config.js src/ --max-warnings=0",
+    "lint:fix": "eslint --config ../eslint.config.js src/ --fix --max-warnings=0",
     "size": "size-limit",
     "size:why": "size-limit --why"
   },
