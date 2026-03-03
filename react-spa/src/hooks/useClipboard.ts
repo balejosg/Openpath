@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { reportError } from '../lib/reportError';
 
 interface UseClipboardOptions {
   resetDelayMs?: number;
@@ -52,7 +53,7 @@ export function useClipboard(options: UseClipboardOptions = {}) {
 
         return true;
       } catch (err) {
-        console.error('Failed to copy to clipboard:', err);
+        reportError('Failed to copy to clipboard:', err);
         setState((previous) => ({ ...previous, error: 'No se pudo copiar al portapapeles' }));
         return false;
       }

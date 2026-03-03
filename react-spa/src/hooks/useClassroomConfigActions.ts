@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Classroom } from '../types';
 import { trpc } from '../lib/trpc';
 import { resolveTrpcErrorMessage } from '../lib/error-utils';
+import { reportError } from '../lib/reportError';
 
 interface UseClassroomConfigActionsParams {
   selectedClassroom: Classroom | null;
@@ -39,7 +40,7 @@ export const useClassroomConfigActions = ({
           setSelectedClassroom(updated);
         }
       } catch (err) {
-        console.error('Failed to update active group:', err);
+        reportError('Failed to update active group:', err);
       }
     },
     [selectedClassroom, refetchClassrooms, setSelectedClassroom]
@@ -61,7 +62,7 @@ export const useClassroomConfigActions = ({
           setSelectedClassroom(updated);
         }
       } catch (err) {
-        console.error('Failed to update default group:', err);
+        reportError('Failed to update default group:', err);
         const fallback =
           groupId === ''
             ? 'No puedes dejar el aula sin grupo por defecto mientras no exista un grupo activo válido.'

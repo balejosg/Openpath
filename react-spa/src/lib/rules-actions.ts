@@ -2,6 +2,7 @@ import { trpc } from './trpc';
 import { detectRuleType } from './ruleDetection';
 import { isDuplicateError } from './error-utils';
 import { getRuleTypeBadge, type RuleType } from './rules';
+import { reportError } from './reportError';
 
 export type ToastFn = (message: string, type: 'success' | 'error', undoAction?: () => void) => void;
 
@@ -94,7 +95,7 @@ export async function addRuleWithDetection(
     await params.fetchCounts();
     return true;
   } catch (err) {
-    console.error('Failed to add rule:', err);
+    reportError('Failed to add rule:', err);
 
     if (isDuplicateError(err)) {
       params.onToast(
@@ -141,7 +142,7 @@ export async function bulkCreateRulesAction(
 
     return { created, total };
   } catch (err) {
-    console.error('Failed to bulk create rules:', err);
+    reportError('Failed to bulk create rules:', err);
     params.onToast('Error al importar reglas', 'error');
     return { created: 0, total: values.length };
   }
@@ -164,7 +165,7 @@ export async function updateRuleAction(
     await params.fetchRules();
     return true;
   } catch (err) {
-    console.error('Failed to update rule:', err);
+    reportError('Failed to update rule:', err);
     params.onToast('Error al actualizar regla', 'error');
     return false;
   }
@@ -190,7 +191,7 @@ export async function deleteRuleWithUndoAction(
           await params.fetchCounts();
           params.onToast(`"${rule.value}" restaurado`, 'success');
         } catch (err) {
-          console.error('Failed to undo delete:', err);
+          reportError('Failed to undo delete:', err);
           params.onToast('Error al restaurar regla', 'error');
         }
       })();
@@ -199,7 +200,7 @@ export async function deleteRuleWithUndoAction(
     await params.fetchRules();
     await params.fetchCounts();
   } catch (err) {
-    console.error('Failed to delete rule:', err);
+    reportError('Failed to delete rule:', err);
     params.onToast('Error al eliminar regla', 'error');
   }
 }
@@ -230,7 +231,7 @@ export async function bulkDeleteRulesWithUndoAction(params: BulkDeleteRulesParam
           await params.fetchCounts();
           params.onToast(`${String(deletedRules.length)} reglas restauradas`, 'success');
         } catch (err) {
-          console.error('Failed to undo bulk delete:', err);
+          reportError('Failed to undo bulk delete:', err);
           params.onToast('Error al restaurar reglas', 'error');
         }
       })();
@@ -239,7 +240,7 @@ export async function bulkDeleteRulesWithUndoAction(params: BulkDeleteRulesParam
     await params.fetchRules();
     await params.fetchCounts();
   } catch (err) {
-    console.error('Failed to bulk delete rules:', err);
+    reportError('Failed to bulk delete rules:', err);
     params.onToast('Error al eliminar reglas', 'error');
   }
 }

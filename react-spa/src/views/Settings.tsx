@@ -15,6 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { trpc } from '../lib/trpc';
+import { reportError } from '../lib/reportError';
 import { useClipboard } from '../hooks/useClipboard';
 import { usePersistentNotificationPrefs } from '../hooks/usePersistentNotificationPrefs';
 import { DangerConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -104,7 +105,7 @@ const Settings: React.FC = () => {
       const tokens = await trpc.apiTokens.list.query();
       setApiTokens(tokens);
     } catch (err) {
-      console.error('Failed to fetch API tokens:', err);
+      reportError('Failed to fetch API tokens:', err);
     } finally {
       setTokensLoading(false);
     }
@@ -118,7 +119,7 @@ const Settings: React.FC = () => {
         const info = await trpc.healthcheck.systemInfo.query();
         setSystemInfo(info);
       } catch (err) {
-        console.error('Failed to fetch system info:', err);
+        reportError('Failed to fetch system info:', err);
       } finally {
         setSystemInfoLoading(false);
       }
@@ -182,7 +183,7 @@ const Settings: React.FC = () => {
         passwordResetTimerRef.current = null;
       }, 1500);
     } catch (err) {
-      console.error('Failed to change password:', err);
+      reportError('Failed to change password:', err);
       setPasswordError('No se pudo cambiar la contraseña. Verifica tu contraseña actual.');
     } finally {
       setIsChangingPassword(false);
@@ -220,7 +221,7 @@ const Settings: React.FC = () => {
       setCreatedToken(result);
       void fetchTokens();
     } catch (err) {
-      console.error('Failed to create token:', err);
+      reportError('Failed to create token:', err);
       setTokenError('Error al crear el token');
     } finally {
       setTokenActionLoading(null);
@@ -233,7 +234,7 @@ const Settings: React.FC = () => {
       await trpc.apiTokens.revoke.mutate({ id: tokenId });
       void fetchTokens();
     } catch (err) {
-      console.error('Failed to revoke token:', err);
+      reportError('Failed to revoke token:', err);
     } finally {
       setTokenActionLoading(null);
     }
@@ -247,7 +248,7 @@ const Settings: React.FC = () => {
       setShowCreateTokenModal(true);
       void fetchTokens();
     } catch (err) {
-      console.error('Failed to regenerate token:', err);
+      reportError('Failed to regenerate token:', err);
     } finally {
       setTokenActionLoading(null);
     }

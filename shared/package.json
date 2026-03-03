@@ -14,6 +14,10 @@
       "types": "./dist/domain.d.ts",
       "import": "./dist/domain.js"
     },
+    "./slug": {
+      "types": "./dist/slug.d.ts",
+      "import": "./dist/slug.js"
+    },
     "./rules-validation": {
       "types": "./dist/rules-validation.d.ts",
       "import": "./dist/rules-validation.js"

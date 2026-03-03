@@ -10,6 +10,7 @@ import { eq, sql, count } from 'drizzle-orm';
 import { db, classrooms, machines } from '../db/index.js';
 import { logger } from './logger.js';
 import { getCurrentSchedule } from './schedule-storage.js';
+import { sanitizeSlug } from '@openpath/shared';
 import type { Classroom, MachineStatus } from '../types/index.js';
 import type {
   IClassroomStorage,
@@ -153,10 +154,10 @@ export async function createClassroom(
   classroomData: CreateClassroomData & { defaultGroupId?: string }
 ): Promise<DBClassroom> {
   const { name, displayName, defaultGroupId } = classroomData;
-  const slug = name
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '');
+  const slug = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
+  if (!slug) {
+    throw new Error('Classroom name is invalid');
+  }
 
   // Check if exists
   const existing = await getClassroomByName(slug);

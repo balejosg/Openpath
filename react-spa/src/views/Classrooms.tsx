@@ -16,6 +16,7 @@ import type { Classroom } from '../types';
 import { trpc } from '../lib/trpc';
 import { isAdmin } from '../lib/auth';
 import { getAuthTokenForHeader } from '../lib/auth-storage';
+import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from '../hooks/useAllowedGroups';
 import { useClassroomConfigActions } from '../hooks/useClassroomConfigActions';
 import { useClassroomSchedules } from '../hooks/useClassroomSchedules';
@@ -117,7 +118,7 @@ const Classrooms = () => {
 
       setClassrooms(mappedClassrooms);
     } catch (err) {
-      console.error('Failed to fetch classrooms:', err);
+      reportError('Failed to fetch classrooms:', err);
       setError('Error al cargar aulas');
     } finally {
       setLoading(false);
@@ -147,7 +148,7 @@ const Classrooms = () => {
       setClassrooms(mappedClassrooms);
       return mappedClassrooms;
     } catch (err) {
-      console.error('Failed to refetch classrooms:', err);
+      reportError('Failed to refetch classrooms:', err);
       return [];
     }
   }, []);
@@ -189,7 +190,7 @@ const Classrooms = () => {
       setNewGroup('');
       setShowNewModal(false);
     } catch (err) {
-      console.error('Failed to create classroom:', err);
+      reportError('Failed to create classroom:', err);
       setNewError('Error al crear aula');
     } finally {
       setSaving(false);
@@ -206,7 +207,7 @@ const Classrooms = () => {
       setSelectedClassroomId(updated[0]?.id ?? null);
       setShowDeleteConfirm(false);
     } catch (err) {
-      console.error('Failed to delete classroom:', err);
+      reportError('Failed to delete classroom:', err);
     } finally {
       setDeleting(false);
     }
@@ -327,7 +328,7 @@ const Classrooms = () => {
       setEnrollPlatform('linux');
       setShowEnrollModal(true);
     } catch (err: unknown) {
-      console.error('Failed to get enrollment ticket:', err);
+      reportError('Failed to get enrollment ticket:', err);
       setError('No se pudo generar el comando de instalacion');
     } finally {
       setLoadingToken(false);

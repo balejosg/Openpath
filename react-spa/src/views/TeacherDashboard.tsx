@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Folder, Loader2, ShieldCheck, ShieldOff, MonitorPlay, Calendar } from 'lucide-react';
 import { trpc } from '../lib/trpc';
 import { isTeacherGroupsFeatureEnabled } from '../lib/auth';
+import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from '../hooks/useAllowedGroups';
 import { useIntervalRefetch, useRefetchOnFocus } from '../hooks/useLiveRefetch';
 import {
@@ -69,7 +70,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
       );
       setClassroomsError(null);
     } catch (err) {
-      console.error('Failed to fetch classrooms:', err);
+      reportError('Failed to fetch classrooms:', err);
       setClassroomsError('Error al cargar aulas');
     } finally {
       setClassroomsLoading(false);
@@ -134,7 +135,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
         setSelectedGroupForControl('');
         return true;
       } catch (e) {
-        console.error(e);
+        reportError('Failed to apply active group:', e);
         setControlError('Error al aplicar el grupo al aula');
         return false;
       } finally {
@@ -189,7 +190,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
       });
       await fetchClassrooms();
     } catch (e) {
-      console.error(e);
+      reportError('Failed to release classroom:', e);
     }
   };
 

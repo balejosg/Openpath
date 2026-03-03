@@ -9,6 +9,7 @@ import {
 } from '../lib/rules-actions';
 import { createLatestGuard } from '../lib/latest';
 import type { Rule, RuleType } from '../lib/rules';
+import { reportError } from '../lib/reportError';
 
 const PAGE_SIZE = 50;
 
@@ -149,7 +150,7 @@ export function useRulesManager({
       }
     } catch (err) {
       if (!fetchSeqRef.current.isLatest(seq)) return;
-      console.error('Failed to fetch rules:', err);
+      reportError('Failed to fetch rules:', err);
       setError('Error al cargar reglas');
     } finally {
       if (fetchSeqRef.current.isLatest(seq)) {
@@ -179,7 +180,7 @@ export function useRulesManager({
         blocked,
       });
     } catch (err) {
-      console.error('Failed to fetch counts:', err);
+      reportError('Failed to fetch counts:', err);
     }
   }, [groupId]);
 

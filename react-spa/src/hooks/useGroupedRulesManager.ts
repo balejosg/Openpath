@@ -10,6 +10,7 @@ import {
 import { createLatestGuard } from '../lib/latest';
 import { getRootDomain } from '@openpath/shared/domain';
 import type { Rule, RuleType } from '../lib/rules';
+import { reportError } from '../lib/reportError';
 
 const PAGE_SIZE = 20; // Number of domain groups per page
 
@@ -184,7 +185,7 @@ export function useGroupedRulesManager({
       }
     } catch (err) {
       if (!fetchSeqRef.current.isLatest(seq)) return;
-      console.error('Failed to fetch grouped rules:', err);
+      reportError('Failed to fetch grouped rules:', err);
       setError('Error al cargar reglas');
     } finally {
       if (fetchSeqRef.current.isLatest(seq)) {
@@ -214,7 +215,7 @@ export function useGroupedRulesManager({
         blocked,
       });
     } catch (err) {
-      console.error('Failed to fetch counts:', err);
+      reportError('Failed to fetch counts:', err);
     }
   }, [groupId]);
 

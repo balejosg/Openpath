@@ -6,6 +6,7 @@ import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
 import { parseCSV, type CSVParseResult } from '../lib/csv-parser';
 import { validateRuleValue } from '../lib/ruleDetection';
+import { reportError } from '../lib/reportError';
 
 interface BulkImportModalProps {
   isOpen: boolean;
@@ -145,7 +146,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         setError('Todas las reglas ya existen');
       }
     } catch (err) {
-      console.error('Import failed:', err);
+      reportError('Import failed:', err);
       setError('Error al importar reglas');
     } finally {
       setIsImporting(false);

@@ -19,7 +19,7 @@ import type {
   ListRulesOptions,
   ListRulesGroupedOptions,
 } from '../lib/groups-storage.js';
-import { validateRuleValue, cleanRuleValue } from '@openpath/shared';
+import { validateRuleValue, cleanRuleValue, sanitizeSlug } from '@openpath/shared';
 import {
   emitWhitelistChanged,
   emitAllWhitelistsChanged,
@@ -133,7 +133,10 @@ export async function createGroup(
   }
 
   // Sanitize name for URL safety
-  const safeName = input.name.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+  const safeName = sanitizeSlug(input.name, { maxLength: 100, allowUnderscore: true });
+  if (!safeName) {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'Name is invalid' } };
+  }
 
   try {
     const id = await groupsStorage.createGroup(safeName, input.displayName, {
@@ -200,12 +203,11 @@ export async function deleteGroup(id: string): Promise<GroupsResult<{ deleted: b
 }
 
 function sanitizeGroupName(raw: string): string {
-  return raw.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+  return sanitizeSlug(raw, { maxLength: 100, allowUnderscore: true });
 }
 
 async function findAvailableGroupName(baseName: string): Promise<string> {
-  const safeBase = sanitizeGroupName(baseName);
-  const trimmedBase = safeBase.replace(/^-+/, '').replace(/-+$/, '');
+  const trimmedBase = sanitizeGroupName(baseName);
   if (!trimmedBase) {
     return `group-${uuidv4().slice(0, 8)}`;
   }
@@ -213,11 +215,11 @@ async function findAvailableGroupName(baseName: string): Promise<string> {
   const maxAttempts = 50;
   for (let i = 0; i < maxAttempts; i++) {
     const suffix = i === 0 ? '' : `-${String(i + 1)}`;
-    const candidate = `${trimmedBase}${suffix}`.slice(0, 100);
+    const candidate = `${trimmedBase}${suffix}`.slice(0, 100).replace(/-+$/g, '');
     const exists = await groupsStorage.getGroupMetaByName(candidate);
     if (!exists) return candidate;
   }
-  return `${trimmedBase}-${uuidv4().slice(0, 8)}`.slice(0, 100);
+  return `${trimmedBase}-${uuidv4().slice(0, 8)}`.slice(0, 100).replace(/-+$/g, '');
 }
 
 /**

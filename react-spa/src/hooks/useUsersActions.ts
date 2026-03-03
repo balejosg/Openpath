@@ -5,6 +5,7 @@ import type { User } from '../types';
 import type { CreateUserRole } from '../lib/roles';
 import { resolveTrpcErrorMessage } from '../lib/error-utils';
 import { trpc } from '../lib/trpc';
+import { reportError } from '../lib/reportError';
 import { mapUnknownApiUserToUser, USERS_QUERY_KEY } from './useUsersList';
 
 export interface UserDeleteTarget {
@@ -115,7 +116,7 @@ export const useUsersActions = () => {
         await updateUserInCache(updated);
         return true;
       } catch (err) {
-        console.error('Failed to update user:', err);
+        reportError('Failed to update user:', err);
         return false;
       }
     },
@@ -149,7 +150,7 @@ export const useUsersActions = () => {
         await upsertUserInCache(user);
         return { ok: true, user };
       } catch (err) {
-        console.error('Failed to create user:', err);
+        reportError('Failed to create user:', err);
         setCreateError(
           resolveTrpcErrorMessage(err, {
             badRequest: 'El email no es válido',
@@ -192,7 +193,7 @@ export const useUsersActions = () => {
       setDeleteTarget(null);
       return true;
     } catch (err) {
-      console.error('Failed to delete user:', err);
+      reportError('Failed to delete user:', err);
       setDeleteError('No se pudo eliminar usuario. Intenta nuevamente.');
       return false;
     }

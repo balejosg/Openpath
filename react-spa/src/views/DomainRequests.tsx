@@ -3,6 +3,7 @@ import { Search, CheckCircle, XCircle, Trash2, Clock, AlertTriangle, Filter } fr
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DomainRequest, RequestStatus } from '@openpath/api';
 import { trpc } from '../lib/trpc';
+import { reportError } from '../lib/reportError';
 import { normalizeSearchTerm, useNormalizedSearch } from '../hooks/useNormalizedSearch';
 import { ConfirmDialog, DangerConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
@@ -285,7 +286,7 @@ export default function DomainRequests() {
       await approveRequest(approveModal.request.id);
       setApproveModal({ open: false, request: null });
     } catch (err) {
-      console.error('Error approving request:', err);
+      reportError('Error approving request:', err);
     }
   };
 
@@ -300,7 +301,7 @@ export default function DomainRequests() {
       setRejectModal({ open: false, request: null });
       setRejectionReason('');
     } catch (err) {
-      console.error('Error rejecting request:', err);
+      reportError('Error rejecting request:', err);
     }
   };
 
@@ -311,7 +312,7 @@ export default function DomainRequests() {
       await deleteRequest(deleteModal.request.id);
       setDeleteModal({ open: false, request: null });
     } catch (err) {
-      console.error('Error deleting request:', err);
+      reportError('Error deleting request:', err);
     }
   };
 

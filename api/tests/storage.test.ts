@@ -5,6 +5,7 @@ import * as storage from '../src/lib/storage.js';
 import * as userStorage from '../src/lib/user-storage.js';
 import * as classroomStorage from '../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../src/lib/schedule-storage.js';
+import { sanitizeSlug } from '@openpath/shared';
 
 void describe('Storage Layer', () => {
   const randomSuffix = (): string => crypto.randomBytes(4).toString('hex');
@@ -53,10 +54,7 @@ void describe('Storage Layer', () => {
       const room = await classroomStorage.createClassroom({
         name,
       });
-      const expectedSlug = name
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '');
+      const expectedSlug = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
       assert.strictEqual(room.name, expectedSlug);
     });
   });

@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { trpc } from '../lib/trpc';
+import { reportError } from '../lib/reportError';
 import { GroupLabel, inferGroupSource } from '../components/groups/GroupLabel';
 import { useIntervalRefetch, useRefetchOnFocus } from '../hooks/useLiveRefetch';
 
@@ -138,7 +139,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
       });
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch dashboard stats:', err);
+      reportError('Failed to fetch dashboard stats:', err);
       setError('Error al cargar estadísticas');
     } finally {
       setLoading(false);
@@ -162,7 +163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
       );
       setClassroomsError(null);
     } catch (err) {
-      console.error('Failed to fetch classrooms:', err);
+      reportError('Failed to fetch classrooms:', err);
       setClassroomsError('Error al cargar aulas');
     } finally {
       setClassroomsLoading(false);
@@ -194,7 +195,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
         setGroups(apiGroups);
         setGroupsError(null);
       } catch (err) {
-        console.error('Failed to fetch groups:', err);
+        reportError('Failed to fetch groups:', err);
         setGroupsError('Error al cargar grupos');
       } finally {
         setGroupsLoading(false);

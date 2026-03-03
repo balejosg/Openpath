@@ -3,3 +3,4 @@ export * from './utils.js';
 export * from './domain.js';
 export * from './rules-validation.js';
 export * from './roles.js';
+export * from './slug.js';

@@ -11,9 +11,11 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { GroupVisibility } from '@openpath/shared';
+import { sanitizeSlug } from '@openpath/shared/slug';
 import { trpc } from '../lib/trpc';
 import { isAdmin, isTeacher, isTeacherGroupsFeatureEnabled } from '../lib/auth';
 import { getEsActiveInactiveLabel } from '../lib/status';
+import { reportError } from '../lib/reportError';
 import { Modal } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
 import { useAllowedGroups } from '../hooks/useAllowedGroups';
@@ -118,11 +120,17 @@ const Groups: React.FC<GroupsProps> = ({ onNavigateToRules }) => {
       return;
     }
 
+    const slug = sanitizeSlug(newGroupName, { maxLength: 100, allowUnderscore: true });
+    if (!slug) {
+      setNewGroupError('El slug del grupo es inválido');
+      return;
+    }
+
     try {
       setSaving(true);
       setNewGroupError('');
       await trpc.groups.create.mutate({
-        name: newGroupName.trim().toLowerCase().replace(/\s+/g, '-'),
+        name: slug,
         displayName: newGroupDescription.trim() || newGroupName.trim(),
       });
       await refetchGroups();
@@ -130,7 +138,7 @@ const Groups: React.FC<GroupsProps> = ({ onNavigateToRules }) => {
       setNewGroupDescription('');
       setShowNewModal(false);
     } catch (err) {
-      console.error('Failed to create group:', err);
+      reportError('Failed to create group:', err);
       setNewGroupError('Error al crear grupo. El nombre puede ya existir.');
     } finally {
       setSaving(false);
@@ -152,7 +160,7 @@ const Groups: React.FC<GroupsProps> = ({ onNavigateToRules }) => {
       await refetchGroups();
       setShowConfigModal(false);
     } catch (err) {
-      console.error('Failed to update group:', err);
+      reportError('Failed to update group:', err);
       captureConfigError(err);
     } finally {
       setSaving(false);
@@ -208,13 +216,23 @@ const Groups: React.FC<GroupsProps> = ({ onNavigateToRules }) => {
   const handleCloneGroup = async () => {
     if (!cloneSource) return;
 
+    const trimmedName = cloneName.trim();
+    const sanitizedName = trimmedName
+      ? sanitizeSlug(trimmedName, { maxLength: 100, allowUnderscore: true })
+      : '';
+
+    if (trimmedName && !sanitizedName) {
+      setCloneError('El slug del grupo es inválido');
+      return;
+    }
+
     try {
       setSaving(true);
       setCloneError('');
 
       const result = await trpc.groups.clone.mutate({
         sourceGroupId: cloneSource.id,
-        name: cloneName.trim() || undefined,
+        name: sanitizedName || undefined,
         displayName: cloneDisplayName.trim() || undefined,
       });
 
@@ -228,7 +246,7 @@ const Groups: React.FC<GroupsProps> = ({ onNavigateToRules }) => {
         name: cloneDisplayName.trim() || result.name,
       });
     } catch (err) {
-      console.error('Failed to clone group:', err);
+      reportError('Failed to clone group:', err);
       setCloneError('No se pudo clonar el grupo. Intenta nuevamente.');
     } finally {
       setSaving(false);

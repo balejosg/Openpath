@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ScheduleWithPermissions } from '../types';
 import { trpc } from '../lib/trpc';
 import { resolveTrpcErrorMessage } from '../lib/error-utils';
+import { reportError } from '../lib/reportError';
 
 function formatScheduleError(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : '';
@@ -46,7 +47,7 @@ export const useClassroomSchedules = ({
       const result = await trpc.schedules.getByClassroom.query({ classroomId });
       setSchedules(result.schedules);
     } catch (err) {
-      console.error('Failed to fetch schedules:', err);
+      reportError('Failed to fetch schedules:', err);
       setScheduleError('Error al cargar horarios');
       setSchedules([]);
     } finally {
@@ -128,7 +129,7 @@ export const useClassroomSchedules = ({
         setScheduleFormDay(undefined);
         setScheduleFormStartTime(undefined);
       } catch (err: unknown) {
-        console.error('Failed to save schedule:', err);
+        reportError('Failed to save schedule:', err);
         setScheduleError(formatScheduleError(err, 'Error al guardar horario'));
       } finally {
         setScheduleSaving(false);
@@ -159,7 +160,7 @@ export const useClassroomSchedules = ({
       await onSchedulesUpdated?.();
       setScheduleDeleteTarget(null);
     } catch (err: unknown) {
-      console.error('Failed to delete schedule:', err);
+      reportError('Failed to delete schedule:', err);
       setScheduleError(formatScheduleError(err, 'Error al eliminar horario'));
     } finally {
       setScheduleSaving(false);
