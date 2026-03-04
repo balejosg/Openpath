@@ -86,7 +86,7 @@ describe('DomainRequests - Original group approval', () => {
         reason: 'Need for class',
         requesterEmail: 'teacher@example.com',
         groupId: 'group-1',
-        priority: 'normal',
+
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -194,7 +194,7 @@ describe('DomainRequests - Original group approval', () => {
 
     await screen.findByText('example.com');
 
-    const searchInput = screen.getByPlaceholderText('Buscar por dominio o email...');
+    const searchInput = screen.getByPlaceholderText('Buscar por dominio o máquina...');
     fireEvent.change(searchInput, { target: { value: 'zzzz-not-found' } });
 
     expect(
@@ -212,7 +212,7 @@ describe('DomainRequests - Original group approval', () => {
 
     await screen.findByText('example.com');
 
-    const searchInput = screen.getByPlaceholderText('Buscar por dominio o email...');
+    const searchInput = screen.getByPlaceholderText('Buscar por dominio o máquina...');
     fireEvent.change(searchInput, { target: { value: '   EXAMPLE.COM   ' } });
 
     expect(screen.getByText('example.com')).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe('DomainRequests - Original group approval', () => {
       reason: 'Need for class',
       requesterEmail: 'teacher@example.com',
       groupId: 'group-1',
-      priority: 'normal',
+
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -262,7 +262,7 @@ describe('DomainRequests - Original group approval', () => {
       reason: 'Already approved',
       requesterEmail: 'teacher@example.com',
       groupId: 'group-1',
-      priority: 'normal',
+
       status: 'approved',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

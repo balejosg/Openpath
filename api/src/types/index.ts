@@ -13,7 +13,6 @@
 export {
   // Zod Schemas (for runtime validation)
   RequestStatus as RequestStatusSchema,
-  RequestPriority as RequestPrioritySchema,
   UserRole as UserRoleSchema,
   MachineStatus as MachineStatusSchema,
   HealthStatus as HealthStatusSchema,
@@ -43,7 +42,6 @@ export {
 export type {
   // Types (inferred from Zod)
   RequestStatus,
-  RequestPriority,
   UserRole,
   MachineStatus,
   HealthStatus,

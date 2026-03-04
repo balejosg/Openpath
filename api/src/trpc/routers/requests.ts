@@ -26,7 +26,6 @@ export const requestsRouter = router({
         reason: input.reason ?? 'No reason provided',
         requesterEmail: input.requesterEmail,
         groupId: input.groupId,
-        priority: input.priority,
         source: input.source,
         machineHostname: input.machineHostname,
         originHost: input.originHost,

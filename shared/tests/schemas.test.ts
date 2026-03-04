@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import {
   DomainSchema,
   RequestStatus,
-  RequestPriority,
   UserRole,
   GroupVisibility,
   MachineStatus,
@@ -44,20 +43,6 @@ describe('Enum Schemas', () => {
       assert.throws(() => RequestStatus.parse('invalid'));
       assert.throws(() => RequestStatus.parse(''));
       assert.throws(() => RequestStatus.parse(null));
-    });
-  });
-
-  describe('RequestPriority', () => {
-    it('accepts valid values', () => {
-      assert.doesNotThrow(() => RequestPriority.parse('low'));
-      assert.doesNotThrow(() => RequestPriority.parse('normal'));
-      assert.doesNotThrow(() => RequestPriority.parse('high'));
-      assert.doesNotThrow(() => RequestPriority.parse('urgent'));
-    });
-
-    it('rejects invalid values', () => {
-      assert.throws(() => RequestPriority.parse('critical'));
-      assert.throws(() => RequestPriority.parse('medium'));
     });
   });
 
@@ -196,7 +181,6 @@ describe('Entity Schemas', () => {
         reason: 'For testing',
         requesterEmail: 'test@example.com',
         groupId: 'group-1',
-        priority: 'normal',
         status: 'pending',
         createdAt: '2025-01-01T00:00:00Z',
         updatedAt: '2025-01-01T00:00:00Z',
@@ -213,7 +197,6 @@ describe('Entity Schemas', () => {
         reason: 'For testing',
         requesterEmail: 'test@example.com',
         groupId: 'group-1',
-        priority: 'normal',
         status: 'approved',
         createdAt: '2025-01-01T00:00:00Z',
         updatedAt: '2025-01-01T00:00:00Z',
@@ -222,23 +205,6 @@ describe('Entity Schemas', () => {
         resolutionNote: 'Approved for educational purposes',
       };
       assert.doesNotThrow(() => DomainRequest.parse(request));
-    });
-
-    it('rejects invalid priority', () => {
-      const invalidRequest = {
-        id: 'req-123',
-        domain: 'example.com',
-        reason: 'For testing',
-        requesterEmail: 'test@example.com',
-        groupId: 'group-1',
-        priority: 'invalid',
-        status: 'pending',
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z',
-        resolvedAt: null,
-        resolvedBy: null,
-      };
-      assert.throws(() => DomainRequest.parse(invalidRequest));
     });
   });
 
@@ -540,7 +506,6 @@ describe('DTO Schemas', () => {
         reason: 'Need for research',
         requesterEmail: 'user@school.edu',
         groupId: 'class-a',
-        priority: 'high',
       };
       assert.doesNotThrow(() => CreateRequestDTO.parse(full));
     });
@@ -558,15 +523,6 @@ describe('DTO Schemas', () => {
       assert.throws(() =>
         CreateRequestDTO.parse({
           domain: 'bad',
-        })
-      );
-    });
-
-    it('validates priority when provided', () => {
-      assert.throws(() =>
-        CreateRequestDTO.parse({
-          domain: 'example.com',
-          priority: 'invalid',
         })
       );
     });
