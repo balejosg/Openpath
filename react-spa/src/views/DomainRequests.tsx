@@ -5,15 +5,9 @@ import type { DomainRequest, RequestStatus } from '@openpath/api';
 import { trpc } from '../lib/trpc';
 import { normalizeSearchTerm, useNormalizedSearch } from '../hooks/useNormalizedSearch';
 import { ConfirmDialog, DangerConfirmDialog } from '../components/ui/ConfirmDialog';
-import {
-  PRIORITY_COLORS,
-  PRIORITY_LABELS,
-  PRIORITY_WEIGHT,
-  STATUS_COLORS,
-  STATUS_LABELS,
-} from './domain-requests.constants';
+import { STATUS_COLORS, STATUS_LABELS } from './domain-requests.constants';
 
-type SortOption = 'pending' | 'newest' | 'oldest' | 'priority';
+type SortOption = 'pending' | 'newest' | 'oldest';
 
 interface Group {
   id: string;
@@ -169,7 +163,7 @@ export default function DomainRequests() {
         const matchesSearch =
           !normalizedSearchTerm ||
           normalizeSearchTerm(req.domain).includes(normalizedSearchTerm) ||
-          normalizeSearchTerm(req.requesterEmail).includes(normalizedSearchTerm);
+          normalizeSearchTerm(req.machineHostname ?? '').includes(normalizedSearchTerm);
 
         if (!matchesSearch) return false;
         if (sourceFilter === 'all') return true;
@@ -188,11 +182,6 @@ export default function DomainRequests() {
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case 'oldest':
           return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        case 'priority': {
-          const priorityDiff = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
-          if (priorityDiff !== 0) return priorityDiff;
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        }
         case 'pending':
         default: {
           if (a.status === 'pending' && b.status !== 'pending') return -1;
@@ -499,7 +488,7 @@ export default function DomainRequests() {
               type="text"
               name="domain-requests-search"
               autoComplete="off"
-              placeholder="Buscar por dominio o email..."
+              placeholder="Buscar por dominio o máquina..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onFocus={(e) => {
@@ -542,7 +531,6 @@ export default function DomainRequests() {
               <option value="pending">Pendientes primero</option>
               <option value="newest">Mas nuevas</option>
               <option value="oldest">Mas antiguas</option>
-              <option value="priority">Prioridad</option>
             </select>
             <select
               value={sourceFilter}
@@ -717,14 +705,12 @@ export default function DomainRequests() {
                     Dominio
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    Solicitante
+                    Máquina
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                     Grupo
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    Prioridad
-                  </th>
+
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                     Estado
                   </th>
@@ -775,17 +761,13 @@ export default function DomainRequests() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{request.requesterEmail}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {request.machineHostname ?? '—'}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {getGroupName(request.groupId)}
                     </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full border font-medium ${PRIORITY_COLORS[request.priority]}`}
-                      >
-                        {PRIORITY_LABELS[request.priority]}
-                      </span>
-                    </td>
+
                     <td className="px-4 py-3">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLORS[request.status]}`}
@@ -962,7 +944,7 @@ export default function DomainRequests() {
         >
           <p className="text-sm text-slate-600">
             Aprobar acceso a <strong>{approveModal.request.domain}</strong> solicitado por{' '}
-            <strong>{approveModal.request.requesterEmail}</strong>
+            <strong>{approveModal.request.machineHostname ?? 'máquina desconocida'}</strong>
           </p>
           <p className="text-sm text-slate-600">
             La solicitud se aprobara en el grupo original:{' '}
@@ -987,7 +969,7 @@ export default function DomainRequests() {
         >
           <p className="text-sm text-slate-600">
             Rechazar acceso a <strong>{rejectModal.request.domain}</strong> solicitado por{' '}
-            <strong>{rejectModal.request.requesterEmail}</strong>
+            <strong>{rejectModal.request.machineHostname ?? 'máquina desconocida'}</strong>
           </p>
 
           <div>

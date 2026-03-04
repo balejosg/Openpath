@@ -5,7 +5,7 @@ import { z } from 'zod';
 // =============================================================================
 
 export const RequestStatus = z.enum(['pending', 'approved', 'rejected']);
-export const RequestPriority = z.enum(['low', 'normal', 'high', 'urgent']);
+
 export const UserRole = z.enum(['admin', 'teacher', 'student']);
 export const GroupVisibility = z.enum(['private', 'instance_public']);
 export const MachineStatus = z.enum(['online', 'offline', 'unknown']);
@@ -34,7 +34,7 @@ export const DomainRequest = z.object({
   originPage: z.string().nullable().optional(),
   clientVersion: z.string().nullable().optional(),
   errorType: z.string().nullable().optional(),
-  priority: RequestPriority,
+
   status: RequestStatus,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -149,7 +149,7 @@ export const PushSubscription = z.object({
 // =============================================================================
 
 export type RequestStatus = z.infer<typeof RequestStatus>;
-export type RequestPriority = z.infer<typeof RequestPriority>;
+
 export type UserRole = z.infer<typeof UserRole>;
 export type GroupVisibility = z.infer<typeof GroupVisibility>;
 export type MachineStatus = z.infer<typeof MachineStatus>;
@@ -234,7 +234,7 @@ export const CreateRequestDTO = z
     reason: z.string().optional(),
     requesterEmail: z.string().email().optional(),
     groupId: z.string().optional(),
-    priority: RequestPriority.optional(),
+
     source: z.string().max(50).optional(),
     machineHostname: z.string().max(255).optional(),
     originHost: z.string().max(255).optional(),

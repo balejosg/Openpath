@@ -8,7 +8,6 @@
 import type {
   DomainRequest,
   RequestStatus,
-  RequestPriority,
   User,
   SafeUser,
   Role,
@@ -35,7 +34,6 @@ export type CreatePushSubscriptionData = CreatePushSubscriptionDTO;
 export type {
   DomainRequest,
   RequestStatus,
-  RequestPriority,
   User,
   SafeUser,
   Role,

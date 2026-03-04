@@ -71,7 +71,6 @@ export const requests = pgTable('requests', {
   originPage: text('origin_page'),
   clientVersion: varchar('client_version', { length: 50 }),
   errorType: varchar('error_type', { length: 100 }),
-  priority: varchar('priority', { length: 20 }).default('normal'),
   status: varchar('status', { length: 20 }).default('pending'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

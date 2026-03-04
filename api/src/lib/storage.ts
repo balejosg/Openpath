@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { eq, desc, and, sql, count } from 'drizzle-orm';
 import { normalize } from '@openpath/shared';
 import { db, requests } from '../db/index.js';
-import type { DomainRequest, RequestStatus, RequestPriority } from '../types/index.js';
+import type { DomainRequest, RequestStatus } from '../types/index.js';
 import type { IRequestStorage, CreateRequestData, RequestStats } from '../types/storage.js';
 
 // =============================================================================
@@ -29,8 +29,8 @@ function toStorageType(row: typeof requests.$inferSelect): DomainRequest {
     originPage: row.originPage ?? null,
     clientVersion: row.clientVersion ?? null,
     errorType: row.errorType ?? null,
-    priority: (row.priority ?? 'normal') as RequestPriority,
     status: (row.status ?? 'pending') as RequestStatus,
+
     createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),
     updatedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
@@ -45,7 +45,7 @@ interface LegacyRequestRow {
   reason: string | null;
   requester_email: string | null;
   group_id: string;
-  priority: string | null;
+
   status: string | null;
   created_at: Date | string | null;
   updated_at: Date | string | null;
@@ -74,8 +74,8 @@ function legacyRowToStorageType(row: LegacyRequestRow): DomainRequest {
     originPage: null,
     clientVersion: null,
     errorType: null,
-    priority: (row.priority ?? 'normal') as RequestPriority,
     status: (row.status ?? 'pending') as RequestStatus,
+
     createdAt: toIso(row.created_at) ?? new Date().toISOString(),
     updatedAt: toIso(row.updated_at) ?? new Date().toISOString(),
     resolvedAt: toIso(row.resolved_at),
@@ -114,7 +114,7 @@ export async function getAllRequests(
 ): Promise<DomainRequest[]> {
   if (!(await hasRequestMetadataColumns())) {
     const rows = await db.execute(sql`
-      SELECT id, domain, reason, requester_email, group_id, priority, status,
+      SELECT id, domain, reason, requester_email, group_id, status,
              created_at, updated_at, resolved_at, resolved_by, resolution_note
       FROM requests
       ${status !== null ? sql`WHERE status = ${status}` : sql``}
@@ -137,7 +137,7 @@ export async function getAllRequests(
 export async function getRequestsByGroup(groupId: string): Promise<DomainRequest[]> {
   if (!(await hasRequestMetadataColumns())) {
     const rows = await db.execute(sql`
-      SELECT id, domain, reason, requester_email, group_id, priority, status,
+      SELECT id, domain, reason, requester_email, group_id, status,
              created_at, updated_at, resolved_at, resolved_by, resolution_note
       FROM requests
       WHERE group_id = ${groupId}
@@ -158,7 +158,7 @@ export async function getRequestsByGroup(groupId: string): Promise<DomainRequest
 export async function getRequestById(id: string): Promise<DomainRequest | null> {
   if (!(await hasRequestMetadataColumns())) {
     const rows = await db.execute(sql`
-      SELECT id, domain, reason, requester_email, group_id, priority, status,
+      SELECT id, domain, reason, requester_email, group_id, status,
              created_at, updated_at, resolved_at, resolved_by, resolution_note
       FROM requests
       WHERE id = ${id}
@@ -185,22 +185,20 @@ export async function hasPendingRequest(domain: string): Promise<boolean> {
 }
 
 export async function createRequest(requestData: CreateRequestData): Promise<DomainRequest> {
-  const priority: RequestPriority = requestData.priority ?? 'normal';
   const id = `req_${uuidv4().slice(0, 8)}`;
 
   if (!(await hasRequestMetadataColumns())) {
     const result = await db.execute(sql`
-      INSERT INTO requests (id, domain, reason, requester_email, group_id, priority, status)
+      INSERT INTO requests (id, domain, reason, requester_email, group_id, status)
       VALUES (
         ${id},
         ${normalize.domain(requestData.domain)},
         ${requestData.reason ?? ''},
         ${requestData.requesterEmail ?? 'anonymous'},
         ${requestData.groupId ?? process.env.DEFAULT_GROUP ?? 'default'},
-        ${priority},
         'pending'
       )
-      RETURNING id, domain, reason, requester_email, group_id, priority, status,
+      RETURNING id, domain, reason, requester_email, group_id, status,
                 created_at, updated_at, resolved_at, resolved_by, resolution_note
     `);
 
@@ -225,7 +223,7 @@ export async function createRequest(requestData: CreateRequestData): Promise<Dom
       originPage: requestData.originPage ?? null,
       clientVersion: requestData.clientVersion ?? null,
       errorType: requestData.errorType ?? null,
-      priority,
+
       status: 'pending',
     })
     .returning();

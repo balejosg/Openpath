@@ -612,16 +612,4 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       assert.strictEqual(response.status, 200);
     });
   });
-
-  await describe('Priority Field', async () => {
-    await test('should accept valid priority values', async () => {
-      const response = await trpcMutate('requests.create', {
-        domain: `priority-test-${String(Date.now())}.example.com`,
-        reason: 'Testing priority',
-        priority: 'high',
-      });
-
-      assert.strictEqual(response.status, 200);
-    });
-  });
 });
