@@ -32,6 +32,7 @@ await describe('Drizzle ORM Connection', async () => {
       'tokens',
       'classrooms',
       'schedules',
+      'machine_exemptions',
       'requests',
       'machines',
       'settings',

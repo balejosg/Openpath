@@ -13,6 +13,7 @@ import {
   classrooms,
   machines,
   schedules,
+  machineExemptions,
   tokens,
   passwordResetTokens,
 } from './schema.js';
@@ -50,30 +51,56 @@ export const rolesRelations = relations(roles, ({ one }) => ({
 export const classroomsRelations = relations(classrooms, ({ many }) => ({
   machines: many(machines),
   schedules: many(schedules),
+  machineExemptions: many(machineExemptions),
 }));
 
 // =============================================================================
 // Machine Relations
 // =============================================================================
 
-export const machinesRelations = relations(machines, ({ one }) => ({
+export const machinesRelations = relations(machines, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [machines.classroomId],
     references: [classrooms.id],
   }),
+  machineExemptions: many(machineExemptions),
 }));
 
 // =============================================================================
 // Schedule Relations
 // =============================================================================
 
-export const schedulesRelations = relations(schedules, ({ one }) => ({
+export const schedulesRelations = relations(schedules, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [schedules.classroomId],
     references: [classrooms.id],
   }),
   teacher: one(users, {
     fields: [schedules.teacherId],
+    references: [users.id],
+  }),
+  machineExemptions: many(machineExemptions),
+}));
+
+// =============================================================================
+// Machine Exemption Relations
+// =============================================================================
+
+export const machineExemptionsRelations = relations(machineExemptions, ({ one }) => ({
+  machine: one(machines, {
+    fields: [machineExemptions.machineId],
+    references: [machines.id],
+  }),
+  classroom: one(classrooms, {
+    fields: [machineExemptions.classroomId],
+    references: [classrooms.id],
+  }),
+  schedule: one(schedules, {
+    fields: [machineExemptions.scheduleId],
+    references: [schedules.id],
+  }),
+  createdByUser: one(users, {
+    fields: [machineExemptions.createdBy],
     references: [users.id],
   }),
 }));

@@ -9,6 +9,11 @@ export type ClassroomGroupContextResolver = (
   now: Date
 ) => Promise<{ groupId: string } | null>;
 
+export type ClassroomExemptHostnamesResolver = (
+  classroomId: string,
+  now: Date
+) => Promise<ReadonlySet<string>>;
+
 interface SseClient {
   id: string;
   hostname: string;
@@ -36,6 +41,8 @@ export interface SseHub {
 
 export function createSseHub(params: {
   resolveClassroomGroupContext: ClassroomGroupContextResolver;
+  resolveExemptHostnamesByClassroom?: ClassroomExemptHostnamesResolver;
+  unrestrictedGroupId?: string;
 }): SseHub {
   const clientsById = new Map<string, SseClient>();
   const clientIdsByGroupId = new Map<string, Set<string>>();
@@ -167,17 +174,28 @@ export function createSseHub(params: {
     const ids = clientIdsByClassroomId.get(classroomId);
     if (!ids || ids.size === 0) return;
 
-    const context = await params.resolveClassroomGroupContext(classroomId, now);
-    if (!context) return;
+    const baseContext = await params.resolveClassroomGroupContext(classroomId, now);
+    const exemptHostnames = params.resolveExemptHostnamesByClassroom
+      ? await params.resolveExemptHostnamesByClassroom(classroomId, now)
+      : null;
+
+    if (!baseContext && (!exemptHostnames || exemptHostnames.size === 0)) return;
+
+    const unrestrictedGroupId = params.unrestrictedGroupId ?? '__unrestricted__';
+    const baseGroupId = baseContext?.groupId ?? null;
 
     for (const id of Array.from(ids)) {
       const client = clientsById.get(id);
       if (!client) continue;
 
-      if (client.groupId === context.groupId) continue;
+      const isExempt = exemptHostnames ? exemptHostnames.has(client.hostname) : false;
+      const nextGroupId = isExempt ? unrestrictedGroupId : baseGroupId;
+      if (!nextGroupId) continue;
+
+      if (client.groupId === nextGroupId) continue;
 
       indexRemove(clientIdsByGroupId, client.groupId, id);
-      client.groupId = context.groupId;
+      client.groupId = nextGroupId;
       indexAdd(clientIdsByGroupId, client.groupId, id);
 
       const payload = `data: ${JSON.stringify({

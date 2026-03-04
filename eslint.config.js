@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/build/**',
       '**/coverage/**',
+      '.worktrees/**',
       'api/tests/load/**',
       'eslint.config.js',
       '**/*.config.js',

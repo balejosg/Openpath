@@ -65,7 +65,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const groupContext = await classroomStorage.getWhitelistUrlForMachine(proof.hostname);
+      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.hostname);
       if (!groupContext) {
         res.status(404).json({
           success: false,
@@ -145,7 +145,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const groupContext = await classroomStorage.getWhitelistUrlForMachine(proof.hostname);
+      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.hostname);
       if (!groupContext) {
         res.status(404).json({
           success: false,

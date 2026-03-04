@@ -20,6 +20,7 @@ export default defineConfig({
     'classrooms',
     'machines',
     'schedules',
+    'machine_exemptions',
     'tokens',
     'settings',
     'password_reset_tokens',

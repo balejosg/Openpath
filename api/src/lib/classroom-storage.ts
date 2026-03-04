@@ -11,6 +11,7 @@ import { db, classrooms, machines } from '../db/index.js';
 import { logger } from './logger.js';
 import { getCurrentSchedule } from './schedule-storage.js';
 import { sanitizeSlug } from '@openpath/shared';
+import { isMachineExempt, UNRESTRICTED_GROUP_ID } from './exemption-storage.js';
 import type { Classroom, MachineStatus } from '../types/index.js';
 import type {
   IClassroomStorage,
@@ -406,6 +407,35 @@ export async function resolveMachineGroupContext(
 }
 
 /**
+ * Resolve the effective enforcement context for a machine.
+ * This may return a sentinel groupId when the machine is temporarily unrestricted.
+ */
+export async function resolveMachineEnforcementContext(
+  hostname: string,
+  now: Date = new Date()
+): Promise<WhitelistUrlResult | null> {
+  const machine = await getMachineByHostname(hostname);
+  if (!machine) return null;
+
+  const classroomId = machine.classroomId;
+  if (!classroomId) return null;
+
+  const exempt = await isMachineExempt(machine.id, classroomId, now);
+  if (exempt) {
+    const classroom = await getClassroomById(classroomId);
+    if (!classroom) return null;
+
+    return {
+      groupId: UNRESTRICTED_GROUP_ID,
+      classroomId: classroom.id,
+      classroomName: classroom.name,
+    };
+  }
+
+  return resolveMachineGroupContext(hostname, now);
+}
+
+/**
  * Resolve the correct whitelist group for a classroom based on its current state.
  * Priority:
  * 1. Active override group (if set by teacher)
@@ -432,7 +462,7 @@ export async function resolveClassroomGroupContext(
 export async function getWhitelistUrlForMachine(
   hostname: string
 ): Promise<WhitelistUrlResult | null> {
-  return resolveMachineGroupContext(hostname);
+  return resolveMachineEnforcementContext(hostname);
 }
 
 export async function getStats(): Promise<ClassroomStats> {

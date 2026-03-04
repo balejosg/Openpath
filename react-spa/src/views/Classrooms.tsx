@@ -114,6 +114,7 @@ const Classrooms = () => {
         currentGroupSource: c.currentGroupSource,
         status: c.status,
         onlineMachineCount: c.onlineMachineCount,
+        machines: c.machines,
       })) as Classroom[];
 
       setClassrooms(mappedClassrooms);
@@ -144,6 +145,7 @@ const Classrooms = () => {
         currentGroupSource: c.currentGroupSource,
         status: c.status,
         onlineMachineCount: c.onlineMachineCount,
+        machines: c.machines,
       })) as Classroom[];
       setClassrooms(mappedClassrooms);
       return mappedClassrooms;
@@ -283,11 +285,121 @@ const Classrooms = () => {
     },
   });
 
+  const activeSchedule = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    if (day === 0 || day === 6) return null;
+    const currentTime = now.toTimeString().slice(0, 5);
+    return (
+      schedules.find(
+        (s) => s.dayOfWeek === day && s.startTime <= currentTime && s.endTime > currentTime
+      ) ?? null
+    );
+  }, [schedules]);
+
+  const [exemptions, setExemptions] = useState<
+    {
+      id: string;
+      machineId: string;
+      machineHostname: string;
+      classroomId: string;
+      scheduleId: string;
+      createdBy: string | null;
+      createdAt: string | null;
+      expiresAt: string;
+    }[]
+  >([]);
+  const [loadingExemptions, setLoadingExemptions] = useState(false);
+  const [exemptionsError, setExemptionsError] = useState<string | null>(null);
+  const [exemptionMutating, setExemptionMutating] = useState<Partial<Record<string, boolean>>>({});
+
+  const fetchExemptions = useCallback(async (classroomId: string) => {
+    try {
+      setLoadingExemptions(true);
+      setExemptionsError(null);
+      const result = await trpc.classrooms.listExemptions.query({ classroomId });
+      setExemptions(result.exemptions);
+    } catch (err) {
+      console.error('Failed to fetch exemptions:', err);
+      setExemptionsError('Error al cargar exenciones');
+      setExemptions([]);
+    } finally {
+      setLoadingExemptions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedClassroom) {
+      setExemptions([]);
+      setExemptionsError(null);
+      return;
+    }
+    void fetchExemptions(selectedClassroom.id);
+  }, [selectedClassroom?.id, fetchExemptions]);
+
+  const exemptionByMachineId = useMemo(() => {
+    const map = new Map<string, (typeof exemptions)[number]>();
+    exemptions.forEach((e) => map.set(e.machineId, e));
+    return map;
+  }, [exemptions]);
+
+  const setMachineExemptionMutating = useCallback((machineId: string, next: boolean) => {
+    setExemptionMutating((prev) => ({ ...prev, [machineId]: next }));
+  }, []);
+
+  const handleCreateExemption = useCallback(
+    async (machineId: string) => {
+      if (!selectedClassroom) return;
+      if (!activeSchedule) return;
+
+      setMachineExemptionMutating(machineId, true);
+      try {
+        setExemptionsError(null);
+        await trpc.classrooms.createExemption.mutate({
+          machineId,
+          classroomId: selectedClassroom.id,
+          scheduleId: activeSchedule.id,
+        });
+        await fetchExemptions(selectedClassroom.id);
+      } catch (err) {
+        console.error('Failed to create exemption:', err);
+        setExemptionsError('No se pudo liberar la maquina');
+      } finally {
+        setMachineExemptionMutating(machineId, false);
+      }
+    },
+    [selectedClassroom, activeSchedule, fetchExemptions, setMachineExemptionMutating]
+  );
+
+  const handleDeleteExemption = useCallback(
+    async (machineId: string) => {
+      if (!selectedClassroom) return;
+      const exemption = exemptionByMachineId.get(machineId);
+      if (!exemption) return;
+
+      setMachineExemptionMutating(machineId, true);
+      try {
+        setExemptionsError(null);
+        await trpc.classrooms.deleteExemption.mutate({ id: exemption.id });
+        await fetchExemptions(selectedClassroom.id);
+      } catch (err) {
+        console.error('Failed to delete exemption:', err);
+        setExemptionsError('No se pudo restaurar la restriccion');
+      } finally {
+        setMachineExemptionMutating(machineId, false);
+      }
+    },
+    [selectedClassroom, exemptionByMachineId, fetchExemptions, setMachineExemptionMutating]
+  );
+
   useScheduleBoundaryInvalidation({
     schedules,
     enabled: !!selectedClassroom && !selectedClassroom.activeGroup,
     onBoundary: () => {
       void refetchClassrooms();
+      if (selectedClassroom) {
+        void fetchExemptions(selectedClassroom.id);
+      }
     },
   });
 
@@ -649,14 +761,102 @@ const Classrooms = () => {
                 </div>
               </div>
 
-              {/* Empty State Style */}
-              <div className="flex-1 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
-                <Monitor size={48} className="text-slate-300 mb-3" />
-                <p className="text-slate-900 font-medium text-sm">Sin máquinas activas</p>
-                <p className="text-slate-500 text-xs mt-1 max-w-xs">
-                  Instala el agente de OpenPath en los equipos para verlos aquí.
-                </p>
-              </div>
+              {exemptionsError && (
+                <div className="mb-3 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100 flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  <span>{exemptionsError}</span>
+                </div>
+              )}
+
+              {selectedClassroom.machines && selectedClassroom.machines.length > 0 ? (
+                <div className="flex-1 space-y-2 overflow-auto">
+                  {selectedClassroom.machines.map((m) => {
+                    const exemption = exemptionByMachineId.get(m.id);
+                    const isExempt = !!exemption;
+                    const mutating = exemptionMutating[m.id] ?? false;
+
+                    const statusColor =
+                      m.status === 'online'
+                        ? 'bg-green-500'
+                        : m.status === 'stale'
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500';
+
+                    const expiresTime = exemption
+                      ? new Date(exemption.expiresAt).toTimeString().slice(0, 5)
+                      : null;
+
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-2.5 h-2.5 rounded-full ${statusColor}`} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate">
+                              {m.hostname}
+                            </p>
+                            <p className="text-xs text-slate-500 truncate">
+                              {m.status === 'online'
+                                ? 'En línea'
+                                : m.status === 'stale'
+                                  ? 'Conexión inestable'
+                                  : 'Sin conexión'}
+                              {m.lastSeen
+                                ? ` · Último: ${new Date(m.lastSeen).toLocaleString()}`
+                                : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isExempt && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full border border-green-200 font-medium">
+                              Sin restricción{expiresTime ? ` · hasta ${expiresTime}` : ''}
+                            </span>
+                          )}
+
+                          {isExempt ? (
+                            <button
+                              onClick={() => void handleDeleteExemption(m.id)}
+                              disabled={mutating}
+                              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm transition-colors shadow-sm font-medium disabled:opacity-50"
+                            >
+                              {mutating ? '...' : 'Restringir'}
+                            </button>
+                          ) : activeSchedule ? (
+                            <button
+                              onClick={() => void handleCreateExemption(m.id)}
+                              disabled={mutating || loadingExemptions}
+                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors shadow-sm font-medium disabled:opacity-50"
+                            >
+                              {mutating ? '...' : 'Liberar'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
+                  <Monitor size={48} className="text-slate-300 mb-3" />
+                  <p className="text-slate-900 font-medium text-sm">Sin máquinas activas</p>
+                  <p className="text-slate-500 text-xs mt-1 max-w-xs">
+                    Instala el agente de OpenPath en los equipos para verlos aquí.
+                  </p>
+                </div>
+              )}
+
+              {!activeSchedule &&
+                selectedClassroom.machines &&
+                selectedClassroom.machines.length > 0 && (
+                  <p className="mt-3 text-xs text-slate-500 italic">
+                    La liberación temporal solo está disponible cuando hay un bloque de horario
+                    activo.
+                  </p>
+                )}
             </div>
 
             {/* Schedule Section */}

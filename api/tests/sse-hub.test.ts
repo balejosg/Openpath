@@ -79,4 +79,54 @@ await describe('SSE Hub', async () => {
 
     unsub();
   });
+
+  await test('publishClassroomChangedLocal assigns unrestricted group for exempt hostnames', async () => {
+    const writesA: string[] = [];
+    const writesB: string[] = [];
+
+    const hub = createSseHub({
+      resolveClassroomGroupContext: () => Promise.resolve({ groupId: 'base-group' }),
+      resolveExemptHostnamesByClassroom: () => Promise.resolve(new Set(['host-a'])),
+      unrestrictedGroupId: '__unrestricted__',
+    });
+
+    const unsubA = hub.registerSseClient({
+      hostname: 'host-a',
+      classroomId: 'room-1',
+      groupId: 'base-group',
+      stream: {
+        write: (chunk: string) => {
+          writesA.push(chunk);
+          return true;
+        },
+      },
+    });
+
+    const unsubB = hub.registerSseClient({
+      hostname: 'host-b',
+      classroomId: 'room-1',
+      groupId: 'base-group',
+      stream: {
+        write: (chunk: string) => {
+          writesB.push(chunk);
+          return true;
+        },
+      },
+    });
+
+    await hub.publishClassroomChangedLocal('room-1', new Date(2026, 1, 23, 9, 0, 0));
+
+    const change = JSON.parse(firstSseDataPayload(writesA)) as { event?: string; groupId?: string };
+    assert.strictEqual(change.event, 'whitelist-changed');
+    assert.strictEqual(change.groupId, '__unrestricted__');
+
+    assert.strictEqual(writesB.length, 0);
+
+    writesA.length = 0;
+    hub.publishGroupChangedLocal('__unrestricted__');
+    assert.ok(writesA.join('').includes('"__unrestricted__"'));
+
+    unsubA();
+    unsubB();
+  });
 });

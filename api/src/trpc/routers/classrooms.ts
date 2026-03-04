@@ -14,6 +14,12 @@ import {
 } from '../../lib/machine-download-token.js';
 import { config } from '../../config.js';
 import { emitClassroomChanged } from '../../lib/rule-events.js';
+import {
+  MachineExemptionError,
+  createMachineExemption,
+  deleteMachineExemption,
+  getActiveMachineExemptionsByClassroom,
+} from '../../lib/exemption-storage.js';
 
 export const classroomsRouter = router({
   list: teacherProcedure.query(async () => {
@@ -96,6 +102,73 @@ export const classroomsRouter = router({
       return {
         classroom: result.data,
         currentGroupId: result.data.currentGroupId,
+      };
+    }),
+
+  createExemption: teacherProcedure
+    .input(
+      z.object({
+        machineId: z.string().min(1),
+        classroomId: z.string().min(1),
+        scheduleId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const created = await createMachineExemption({
+          machineId: input.machineId,
+          classroomId: input.classroomId,
+          scheduleId: input.scheduleId,
+          createdBy: ctx.user.sub,
+        });
+
+        emitClassroomChanged(input.classroomId);
+
+        return {
+          id: created.id,
+          machineId: created.machineId,
+          classroomId: created.classroomId,
+          scheduleId: created.scheduleId,
+          createdBy: created.createdBy ?? null,
+          createdAt: created.createdAt ? created.createdAt.toISOString() : null,
+          expiresAt: created.expiresAt.toISOString(),
+        };
+      } catch (error: unknown) {
+        if (error instanceof MachineExemptionError) {
+          throw new TRPCError({ code: error.code, message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  deleteExemption: teacherProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const deleted = await deleteMachineExemption(input.id);
+      if (!deleted) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Exemption not found' });
+      }
+
+      emitClassroomChanged(deleted.classroomId);
+      return { success: true };
+    }),
+
+  listExemptions: teacherProcedure
+    .input(z.object({ classroomId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const rows = await getActiveMachineExemptionsByClassroom(input.classroomId, new Date());
+      return {
+        classroomId: input.classroomId,
+        exemptions: rows.map((e) => ({
+          id: e.id,
+          machineId: e.machineId,
+          machineHostname: e.machineHostname,
+          classroomId: e.classroomId,
+          scheduleId: e.scheduleId,
+          createdBy: e.createdBy,
+          createdAt: e.createdAt ? e.createdAt.toISOString() : null,
+          expiresAt: e.expiresAt.toISOString(),
+        })),
       };
     }),
 

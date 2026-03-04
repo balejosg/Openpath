@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createDbEventBridge, type DbEventPayload } from './db-event-bridge.js';
 import { resolveClassroomGroupContext } from './classroom-storage.js';
+import { getActiveExemptHostnamesByClassroom, UNRESTRICTED_GROUP_ID } from './exemption-storage.js';
 import { touchGroupUpdatedAt } from './groups-storage.js';
 import { logger } from './logger.js';
 import { createScheduleBoundaryTicker } from './schedule-boundary-ticker.js';
@@ -10,6 +11,8 @@ const INSTANCE_ID = randomUUID();
 
 const sseHub = createSseHub({
   resolveClassroomGroupContext,
+  resolveExemptHostnamesByClassroom: getActiveExemptHostnamesByClassroom,
+  unrestrictedGroupId: UNRESTRICTED_GROUP_ID,
 });
 
 const dbBridge = createDbEventBridge({

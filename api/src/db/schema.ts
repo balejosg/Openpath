@@ -15,6 +15,7 @@ import {
   time,
   uuid,
   unique,
+  index,
   boolean,
 } from 'drizzle-orm/pg-core';
 
@@ -131,6 +132,40 @@ export const schedules = pgTable('schedules', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// =============================================================================
+// Machine Exemptions Table
+// =============================================================================
+
+export const machineExemptions = pgTable(
+  'machine_exemptions',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    machineId: varchar('machine_id', { length: 50 })
+      .notNull()
+      .references(() => machines.id, { onDelete: 'cascade' }),
+    classroomId: varchar('classroom_id', { length: 50 })
+      .notNull()
+      .references(() => classrooms.id, { onDelete: 'cascade' }),
+    scheduleId: uuid('schedule_id')
+      .notNull()
+      .references(() => schedules.id, { onDelete: 'cascade' }),
+    createdBy: varchar('created_by', { length: 50 }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    unique('machine_exemptions_machine_schedule_expires_key').on(
+      table.machineId,
+      table.scheduleId,
+      table.expiresAt
+    ),
+    index('machine_exemptions_classroom_expires_idx').on(table.classroomId, table.expiresAt),
+    index('machine_exemptions_machine_expires_idx').on(table.machineId, table.expiresAt),
+  ]
+);
 
 // =============================================================================
 // Tokens Table (Refresh Token Blacklist)
@@ -295,6 +330,9 @@ export type NewMachine = typeof machines.$inferInsert;
 
 export type Schedule = typeof schedules.$inferSelect;
 export type NewSchedule = typeof schedules.$inferInsert;
+
+export type MachineExemption = typeof machineExemptions.$inferSelect;
+export type NewMachineExemption = typeof machineExemptions.$inferInsert;
 
 export type Token = typeof tokens.$inferSelect;
 export type NewToken = typeof tokens.$inferInsert;

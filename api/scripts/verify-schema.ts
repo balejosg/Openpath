@@ -13,6 +13,7 @@ const REQUIRED_TABLES = [
   'machines',
   'classrooms',
   'schedules',
+  'machine_exemptions',
   'requests',
   'whitelist_groups',
   'whitelist_rules',

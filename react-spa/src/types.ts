@@ -17,6 +17,8 @@ export interface User {
 
 export type ClassroomStatus = 'operational' | 'degraded' | 'offline';
 
+export type MachineStatus = 'online' | 'stale' | 'offline';
+
 export type CurrentGroupSource = 'manual' | 'schedule' | 'default' | 'none';
 
 export interface Classroom {
@@ -30,6 +32,12 @@ export interface Classroom {
   currentGroupSource?: CurrentGroupSource;
   status: ClassroomStatus;
   onlineMachineCount: number;
+  machines?: {
+    id: string;
+    hostname: string;
+    lastSeen: string | null;
+    status: MachineStatus;
+  }[];
 }
 
 export interface Group {

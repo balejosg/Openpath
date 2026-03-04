@@ -43,12 +43,55 @@ import { sql } from 'drizzle-orm';
  * Useful for test isolation
  */
 export async function resetDb(): Promise<void> {
+  // Tests run against a shared Postgres DB that may already have the base schema
+  // (created outside of Drizzle's migration tracker). Ensure new tables exist
+  // so truncation and FK-dependent tests remain stable.
+  const ensureMachineExemptions = [
+    'CREATE TABLE IF NOT EXISTS "machine_exemptions" (\n' +
+      '  "id" varchar(50) PRIMARY KEY NOT NULL,\n' +
+      '  "machine_id" varchar(50) NOT NULL,\n' +
+      '  "classroom_id" varchar(50) NOT NULL,\n' +
+      '  "schedule_id" uuid NOT NULL,\n' +
+      '  "created_by" varchar(50),\n' +
+      '  "created_at" timestamp with time zone DEFAULT now(),\n' +
+      '  "expires_at" timestamp with time zone NOT NULL\n' +
+      ');',
+    'CREATE UNIQUE INDEX IF NOT EXISTS "machine_exemptions_machine_schedule_expires_key" ON "machine_exemptions" ("machine_id","schedule_id","expires_at");',
+    'CREATE INDEX IF NOT EXISTS "machine_exemptions_classroom_expires_idx" ON "machine_exemptions" ("classroom_id","expires_at");',
+    'CREATE INDEX IF NOT EXISTS "machine_exemptions_machine_expires_idx" ON "machine_exemptions" ("machine_id","expires_at");',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_machine_id_machines_id_fk" FOREIGN KEY ("machine_id") REFERENCES "public"."machines"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_classroom_id_classrooms_id_fk" FOREIGN KEY ("classroom_id") REFERENCES "public"."classrooms"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_schedule_id_schedules_id_fk" FOREIGN KEY ("schedule_id") REFERENCES "public"."schedules"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
+  ];
+
+  for (const stmt of ensureMachineExemptions) {
+    await db.execute(sql.raw(stmt));
+  }
+
   const tables = [
     'users',
     'roles',
     'tokens',
     'classrooms',
     'schedules',
+    'machine_exemptions',
     'requests',
     'machines',
     'settings',

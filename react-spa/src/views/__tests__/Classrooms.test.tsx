@@ -35,6 +35,7 @@ const mockClassroomsListQuery = vi.fn();
 const mockClassroomsUpdateMutate = vi.fn();
 const mockGroupsListQuery = vi.fn();
 const mockSchedulesByClassroomQuery = vi.fn();
+const mockExemptionsListQuery = vi.fn();
 
 vi.mock('../../lib/trpc', () => ({
   trpc: {
@@ -44,6 +45,9 @@ vi.mock('../../lib/trpc', () => ({
       update: { mutate: (input: unknown): unknown => mockClassroomsUpdateMutate(input) },
       delete: { mutate: vi.fn() },
       setActiveGroup: { mutate: vi.fn() },
+      listExemptions: { query: (): unknown => mockExemptionsListQuery() },
+      createExemption: { mutate: vi.fn() },
+      deleteExemption: { mutate: vi.fn() },
     },
     groups: {
       list: { query: (): unknown => mockGroupsListQuery() },
@@ -76,6 +80,7 @@ describe('Classrooms', () => {
     ]);
 
     mockSchedulesByClassroomQuery.mockResolvedValue({ schedules: [] });
+    mockExemptionsListQuery.mockResolvedValue({ exemptions: [] });
   });
 
   it('shows current group as default when it matches default group', async () => {

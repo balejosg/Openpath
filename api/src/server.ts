@@ -78,6 +78,7 @@ import {
   getSseClientCount,
   registerSseClient,
 } from './lib/rule-events.js';
+import { UNRESTRICTED_GROUP_ID } from './lib/exemption-storage.js';
 
 import { registerPublicRequestRoutes } from './routes/public-requests.js';
 
@@ -339,6 +340,11 @@ function buildWhitelistEtag(params: {
 }): string {
   const version = `${params.groupId}:${params.updatedAt.toISOString()}:${params.enabled ? '1' : '0'}`;
   const hash = createHash('sha256').update(version).digest('base64url');
+  return `"${hash}"`;
+}
+
+function buildStaticEtag(key: string): string {
+  const hash = createHash('sha256').update(key).digest('base64url');
   return `"${hash}"`;
 }
 
@@ -1278,6 +1284,21 @@ app.get('/w/:machineToken/whitelist.txt', (req: Request, res: Response): void =>
       if (!whitelistInfo) {
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
+        res.type('text/plain').send(FAIL_OPEN_RESPONSE);
+        return;
+      }
+
+      if (whitelistInfo.groupId === UNRESTRICTED_GROUP_ID) {
+        const etag = buildStaticEtag('openpath:unrestricted');
+        res.setHeader('ETag', etag);
+        res.setHeader('Cache-Control', 'private, no-cache');
+        if (matchesIfNoneMatch(req, etag)) {
+          await classroomStorage.updateMachineLastSeen(machine.hostname);
+          res.status(304).end();
+          return;
+        }
+
+        await classroomStorage.updateMachineLastSeen(machine.hostname);
         res.type('text/plain').send(FAIL_OPEN_RESPONSE);
         return;
       }

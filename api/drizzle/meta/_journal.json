@@ -50,6 +50,13 @@
       "when": 1771955094371,
       "tag": "0006_add_group_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772637351360,
+      "tag": "0007_machine_exemptions",
+      "breakpoints": true
     }
   ]
 }

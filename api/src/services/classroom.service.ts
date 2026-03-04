@@ -23,6 +23,7 @@ export type MachineStatus = 'online' | 'stale' | 'offline';
 export type ClassroomStatus = 'operational' | 'degraded' | 'offline';
 
 export interface MachineInfo {
+  id: string;
   hostname: string;
   lastSeen: string | null;
   status: MachineStatus;
@@ -135,6 +136,7 @@ export async function listClassrooms(): Promise<ClassroomWithMachines[]> {
     classrooms.map(async (c) => {
       const rawMachines = await classroomStorage.getMachinesByClassroom(c.id);
       const machines: MachineInfo[] = rawMachines.map((m) => ({
+        id: m.id,
         hostname: m.hostname,
         lastSeen: m.lastSeen?.toISOString() ?? null,
         status: calculateMachineStatus(m.lastSeen),
@@ -181,6 +183,7 @@ export async function getClassroom(id: string): Promise<ClassroomResult<Classroo
 
   const rawMachines = await classroomStorage.getMachinesByClassroom(id);
   const machines: MachineInfo[] = rawMachines.map((m) => ({
+    id: m.id,
     hostname: m.hostname,
     lastSeen: m.lastSeen?.toISOString() ?? null,
     status: calculateMachineStatus(m.lastSeen),
