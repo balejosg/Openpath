@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { db, machineExemptions, machines, schedules } from '../db/index.js';
 
 export const UNRESTRICTED_GROUP_ID = '__unrestricted__';
@@ -13,6 +13,10 @@ export class MachineExemptionError extends Error {
     super(message);
     this.code = code;
   }
+}
+
+function weeklyRecurrenceWhereClause(): ReturnType<typeof or> {
+  return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
 }
 
 function parseTimeHHMM(time: string): { hours: number; minutes: number } | null {
@@ -69,6 +73,78 @@ export async function createMachineExemption(
     throw new MachineExemptionError('BAD_REQUEST', 'Machine does not belong to classroom');
   }
 
+  // One-off schedules (date/time) take precedence and may apply on any day.
+  const oneOffRows = await db
+    .select({ id: schedules.id, endAt: schedules.endAt })
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.id, input.scheduleId),
+        eq(schedules.classroomId, input.classroomId),
+        eq(schedules.recurrence, 'one_off'),
+        sql`${schedules.startAt} <= ${now} AND ${schedules.endAt} > ${now}`
+      )
+    )
+    .limit(1);
+
+  const oneOff = oneOffRows[0];
+  if (oneOff) {
+    const endAt = oneOff.endAt;
+    if (!endAt) {
+      throw new MachineExemptionError('BAD_REQUEST', 'Invalid one-off schedule endAt');
+    }
+    if (endAt.getTime() <= now.getTime()) {
+      throw new MachineExemptionError('BAD_REQUEST', 'Schedule is not active');
+    }
+
+    const expiresAt = endAt;
+
+    const id = `exempt_${uuidv4().slice(0, 8)}`;
+    const inserted = await db
+      .insert(machineExemptions)
+      .values({
+        id,
+        machineId: input.machineId,
+        classroomId: input.classroomId,
+        scheduleId: input.scheduleId,
+        createdBy: input.createdBy,
+        expiresAt,
+      })
+      .onConflictDoNothing({
+        target: [
+          machineExemptions.machineId,
+          machineExemptions.scheduleId,
+          machineExemptions.expiresAt,
+        ],
+      })
+      .returning();
+
+    const created = inserted[0];
+    if (created) {
+      return created;
+    }
+
+    const existing = await db
+      .select()
+      .from(machineExemptions)
+      .where(
+        and(
+          eq(machineExemptions.machineId, input.machineId),
+          eq(machineExemptions.scheduleId, input.scheduleId),
+          eq(machineExemptions.expiresAt, expiresAt)
+        )
+      )
+      .limit(1);
+
+    const row = existing[0];
+    if (!row) {
+      throw new MachineExemptionError('CONFLICT', 'Could not create exemption');
+    }
+
+    return row;
+  }
+
+  // Weekly schedules
   const dayOfWeek = now.getDay();
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     throw new MachineExemptionError('BAD_REQUEST', 'Schedules are inactive on weekends');
@@ -83,6 +159,7 @@ export async function createMachineExemption(
       and(
         eq(schedules.id, input.scheduleId),
         eq(schedules.classroomId, input.classroomId),
+        weeklyRecurrenceWhereClause(),
         eq(schedules.dayOfWeek, dayOfWeek),
         sql`${schedules.startTime} <= ${currentTime}::time`,
         sql`${schedules.endTime} > ${currentTime}::time`
@@ -93,6 +170,10 @@ export async function createMachineExemption(
   const schedule = scheduleRows[0];
   if (!schedule) {
     throw new MachineExemptionError('BAD_REQUEST', 'Schedule is not active');
+  }
+
+  if (!schedule.endTime) {
+    throw new MachineExemptionError('BAD_REQUEST', 'Invalid schedule endTime');
   }
 
   const expiresAt = buildExpiresAtForScheduleEnd(now, schedule.endTime);

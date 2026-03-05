@@ -121,6 +121,18 @@ export const Schedule = z.object({
   updatedAt: z.string().optional(),
 });
 
+export const OneOffSchedule = z.object({
+  id: z.string(),
+  classroomId: z.string(),
+  startAt: z.string(),
+  endAt: z.string(),
+  groupId: z.string(),
+  teacherId: z.string(),
+  recurrence: z.literal('one_off').optional().default('one_off'),
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+});
+
 export const HealthReport = z.object({
   id: z.string(),
   hostname: z.string(),
@@ -165,6 +177,7 @@ export type Role = z.infer<typeof Role>;
 export type Classroom = z.infer<typeof Classroom>;
 export type Machine = z.infer<typeof Machine>;
 export type Schedule = z.infer<typeof Schedule>;
+export type OneOffSchedule = z.infer<typeof OneOffSchedule>;
 export type HealthReport = z.infer<typeof HealthReport>;
 export type PushSubscription = z.infer<typeof PushSubscription>;
 
@@ -283,6 +296,22 @@ export const CreateScheduleDTO = z.object({
   recurrence: z.string().optional(),
 });
 
+export const CreateOneOffScheduleDTO = z.object({
+  classroomId: z.string(),
+  startAt: z.string(),
+  endAt: z.string(),
+  groupId: z.string(),
+  teacherId: z.string(),
+  recurrence: z.literal('one_off').optional(),
+});
+
+export const UpdateOneOffScheduleDTO = z.object({
+  id: z.string(),
+  startAt: z.string().optional(),
+  endAt: z.string().optional(),
+  groupId: z.string().min(1).optional(),
+});
+
 export const PushSubscriptionKeys = z.object({
   p256dh: z.string(),
   auth: z.string(),
@@ -321,6 +350,8 @@ export type CreateUserDTO = z.infer<typeof CreateUserDTO>;
 export type LoginDTO = z.infer<typeof LoginDTO>;
 export type CreateClassroomDTO = z.infer<typeof CreateClassroomDTO>;
 export type CreateScheduleDTO = z.infer<typeof CreateScheduleDTO>;
+export type CreateOneOffScheduleDTO = z.infer<typeof CreateOneOffScheduleDTO>;
+export type UpdateOneOffScheduleDTO = z.infer<typeof UpdateOneOffScheduleDTO>;
 export type PushSubscriptionKeys = z.infer<typeof PushSubscriptionKeys>;
 export type CreatePushSubscriptionDTO = z.infer<typeof CreatePushSubscriptionDTO>;
 export type GitHubUser = z.infer<typeof GitHubUser>;

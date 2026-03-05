@@ -36,6 +36,46 @@ await describe('Schedule Boundary Ticker', async () => {
     await ticker.runTickOnce(boundaryNow);
 
     assert.strictEqual(events.length, 1);
-    assert.strictEqual(events[0]?.classroomId, classroom.id);
+    const first = events[0];
+    assert.ok(first);
+    assert.strictEqual(first.classroomId, classroom.id);
+  });
+
+  await test('runTickOnce emits classroom IDs at one-off schedule startAt/endAt', async () => {
+    const classroom = await classroomStorage.createClassroom({
+      name: `ticker-oneoff-room-${TEST_RUN_ID}`,
+      displayName: 'Ticker OneOff Room',
+    });
+
+    const startAt = new Date(2026, 1, 23, 11, 0, 0, 0);
+    const endAt = new Date(2026, 1, 23, 12, 0, 0, 0);
+
+    await scheduleStorage.createOneOffSchedule({
+      classroomId: classroom.id,
+      teacherId: 'legacy_admin',
+      groupId: 'oneoff-group',
+      startAt,
+      endAt,
+    });
+
+    const events: { classroomId: string; now: Date }[] = [];
+    const ticker = createScheduleBoundaryTicker({
+      emitClassroomChanged: (classroomId: string, now: Date) => {
+        events.push({ classroomId, now });
+      },
+    });
+
+    await ticker.runTickOnce(startAt);
+    assert.strictEqual(events.length, 1);
+    const atStart = events[0];
+    assert.ok(atStart);
+    assert.strictEqual(atStart.classroomId, classroom.id);
+
+    events.length = 0;
+    await ticker.runTickOnce(endAt);
+    assert.strictEqual(events.length, 1);
+    const atEnd = events[0];
+    assert.ok(atEnd);
+    assert.strictEqual(atEnd.classroomId, classroom.id);
   });
 });

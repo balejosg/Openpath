@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react';
-import type { ScheduleWithPermissions } from '../types';
+import type { OneOffScheduleWithPermissions, ScheduleWithPermissions } from '../types';
 import { parseTimeOfDayToMinutes } from '../lib/time-of-day';
 
-export type ScheduleBoundaryLike = Pick<
-  ScheduleWithPermissions,
-  'dayOfWeek' | 'startTime' | 'endTime'
->;
+export type ScheduleBoundaryLike =
+  | Pick<ScheduleWithPermissions, 'dayOfWeek' | 'startTime' | 'endTime'>
+  | Pick<OneOffScheduleWithPermissions, 'startAt' | 'endAt'>;
+
+function parseIsoToDate(value: string): Date | null {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d;
+}
 
 function computeNextOccurrenceAt(now: Date, dayOfWeek: number, time: string): Date | null {
   const minutes = parseTimeOfDayToMinutes(time);
@@ -39,6 +44,21 @@ export function getNextScheduleBoundaryAt(
   let best: Date | null = null;
 
   for (const s of schedules) {
+    if ('startAt' in s && 'endAt' in s) {
+      const start = parseIsoToDate(s.startAt);
+      const end = parseIsoToDate(s.endAt);
+      const candidates = [start, end].filter(
+        (d): d is Date => d !== null && d.getTime() > now.getTime()
+      );
+
+      for (const c of candidates) {
+        if (!best || c.getTime() < best.getTime()) {
+          best = c;
+        }
+      }
+      continue;
+    }
+
     const startMin = parseTimeOfDayToMinutes(s.startTime);
     const endMin = parseTimeOfDayToMinutes(s.endTime);
     if (startMin === null || endMin === null) continue;

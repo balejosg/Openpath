@@ -5,7 +5,9 @@ import { useClassroomSchedules } from '../useClassroomSchedules';
 
 const mockGetByClassroomQuery = vi.fn();
 const mockCreateMutate = vi.fn();
+const mockCreateOneOffMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
+const mockUpdateOneOffMutate = vi.fn();
 const mockDeleteMutate = vi.fn();
 
 vi.mock('../../lib/trpc', () => ({
@@ -13,7 +15,9 @@ vi.mock('../../lib/trpc', () => ({
     schedules: {
       getByClassroom: { query: (input: unknown): unknown => mockGetByClassroomQuery(input) },
       create: { mutate: (input: unknown): unknown => mockCreateMutate(input) },
+      createOneOff: { mutate: (input: unknown): unknown => mockCreateOneOffMutate(input) },
       update: { mutate: (input: unknown): unknown => mockUpdateMutate(input) },
+      updateOneOff: { mutate: (input: unknown): unknown => mockUpdateOneOffMutate(input) },
       delete: { mutate: (input: unknown): unknown => mockDeleteMutate(input) },
     },
   },
@@ -40,9 +44,11 @@ const makeSchedule = (
 describe('useClassroomSchedules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetByClassroomQuery.mockResolvedValue({ schedules: [makeSchedule()] });
+    mockGetByClassroomQuery.mockResolvedValue({ schedules: [makeSchedule()], oneOffSchedules: [] });
     mockCreateMutate.mockResolvedValue(undefined);
+    mockCreateOneOffMutate.mockResolvedValue(undefined);
     mockUpdateMutate.mockResolvedValue(undefined);
+    mockUpdateOneOffMutate.mockResolvedValue(undefined);
     mockDeleteMutate.mockResolvedValue(undefined);
   });
 
@@ -61,7 +67,42 @@ describe('useClassroomSchedules', () => {
 
     await waitFor(() => {
       expect(result.current.schedules).toEqual([]);
+      expect(result.current.oneOffSchedules).toEqual([]);
     });
+  });
+
+  it('creates a one-off schedule and refreshes list on save', async () => {
+    const { result } = renderHook(() =>
+      useClassroomSchedules({ selectedClassroomId: 'classroom-1' })
+    );
+
+    await waitFor(() => {
+      expect(result.current.loadingSchedules).toBe(false);
+    });
+
+    act(() => {
+      result.current.openOneOffScheduleCreate();
+    });
+
+    expect(result.current.oneOffFormOpen).toBe(true);
+    expect(result.current.editingOneOffSchedule).toBeNull();
+
+    await act(async () => {
+      await result.current.handleOneOffScheduleSave({
+        startAt: '2026-02-23T10:00:00.000Z',
+        endAt: '2026-02-23T11:00:00.000Z',
+        groupId: 'group-2',
+      });
+    });
+
+    expect(mockCreateOneOffMutate).toHaveBeenCalledWith({
+      classroomId: 'classroom-1',
+      startAt: '2026-02-23T10:00:00.000Z',
+      endAt: '2026-02-23T11:00:00.000Z',
+      groupId: 'group-2',
+    });
+    expect(mockGetByClassroomQuery).toHaveBeenCalledTimes(2);
+    expect(result.current.oneOffFormOpen).toBe(false);
   });
 
   it('opens create form with defaults and resets state on close', async () => {

@@ -116,22 +116,36 @@ export const machines = pgTable('machines', {
 // Schedules Table
 // =============================================================================
 
-export const schedules = pgTable('schedules', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  classroomId: varchar('classroom_id', { length: 50 })
-    .notNull()
-    .references(() => classrooms.id, { onDelete: 'cascade' }),
-  teacherId: varchar('teacher_id', { length: 50 })
-    .notNull()
-    .references(() => users.id),
-  groupId: varchar('group_id', { length: 100 }).notNull(),
-  dayOfWeek: integer('day_of_week').notNull(), // 1-5 (Mon-Fri)
-  startTime: time('start_time').notNull(),
-  endTime: time('end_time').notNull(),
-  recurrence: varchar('recurrence', { length: 20 }).default('weekly'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+export const schedules = pgTable(
+  'schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    classroomId: varchar('classroom_id', { length: 50 })
+      .notNull()
+      .references(() => classrooms.id, { onDelete: 'cascade' }),
+    teacherId: varchar('teacher_id', { length: 50 })
+      .notNull()
+      .references(() => users.id),
+    groupId: varchar('group_id', { length: 100 }).notNull(),
+
+    // Weekly scheduling (Mon-Fri). Null for one-off schedules.
+    dayOfWeek: integer('day_of_week'),
+    startTime: time('start_time'),
+    endTime: time('end_time'),
+
+    // One-off scheduling (absolute instants). Null for weekly schedules.
+    startAt: timestamp('start_at', { withTimezone: true }),
+    endAt: timestamp('end_at', { withTimezone: true }),
+
+    recurrence: varchar('recurrence', { length: 20 }).default('weekly'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index('schedules_classroom_weekly_idx').on(table.classroomId, table.dayOfWeek, table.startTime),
+    index('schedules_classroom_one_off_start_idx').on(table.classroomId, table.startAt),
+  ]
+);
 
 // =============================================================================
 // Machine Exemptions Table

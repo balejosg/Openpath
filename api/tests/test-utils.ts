@@ -38,14 +38,21 @@ export async function getAvailablePort(): Promise<number> {
 import { db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 
-/**
- * Reset database by truncating all tables
- * Useful for test isolation
- */
-export async function resetDb(): Promise<void> {
-  // Tests run against a shared Postgres DB that may already have the base schema
-  // (created outside of Drizzle's migration tracker). Ensure new tables exist
-  // so truncation and FK-dependent tests remain stable.
+export async function ensureSchedulesOneOffSchema(): Promise<void> {
+  const ensureSchedules = [
+    'ALTER TABLE "schedules" ADD COLUMN IF NOT EXISTS "start_at" timestamp with time zone;',
+    'ALTER TABLE "schedules" ADD COLUMN IF NOT EXISTS "end_at" timestamp with time zone;',
+    'ALTER TABLE "schedules" ALTER COLUMN "day_of_week" DROP NOT NULL;',
+    'ALTER TABLE "schedules" ALTER COLUMN "start_time" DROP NOT NULL;',
+    'ALTER TABLE "schedules" ALTER COLUMN "end_time" DROP NOT NULL;',
+  ];
+
+  for (const stmt of ensureSchedules) {
+    await db.execute(sql.raw(stmt));
+  }
+}
+
+async function ensureMachineExemptionsSchema(): Promise<void> {
   const ensureMachineExemptions = [
     'CREATE TABLE IF NOT EXISTS "machine_exemptions" (\n' +
       '  "id" varchar(50) PRIMARY KEY NOT NULL,\n' +
@@ -84,6 +91,22 @@ export async function resetDb(): Promise<void> {
   for (const stmt of ensureMachineExemptions) {
     await db.execute(sql.raw(stmt));
   }
+}
+
+export async function ensureTestSchema(): Promise<void> {
+  await ensureSchedulesOneOffSchema();
+  await ensureMachineExemptionsSchema();
+}
+
+/**
+ * Reset database by truncating all tables
+ * Useful for test isolation
+ */
+export async function resetDb(): Promise<void> {
+  // Tests run against a shared Postgres DB that may already have the base schema
+  // (created outside of Drizzle's migration tracker). Ensure new tables exist
+  // so truncation and FK-dependent tests remain stable.
+  await ensureTestSchema();
 
   const tables = [
     'users',

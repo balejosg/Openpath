@@ -68,7 +68,24 @@ export interface Schedule {
   updatedAt?: string;
 }
 
+export interface OneOffSchedule {
+  id: string;
+  classroomId: string;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  groupId: string;
+  teacherId: string;
+  recurrence?: 'one_off';
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface ScheduleWithPermissions extends Schedule {
+  isMine: boolean;
+  canEdit: boolean;
+}
+
+export interface OneOffScheduleWithPermissions extends OneOffSchedule {
   isMine: boolean;
   canEdit: boolean;
 }

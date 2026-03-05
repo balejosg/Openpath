@@ -56,6 +56,8 @@ vi.mock('../../lib/trpc', () => ({
       getByClassroom: { query: (): unknown => mockSchedulesByClassroomQuery() },
       create: { mutate: vi.fn() },
       update: { mutate: vi.fn() },
+      createOneOff: { mutate: vi.fn() },
+      updateOneOff: { mutate: vi.fn() },
       delete: { mutate: vi.fn() },
     },
   },
@@ -79,7 +81,7 @@ describe('Classrooms', () => {
       { id: 'group-calendar', name: 'calendar', displayName: 'Grupo Horario' },
     ]);
 
-    mockSchedulesByClassroomQuery.mockResolvedValue({ schedules: [] });
+    mockSchedulesByClassroomQuery.mockResolvedValue({ schedules: [], oneOffSchedules: [] });
     mockExemptionsListQuery.mockResolvedValue({ exemptions: [] });
   });
 

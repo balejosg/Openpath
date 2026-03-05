@@ -26,6 +26,7 @@ export {
   Classroom as ClassroomSchema,
   Machine as MachineSchema,
   Schedule as ScheduleSchema,
+  OneOffSchedule as OneOffScheduleSchema,
   HealthReport as HealthReportSchema,
   PushSubscription as PushSubscriptionSchema,
   CreateRequestDTO as CreateRequestDTOSchema,
@@ -34,6 +35,8 @@ export {
   LoginDTO as LoginDTOSchema,
   CreateClassroomDTO as CreateClassroomDTOSchema,
   CreateScheduleDTO as CreateScheduleDTOSchema,
+  CreateOneOffScheduleDTO as CreateOneOffScheduleDTOSchema,
+  UpdateOneOffScheduleDTO as UpdateOneOffScheduleDTOSchema,
   CreatePushSubscriptionDTO as CreatePushSubscriptionDTOSchema,
   getErrorMessage,
   normalize,
@@ -55,6 +58,7 @@ export type {
   Classroom,
   Machine,
   Schedule,
+  OneOffSchedule,
   HealthReport,
   PushSubscription,
   // DTO Types
@@ -64,6 +68,8 @@ export type {
   LoginDTO,
   CreateClassroomDTO,
   CreateScheduleDTO,
+  CreateOneOffScheduleDTO,
+  UpdateOneOffScheduleDTO,
   PushSubscriptionKeys,
   CreatePushSubscriptionDTO,
   // Response types

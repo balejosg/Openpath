@@ -6,7 +6,7 @@ import * as scheduleStorage from '../lib/schedule-storage.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as auth from '../lib/auth.js';
 import { emitClassroomChanged } from '../lib/rule-events.js';
-import type { Schedule, JWTPayload } from '../types/index.js';
+import type { Schedule, OneOffSchedule, JWTPayload } from '../types/index.js';
 import { getErrorMessage } from '@openpath/shared';
 
 // =============================================================================
@@ -26,6 +26,11 @@ export interface ScheduleWithPermissions extends Schedule {
   canEdit: boolean;
 }
 
+export interface OneOffScheduleWithPermissions extends OneOffSchedule {
+  isMine: boolean;
+  canEdit: boolean;
+}
+
 export interface ClassroomScheduleResult {
   classroom: {
     id: string;
@@ -33,6 +38,7 @@ export interface ClassroomScheduleResult {
     displayName: string;
   };
   schedules: ScheduleWithPermissions[];
+  oneOffSchedules: OneOffScheduleWithPermissions[];
 }
 
 // =============================================================================
@@ -42,9 +48,11 @@ export interface ClassroomScheduleResult {
 interface StorageSchedule {
   id: string;
   classroomId: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
+  dayOfWeek: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  startAt: Date | null;
+  endAt: Date | null;
   groupId: string;
   teacherId: string;
   recurrence: string | null;
@@ -62,7 +70,11 @@ function normalizeTime(time: string): string {
   return time;
 }
 
-function mapToSchedule(s: StorageSchedule): Schedule {
+function mapToWeeklySchedule(s: StorageSchedule): Schedule {
+  if (s.dayOfWeek === null || s.startTime === null || s.endTime === null) {
+    throw new Error('Weekly schedule is missing required fields');
+  }
+
   return {
     id: s.id,
     classroomId: s.classroomId,
@@ -72,6 +84,24 @@ function mapToSchedule(s: StorageSchedule): Schedule {
     groupId: s.groupId,
     teacherId: s.teacherId,
     recurrence: s.recurrence ?? 'weekly',
+    createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
+    updatedAt: s.updatedAt?.toISOString() ?? undefined,
+  };
+}
+
+function mapToOneOffSchedule(s: StorageSchedule): OneOffSchedule {
+  if (s.startAt === null || s.endAt === null) {
+    throw new Error('One-off schedule is missing required fields');
+  }
+
+  return {
+    id: s.id,
+    classroomId: s.classroomId,
+    startAt: s.startAt.toISOString(),
+    endAt: s.endAt.toISOString(),
+    groupId: s.groupId,
+    teacherId: s.teacherId,
+    recurrence: 'one_off',
     createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
     updatedAt: s.updatedAt?.toISOString() ?? undefined,
   };
@@ -94,6 +124,7 @@ export async function getSchedulesByClassroom(
   }
 
   const schedules = await scheduleStorage.getSchedulesByClassroom(classroomId);
+  const oneOffSchedules = await scheduleStorage.getOneOffSchedulesByClassroom(classroomId);
   const userId = user.sub;
   const isAdmin = auth.isAdminToken(user);
 
@@ -106,7 +137,12 @@ export async function getSchedulesByClassroom(
         displayName: classroom.displayName,
       },
       schedules: schedules.map((s) => ({
-        ...mapToSchedule(s),
+        ...mapToWeeklySchedule(s),
+        isMine: s.teacherId === userId,
+        canEdit: s.teacherId === userId || isAdmin,
+      })),
+      oneOffSchedules: oneOffSchedules.map((s) => ({
+        ...mapToOneOffSchedule(s),
         isMine: s.teacherId === userId,
         canEdit: s.teacherId === userId || isAdmin,
       })),
@@ -154,7 +190,67 @@ export async function createSchedule(
     });
 
     emitClassroomChanged(input.classroomId);
-    return { ok: true, data: mapToSchedule(schedule) };
+    return { ok: true, data: mapToWeeklySchedule(schedule) };
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    if (message === 'Schedule conflict') {
+      return {
+        ok: false,
+        error: { code: 'CONFLICT', message: 'This time slot is already reserved' },
+      };
+    }
+    return { ok: false, error: { code: 'BAD_REQUEST', message } };
+  }
+}
+
+/**
+ * Create a new one-off schedule reservation
+ */
+export async function createOneOffSchedule(
+  input: {
+    classroomId: string;
+    groupId: string;
+    startAt: string;
+    endAt: string;
+  },
+  user: JWTPayload
+): Promise<ScheduleResult<OneOffSchedule>> {
+  const classroom = await classroomStorage.getClassroomById(input.classroomId);
+  if (!classroom) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  }
+
+  const isAdmin = auth.isAdminToken(user);
+  if (!isAdmin && !auth.canApproveGroup(user, input.groupId)) {
+    return {
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'You can only create schedules for your assigned groups',
+      },
+    };
+  }
+
+  const startAt = new Date(input.startAt);
+  const endAt = new Date(input.endAt);
+  if (!Number.isFinite(startAt.getTime())) {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'startAt must be a valid date' } };
+  }
+  if (!Number.isFinite(endAt.getTime())) {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'endAt must be a valid date' } };
+  }
+
+  try {
+    const schedule = await scheduleStorage.createOneOffSchedule({
+      classroomId: input.classroomId,
+      teacherId: user.sub,
+      groupId: input.groupId,
+      startAt,
+      endAt,
+    });
+
+    emitClassroomChanged(input.classroomId);
+    return { ok: true, data: mapToOneOffSchedule(schedule) };
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     if (message === 'Schedule conflict') {
@@ -219,7 +315,93 @@ export async function updateSchedule(
     }
 
     emitClassroomChanged(schedule.classroomId);
-    return { ok: true, data: mapToSchedule(updated) };
+    return { ok: true, data: mapToWeeklySchedule(updated) };
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    if (message === 'Schedule conflict') {
+      return {
+        ok: false,
+        error: { code: 'CONFLICT', message: 'This time slot is already reserved' },
+      };
+    }
+    return { ok: false, error: { code: 'BAD_REQUEST', message } };
+  }
+}
+
+/**
+ * Update an existing one-off schedule
+ */
+export async function updateOneOffSchedule(
+  id: string,
+  input: {
+    startAt?: string | undefined;
+    endAt?: string | undefined;
+    groupId?: string | undefined;
+  },
+  user: JWTPayload
+): Promise<ScheduleResult<OneOffSchedule>> {
+  const schedule = await scheduleStorage.getScheduleById(id);
+  if (!schedule) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Schedule not found' } };
+  }
+
+  if (schedule.recurrence !== 'one_off') {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'Schedule is not one-off' } };
+  }
+
+  const isAdmin = auth.isAdminToken(user);
+  const isOwner = schedule.teacherId === user.sub;
+
+  if (input.groupId?.trim() === '') {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'groupId cannot be empty' } };
+  }
+
+  if (!isOwner && !isAdmin) {
+    return {
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'You can only manage your own schedules' },
+    };
+  }
+
+  if (input.groupId !== undefined && input.groupId !== schedule.groupId) {
+    if (!isAdmin && !auth.canApproveGroup(user, input.groupId)) {
+      return {
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'You can only use your assigned groups' },
+      };
+    }
+  }
+
+  const updates: { startAt?: Date; endAt?: Date; groupId?: string } = {};
+  if (input.startAt !== undefined) {
+    const startAt = new Date(input.startAt);
+    if (!Number.isFinite(startAt.getTime())) {
+      return { ok: false, error: { code: 'BAD_REQUEST', message: 'startAt must be a valid date' } };
+    }
+    updates.startAt = startAt;
+  }
+  if (input.endAt !== undefined) {
+    const endAt = new Date(input.endAt);
+    if (!Number.isFinite(endAt.getTime())) {
+      return { ok: false, error: { code: 'BAD_REQUEST', message: 'endAt must be a valid date' } };
+    }
+    updates.endAt = endAt;
+  }
+  if (input.groupId !== undefined) {
+    updates.groupId = input.groupId;
+  }
+
+  try {
+    const updated = await scheduleStorage.updateOneOffSchedule(id, updates);
+    if (!updated) {
+      return {
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'Schedule not found after update' },
+      };
+    }
+
+    emitClassroomChanged(schedule.classroomId);
+    return { ok: true, data: mapToOneOffSchedule(updated) };
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     if (message === 'Schedule conflict') {
@@ -263,9 +445,13 @@ export async function deleteSchedule(
 /**
  * Get current active schedule for a classroom
  */
-export async function getCurrentSchedule(classroomId: string): Promise<Schedule | null> {
+export async function getCurrentSchedule(
+  classroomId: string
+): Promise<Schedule | OneOffSchedule | null> {
   const s = await scheduleStorage.getCurrentSchedule(classroomId);
-  return s ? mapToSchedule(s) : null;
+  if (!s) return null;
+  if (s.recurrence === 'one_off') return mapToOneOffSchedule(s);
+  return mapToWeeklySchedule(s);
 }
 
 /**
@@ -273,7 +459,7 @@ export async function getCurrentSchedule(classroomId: string): Promise<Schedule 
  */
 export async function getSchedulesByTeacher(teacherId: string): Promise<Schedule[]> {
   const s = await scheduleStorage.getSchedulesByTeacher(teacherId);
-  return s.map(mapToSchedule);
+  return s.map(mapToWeeklySchedule);
 }
 
 // =============================================================================
@@ -284,7 +470,9 @@ export default {
   getSchedulesByClassroom,
   getSchedulesByTeacher,
   createSchedule,
+  createOneOffSchedule,
   updateSchedule,
+  updateOneOffSchedule,
   deleteSchedule,
   getCurrentSchedule,
 };

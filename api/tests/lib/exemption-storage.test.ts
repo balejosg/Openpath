@@ -2,7 +2,7 @@ import { describe, test, before } from 'node:test';
 import assert from 'node:assert';
 
 import { sql } from 'drizzle-orm';
-import { TEST_RUN_ID } from '../test-utils.js';
+import { ensureTestSchema, TEST_RUN_ID } from '../test-utils.js';
 import * as classroomStorage from '../../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../../src/lib/schedule-storage.js';
 import { db } from '../../src/db/index.js';
@@ -15,6 +15,8 @@ import {
 
 await describe('exemption-storage', async () => {
   before(async () => {
+    await ensureTestSchema();
+
     await db.execute(
       sql.raw(
         `INSERT INTO users (id, email, name, password_hash)
@@ -127,6 +129,52 @@ await describe('exemption-storage', async () => {
     const baseContext = await classroomStorage.resolveMachineGroupContext(machine.hostname, now);
     assert.ok(baseContext);
     assert.strictEqual(baseContext.groupId, 'group-scheduled');
+
+    const enforcementContext = await classroomStorage.resolveMachineEnforcementContext(
+      machine.hostname,
+      now
+    );
+    assert.ok(enforcementContext);
+    assert.strictEqual(enforcementContext.groupId, UNRESTRICTED_GROUP_ID);
+  });
+
+  await test('creates exemption for active one-off schedule and bypasses enforcement (weekend)', async () => {
+    const classroom = await classroomStorage.createClassroom({
+      name: `exempt-oneoff-room-${TEST_RUN_ID}`,
+      displayName: 'OneOff Exemption Room',
+      defaultGroupId: 'default-group',
+    });
+
+    const machine = await classroomStorage.registerMachine({
+      hostname: `pc-exempt-oneoff-${TEST_RUN_ID}`,
+      classroomId: classroom.id,
+    });
+
+    const schedule = await scheduleStorage.createOneOffSchedule({
+      classroomId: classroom.id,
+      teacherId: 'legacy_admin',
+      groupId: 'group-one-off',
+      startAt: new Date(2026, 1, 28, 9, 0, 0, 0),
+      endAt: new Date(2026, 1, 28, 10, 0, 0, 0),
+    });
+
+    const now = new Date(2026, 1, 28, 9, 15, 30);
+    const exemption = await createMachineExemption({
+      machineId: machine.id,
+      classroomId: classroom.id,
+      scheduleId: schedule.id,
+      createdBy: 'legacy_admin',
+      now,
+    });
+
+    const expectedExpiresAt = new Date(2026, 1, 28, 10, 0, 0, 0);
+    assert.strictEqual(exemption.expiresAt.getTime(), expectedExpiresAt.getTime());
+
+    assert.strictEqual(await isMachineExempt(machine.id, classroom.id, now), true);
+
+    const baseContext = await classroomStorage.resolveMachineGroupContext(machine.hostname, now);
+    assert.ok(baseContext);
+    assert.strictEqual(baseContext.groupId, 'group-one-off');
 
     const enforcementContext = await classroomStorage.resolveMachineEnforcementContext(
       machine.hostname,

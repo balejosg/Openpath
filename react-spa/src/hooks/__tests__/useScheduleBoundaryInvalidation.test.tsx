@@ -15,6 +15,16 @@ function makeSchedule(overrides: Partial<ScheduleBoundaryLike> = {}): ScheduleBo
   };
 }
 
+function makeOneOff(
+  overrides: Partial<{ startAt: string; endAt: string }> = {}
+): ScheduleBoundaryLike {
+  return {
+    startAt: '2026-02-23T10:00:00.000Z',
+    endAt: '2026-02-23T11:00:00.000Z',
+    ...overrides,
+  };
+}
+
 describe('useScheduleBoundaryInvalidation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -44,6 +54,18 @@ describe('useScheduleBoundaryInvalidation', () => {
         now
       );
       expect(next?.getTime()).toBe(new Date(2026, 1, 23, 10, 15, 0, 0).getTime());
+    });
+
+    it('returns the next start boundary for a one-off schedule when before it', () => {
+      const now = new Date('2026-02-23T09:00:00.000Z');
+      const next = getNextScheduleBoundaryAt([makeOneOff()], now);
+      expect(next?.getTime()).toBe(new Date('2026-02-23T10:00:00.000Z').getTime());
+    });
+
+    it('returns the next end boundary for a one-off schedule when inside it', () => {
+      const now = new Date('2026-02-23T10:30:00.000Z');
+      const next = getNextScheduleBoundaryAt([makeOneOff()], now);
+      expect(next?.getTime()).toBe(new Date('2026-02-23T11:00:00.000Z').getTime());
     });
   });
 

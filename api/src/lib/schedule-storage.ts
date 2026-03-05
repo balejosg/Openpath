@@ -6,7 +6,7 @@
  */
 
 import crypto from 'node:crypto';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { db, schedules } from '../db/index.js';
 import { logger } from './logger.js';
 
@@ -29,11 +29,29 @@ interface CreateScheduleInput {
   endTime: string;
 }
 
+interface CreateOneOffScheduleInput {
+  classroomId: string;
+  teacherId: string;
+  groupId: string;
+  startAt: Date;
+  endAt: Date;
+}
+
 interface UpdateScheduleInput {
   dayOfWeek?: number | undefined;
   startTime?: string | undefined;
   endTime?: string | undefined;
   groupId?: string | undefined;
+}
+
+interface UpdateOneOffScheduleInput {
+  startAt?: Date | undefined;
+  endAt?: Date | undefined;
+  groupId?: string | undefined;
+}
+
+function weeklyRecurrenceWhereClause(): ReturnType<typeof or> {
+  return or(eq(schedules.recurrence, 'weekly'), isNull(schedules.recurrence));
 }
 
 // =============================================================================
@@ -91,6 +109,29 @@ function assertValidScheduleValues(input: {
   }
 }
 
+function assertQuarterHourInstant(date: Date): void {
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error('Invalid date');
+  }
+
+  if (date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0) {
+    throw new Error('Time must not include seconds');
+  }
+
+  if (date.getUTCMinutes() % 15 !== 0) {
+    throw new Error('Time must be in 15-minute increments');
+  }
+}
+
+function assertValidOneOffScheduleValues(input: { startAt: Date; endAt: Date }): void {
+  assertQuarterHourInstant(input.startAt);
+  assertQuarterHourInstant(input.endAt);
+
+  if (input.endAt.getTime() <= input.startAt.getTime()) {
+    throw new Error('endAt must be after startAt');
+  }
+}
+
 export function timesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
   const s1 = timeToMinutes(start1);
   const e1 = timeToMinutes(end1);
@@ -108,7 +149,7 @@ export async function getSchedulesByClassroom(classroomId: string): Promise<DBSc
   const result = await db
     .select()
     .from(schedules)
-    .where(eq(schedules.classroomId, classroomId))
+    .where(and(eq(schedules.classroomId, classroomId), weeklyRecurrenceWhereClause()))
     .orderBy(schedules.dayOfWeek, schedules.startTime);
 
   return result;
@@ -118,7 +159,7 @@ export async function getSchedulesByTeacher(teacherId: string): Promise<DBSchedu
   const result = await db
     .select()
     .from(schedules)
-    .where(eq(schedules.teacherId, teacherId))
+    .where(and(eq(schedules.teacherId, teacherId), weeklyRecurrenceWhereClause()))
     .orderBy(schedules.dayOfWeek, schedules.startTime);
 
   return result;
@@ -128,6 +169,87 @@ export async function getScheduleById(id: string): Promise<DBSchedule | null> {
   const result = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
 
   return result[0] ?? null;
+}
+
+export async function getOneOffSchedulesByClassroom(classroomId: string): Promise<DBSchedule[]> {
+  const result = await db
+    .select()
+    .from(schedules)
+    .where(and(eq(schedules.classroomId, classroomId), eq(schedules.recurrence, 'one_off')))
+    .orderBy(schedules.startAt);
+
+  return result;
+}
+
+export async function getOneOffSchedulesByTeacher(teacherId: string): Promise<DBSchedule[]> {
+  const result = await db
+    .select()
+    .from(schedules)
+    .where(and(eq(schedules.teacherId, teacherId), eq(schedules.recurrence, 'one_off')))
+    .orderBy(schedules.startAt);
+
+  return result;
+}
+
+export async function findOneOffConflict(
+  classroomId: string,
+  startAt: Date,
+  endAt: Date,
+  excludeId: string | null = null
+): Promise<DBSchedule | null> {
+  const conditions =
+    excludeId !== null
+      ? and(
+          eq(schedules.classroomId, classroomId),
+          eq(schedules.recurrence, 'one_off'),
+          sql`${schedules.startAt} < ${endAt} AND ${schedules.endAt} > ${startAt}`,
+          sql`${schedules.id} != ${excludeId}::uuid`
+        )
+      : and(
+          eq(schedules.classroomId, classroomId),
+          eq(schedules.recurrence, 'one_off'),
+          sql`${schedules.startAt} < ${endAt} AND ${schedules.endAt} > ${startAt}`
+        );
+
+  const result = await db.select().from(schedules).where(conditions).limit(1);
+
+  return result[0] ?? null;
+}
+
+export async function createOneOffSchedule(
+  scheduleData: CreateOneOffScheduleInput
+): Promise<DBSchedule> {
+  const { classroomId, teacherId, groupId, startAt, endAt } = scheduleData;
+
+  assertValidOneOffScheduleValues({ startAt, endAt });
+
+  const conflict = await findOneOffConflict(classroomId, startAt, endAt);
+  if (conflict !== null) {
+    const error: ScheduleConflictError = new Error('Schedule conflict');
+    error.conflict = conflict;
+    throw error;
+  }
+
+  const id = crypto.randomUUID();
+
+  const [result] = await db
+    .insert(schedules)
+    .values({
+      id,
+      classroomId,
+      teacherId,
+      groupId,
+      dayOfWeek: null,
+      startTime: null,
+      endTime: null,
+      startAt,
+      endAt,
+      recurrence: 'one_off',
+    })
+    .returning();
+
+  if (!result) throw new Error('Failed to create schedule');
+  return result;
 }
 
 export async function findConflict(
@@ -142,12 +264,14 @@ export async function findConflict(
     excludeId !== null
       ? and(
           eq(schedules.classroomId, classroomId),
+          weeklyRecurrenceWhereClause(),
           eq(schedules.dayOfWeek, dayOfWeek),
           sql`(${startTime}::time, ${endTime}::time) OVERLAPS (${schedules.startTime}, ${schedules.endTime})`,
           sql`${schedules.id} != ${excludeId}::uuid`
         )
       : and(
           eq(schedules.classroomId, classroomId),
+          weeklyRecurrenceWhereClause(),
           eq(schedules.dayOfWeek, dayOfWeek),
           sql`(${startTime}::time, ${endTime}::time) OVERLAPS (${schedules.startTime}, ${schedules.endTime})`
         );
@@ -196,9 +320,21 @@ export async function updateSchedule(
   const schedule = await getScheduleById(id);
   if (!schedule) return null;
 
-  const newDayOfWeek = updates.dayOfWeek ?? schedule.dayOfWeek;
-  const newStartTime = updates.startTime ?? schedule.startTime;
-  const newEndTime = updates.endTime ?? schedule.endTime;
+  if (schedule.recurrence === 'one_off') {
+    throw new Error('Cannot update one-off schedule with weekly updater');
+  }
+
+  const baseDayOfWeek = schedule.dayOfWeek;
+  const baseStartTime = schedule.startTime;
+  const baseEndTime = schedule.endTime;
+
+  if (baseDayOfWeek === null || baseStartTime === null || baseEndTime === null) {
+    throw new Error('Weekly schedule is missing required fields');
+  }
+
+  const newDayOfWeek = updates.dayOfWeek ?? baseDayOfWeek;
+  const newStartTime = updates.startTime ?? baseStartTime;
+  const newEndTime = updates.endTime ?? baseEndTime;
 
   // Validate effective values to avoid persisting invalid data.
   assertValidScheduleValues({
@@ -248,6 +384,63 @@ export async function updateSchedule(
   return result ?? null;
 }
 
+export async function updateOneOffSchedule(
+  id: string,
+  updates: UpdateOneOffScheduleInput
+): Promise<DBSchedule | null> {
+  const schedule = await getScheduleById(id);
+  if (!schedule) return null;
+
+  if (schedule.recurrence !== 'one_off') {
+    throw new Error('Cannot update weekly schedule with one-off updater');
+  }
+
+  const baseStartAt = schedule.startAt;
+  const baseEndAt = schedule.endAt;
+
+  if (baseStartAt === null || baseEndAt === null) {
+    throw new Error('One-off schedule is missing required fields');
+  }
+
+  const newStartAt = updates.startAt ?? baseStartAt;
+  const newEndAt = updates.endAt ?? baseEndAt;
+
+  assertValidOneOffScheduleValues({ startAt: newStartAt, endAt: newEndAt });
+
+  const conflict = await findOneOffConflict(schedule.classroomId, newStartAt, newEndAt, id);
+  if (conflict !== null) {
+    const error: ScheduleConflictError = new Error('Schedule conflict');
+    error.conflict = conflict;
+    throw error;
+  }
+
+  const updateValues: Partial<typeof schedules.$inferInsert> = {};
+
+  if (updates.startAt !== undefined) {
+    updateValues.startAt = updates.startAt;
+  }
+  if (updates.endAt !== undefined) {
+    updateValues.endAt = updates.endAt;
+  }
+  if (updates.groupId !== undefined) {
+    updateValues.groupId = updates.groupId;
+  }
+
+  if (Object.keys(updateValues).length === 0) {
+    return schedule;
+  }
+
+  updateValues.updatedAt = new Date();
+
+  const [result] = await db
+    .update(schedules)
+    .set(updateValues)
+    .where(eq(schedules.id, id))
+    .returning();
+
+  return result ?? null;
+}
+
 export async function deleteSchedule(id: string): Promise<boolean> {
   const result = await db.delete(schedules).where(eq(schedules.id, id));
 
@@ -258,6 +451,22 @@ export async function getCurrentSchedule(
   classroomId: string,
   date: Date = new Date()
 ): Promise<DBSchedule | null> {
+  // One-off schedules are absolute instants and may apply on any day.
+  const oneOff = await db
+    .select()
+    .from(schedules)
+    .where(
+      and(
+        eq(schedules.classroomId, classroomId),
+        eq(schedules.recurrence, 'one_off'),
+        sql`${schedules.startAt} <= ${date} AND ${schedules.endAt} > ${date}`
+      )
+    )
+    .orderBy(schedules.startAt)
+    .limit(1);
+
+  if (oneOff[0]) return oneOff[0];
+
   const dayOfWeek = date.getDay();
 
   if (dayOfWeek === 0 || dayOfWeek === 6) {
@@ -266,12 +475,13 @@ export async function getCurrentSchedule(
 
   const currentTime = date.toTimeString().slice(0, 5);
 
-  const result = await db
+  const weekly = await db
     .select()
     .from(schedules)
     .where(
       and(
         eq(schedules.classroomId, classroomId),
+        weeklyRecurrenceWhereClause(),
         eq(schedules.dayOfWeek, dayOfWeek),
         sql`${schedules.startTime} <= ${currentTime}::time`,
         sql`${schedules.endTime} > ${currentTime}::time`
@@ -279,7 +489,7 @@ export async function getCurrentSchedule(
     )
     .limit(1);
 
-  return result[0] ?? null;
+  return weekly[0] ?? null;
 }
 
 /**
@@ -287,25 +497,40 @@ export async function getCurrentSchedule(
  * Used to push near-real-time updates on schedule boundaries.
  */
 export async function getClassroomIdsWithBoundaryAt(date: Date = new Date()): Promise<string[]> {
-  const dayOfWeek = date.getDay();
-  if (dayOfWeek === 0 || dayOfWeek === 6) return [];
+  const floored = new Date(date);
+  floored.setSeconds(0, 0);
 
-  const currentTime = date.toTimeString().slice(0, 5);
-
-  const rows = await db
+  const oneOffRows = await db
     .select({ classroomId: schedules.classroomId })
     .from(schedules)
     .where(
       and(
-        eq(schedules.dayOfWeek, dayOfWeek),
-        or(
-          sql`${schedules.startTime} = ${currentTime}::time`,
-          sql`${schedules.endTime} = ${currentTime}::time`
-        )
+        eq(schedules.recurrence, 'one_off'),
+        or(eq(schedules.startAt, floored), eq(schedules.endAt, floored))
       )
     );
 
-  return [...new Set(rows.map((r) => r.classroomId))];
+  const dayOfWeek = date.getDay();
+
+  let weeklyRows: { classroomId: string }[] = [];
+  if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    const currentTime = date.toTimeString().slice(0, 5);
+    weeklyRows = await db
+      .select({ classroomId: schedules.classroomId })
+      .from(schedules)
+      .where(
+        and(
+          weeklyRecurrenceWhereClause(),
+          eq(schedules.dayOfWeek, dayOfWeek),
+          or(
+            sql`${schedules.startTime} = ${currentTime}::time`,
+            sql`${schedules.endTime} = ${currentTime}::time`
+          )
+        )
+      );
+  }
+
+  return [...new Set([...oneOffRows, ...weeklyRows].map((r) => r.classroomId))];
 }
 
 export async function deleteSchedulesByClassroom(classroomId: string): Promise<number> {
@@ -317,10 +542,15 @@ export async function deleteSchedulesByClassroom(classroomId: string): Promise<n
 export default {
   getSchedulesByClassroom,
   getSchedulesByTeacher,
+  getOneOffSchedulesByClassroom,
+  getOneOffSchedulesByTeacher,
   getScheduleById,
   findConflict,
+  findOneOffConflict,
   createSchedule,
+  createOneOffSchedule,
   updateSchedule,
+  updateOneOffSchedule,
   deleteSchedule,
   getCurrentSchedule,
   getClassroomIdsWithBoundaryAt,

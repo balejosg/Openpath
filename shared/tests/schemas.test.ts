@@ -16,6 +16,7 @@ import {
   Classroom,
   Machine,
   Schedule,
+  OneOffSchedule,
   HealthReport,
   PushSubscription,
   CreateRequestDTO,
@@ -23,6 +24,8 @@ import {
   LoginDTO,
   CreateClassroomDTO,
   CreateScheduleDTO,
+  CreateOneOffScheduleDTO,
+  UpdateOneOffScheduleDTO,
   CreatePushSubscriptionDTO,
   UpdateRequestStatusDTO,
 } from '../src/schemas/index.js';
@@ -432,6 +435,38 @@ describe('Entity Schemas', () => {
     });
   });
 
+  describe('OneOffSchedule', () => {
+    it('validates complete one-off schedule object', () => {
+      const schedule = {
+        id: 'schedule-123',
+        classroomId: 'classroom-123',
+        startAt: '2025-01-01T09:00:00Z',
+        endAt: '2025-01-01T10:30:00Z',
+        groupId: 'group-1',
+        teacherId: 'teacher-1',
+        recurrence: 'one_off',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      };
+      assert.doesNotThrow(() => OneOffSchedule.parse(schedule));
+    });
+
+    it('defaults recurrence to one_off', () => {
+      const schedule = {
+        id: 'schedule-123',
+        classroomId: 'classroom-123',
+        startAt: '2025-01-01T09:00:00Z',
+        endAt: '2025-01-01T10:30:00Z',
+        groupId: 'group-1',
+        teacherId: 'teacher-1',
+        createdAt: '2025-01-01T00:00:00Z',
+      };
+
+      const parsed = OneOffSchedule.parse(schedule);
+      assert.equal(parsed.recurrence, 'one_off');
+    });
+  });
+
   describe('HealthReport', () => {
     it('validates complete health report', () => {
       const report = {
@@ -706,6 +741,63 @@ describe('DTO Schemas', () => {
           endTime: '10:30',
           groupId: 'group-1',
           teacherId: 'teacher-1',
+        })
+      );
+    });
+  });
+
+  describe('CreateOneOffScheduleDTO', () => {
+    it('accepts valid one-off schedule data', () => {
+      const dto = {
+        classroomId: 'classroom-123',
+        startAt: '2025-01-01T09:00:00Z',
+        endAt: '2025-01-01T10:30:00Z',
+        groupId: 'group-1',
+        teacherId: 'teacher-1',
+      };
+      assert.doesNotThrow(() => CreateOneOffScheduleDTO.parse(dto));
+    });
+
+    it('accepts optional recurrence when set to one_off', () => {
+      const dto = {
+        classroomId: 'classroom-123',
+        startAt: '2025-01-01T09:00:00Z',
+        endAt: '2025-01-01T10:30:00Z',
+        groupId: 'group-1',
+        teacherId: 'teacher-1',
+        recurrence: 'one_off',
+      };
+      assert.doesNotThrow(() => CreateOneOffScheduleDTO.parse(dto));
+    });
+
+    it('rejects invalid recurrence', () => {
+      assert.throws(() =>
+        CreateOneOffScheduleDTO.parse({
+          classroomId: 'classroom-123',
+          startAt: '2025-01-01T09:00:00Z',
+          endAt: '2025-01-01T10:30:00Z',
+          groupId: 'group-1',
+          teacherId: 'teacher-1',
+          recurrence: 'weekly',
+        })
+      );
+    });
+  });
+
+  describe('UpdateOneOffScheduleDTO', () => {
+    it('accepts minimal update payload', () => {
+      assert.doesNotThrow(() =>
+        UpdateOneOffScheduleDTO.parse({
+          id: 'schedule-123',
+        })
+      );
+    });
+
+    it('rejects empty groupId', () => {
+      assert.throws(() =>
+        UpdateOneOffScheduleDTO.parse({
+          id: 'schedule-123',
+          groupId: '',
         })
       );
     });

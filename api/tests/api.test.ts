@@ -20,7 +20,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
-import { getAvailablePort } from './test-utils.js';
+import { ensureTestSchema, getAvailablePort } from './test-utils.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 
@@ -96,6 +96,8 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
     process.env.SHARED_SECRET = process.env.SHARED_SECRET ?? 'test-shared-secret';
+
+    await ensureTestSchema();
 
     const { app } = await import('../src/server.js');
 

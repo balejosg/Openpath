@@ -141,152 +141,158 @@ const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({
       </div>
 
       {/* Time grid body */}
-      <div
-        className="grid grid-cols-[60px_repeat(5,1fr)] relative"
-        style={{ height: HOURS.length * ROW_HEIGHT }}
-      >
-        {/* Time labels column */}
-        <div className="relative border-r border-slate-200">
-          {HOURS.map((h) => (
-            <div
-              key={h}
-              className="absolute w-full text-right pr-2 text-[10px] text-slate-400 -translate-y-1/2"
-              style={{ top: (h - START_HOUR) * ROW_HEIGHT }}
-            >
-              {String(h).padStart(2, '0')}:00
-            </div>
-          ))}
-        </div>
+      <div className="max-h-[520px] md:max-h-[640px] overflow-y-auto">
+        <div
+          className="grid grid-cols-[60px_repeat(5,1fr)] relative"
+          style={{ height: HOURS.length * ROW_HEIGHT }}
+        >
+          {/* Time labels column */}
+          <div className="relative border-r border-slate-200">
+            {HOURS.map((h) => (
+              <div
+                key={h}
+                className="absolute w-full text-right pr-2 text-[10px] text-slate-400 -translate-y-1/2"
+                style={{ top: (h - START_HOUR) * ROW_HEIGHT }}
+              >
+                {String(h).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
 
-        {/* Day columns */}
-        {DAYS.map((d) => {
-          const daySchedules = byDay.get(d.key) ?? [];
+          {/* Day columns */}
+          {DAYS.map((d) => {
+            const daySchedules = byDay.get(d.key) ?? [];
 
-          return (
-            <div key={d.key} className="relative border-l border-slate-200">
-              {/* Hour gridlines */}
-              {HOURS.map((h) => (
-                <div
-                  key={h}
-                  className="absolute w-full border-t border-slate-100 group/cell cursor-pointer"
-                  style={{ top: (h - START_HOUR) * ROW_HEIGHT, height: ROW_HEIGHT }}
-                  onClick={() => onAddClick(d.key, `${String(h).padStart(2, '0')}:00`)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Agregar ${d.full} ${String(h).padStart(2, '0')}:00`}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onAddClick(d.key, `${String(h).padStart(2, '0')}:00`);
-                    }
-                  }}
-                >
-                  {/* "+" hint on hover */}
-                  <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity flex items-center justify-center h-full">
-                    <Plus size={14} className="text-slate-300" />
-                  </div>
-                </div>
-              ))}
-
-              {/* Schedule blocks */}
-              {daySchedules.map((s) => {
-                const startAbs = parseTimeOfDayToMinutes(s.startTime);
-                const endAbs = parseTimeOfDayToMinutes(s.endTime);
-                if (startAbs === null || endAbs === null) return null;
-
-                const startMin = startAbs - START_HOUR * 60;
-                const durationMin = endAbs - startAbs;
-                if (durationMin <= 0) return null;
-                const top = minutesToPx(startMin, ROW_HEIGHT);
-                const height = minutesToPx(durationMin, ROW_HEIGHT);
-                const colorIdx = groupColorMap.get(s.groupId) ?? 0;
-                const canEdit = s.canEdit;
-                const color = canEdit
-                  ? (GROUP_COLORS[colorIdx] ?? GROUP_COLORS[0])
-                  : RESERVED_COLOR;
-                const knownGroupName = groupNameMap.get(s.groupId);
-                const group = knownGroupName
-                  ? { id: s.groupId, name: knownGroupName, displayName: knownGroupName }
-                  : null;
-                const groupName = resolveGroupDisplayName({
-                  groupId: s.groupId,
-                  group,
-                  source: 'schedule',
-                  revealUnknownId: canEdit,
-                });
-
-                return (
+            return (
+              <div key={d.key} className="relative border-l border-slate-200">
+                {/* Hour gridlines */}
+                {HOURS.map((h) => (
                   <div
-                    key={s.id}
-                    className={`absolute inset-x-1 rounded-md border ${color.bg} ${color.border} ${color.hover} overflow-hidden z-10 transition-colors group/block ${
-                      canEdit ? 'cursor-pointer' : 'cursor-default opacity-90'
-                    }`}
-                    style={{ top, height: Math.max(height, 20) }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) onEditClick(s);
-                    }}
+                    key={h}
+                    className="absolute w-full border-t border-slate-100 group/cell cursor-pointer"
+                    style={{ top: (h - START_HOUR) * ROW_HEIGHT, height: ROW_HEIGHT }}
+                    onClick={() => onAddClick(d.key, `${String(h).padStart(2, '0')}:00`)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Agregar ${d.full} ${String(h).padStart(2, '0')}:00`}
                     onKeyDown={(e) => {
-                      if (!canEdit) return;
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        onEditClick(s);
+                        onAddClick(d.key, `${String(h).padStart(2, '0')}:00`);
                       }
                     }}
-                    role={canEdit ? 'button' : undefined}
-                    tabIndex={canEdit ? 0 : -1}
-                    aria-label={
-                      canEdit
-                        ? `Editar ${groupName} ${s.startTime}-${s.endTime}`
-                        : `${groupName} ${s.startTime}-${s.endTime}`
-                    }
-                    data-testid={`schedule-block-${s.id}`}
-                    title={`${groupName}\n${s.startTime} – ${s.endTime}`}
                   >
-                    <div className="px-1.5 py-0.5 h-full flex flex-col justify-between">
-                      <div className="flex items-start justify-between gap-0.5">
-                        <span
-                          className={`text-[10px] font-semibold leading-tight truncate ${color.text}`}
-                        >
-                          {groupName}
-                        </span>
-                        {s.canEdit && (
-                          <div className="flex gap-0.5 opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0">
-                            <button
-                              className="p-0.5 rounded hover:bg-white/60"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEditClick(s);
-                              }}
-                              title="Editar"
-                            >
-                              <Edit2 size={10} className={color.text} />
-                            </button>
-                            <button
-                              className="p-0.5 rounded hover:bg-red-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteClick(s);
-                              }}
-                              title="Eliminar"
-                            >
-                              <Trash2 size={10} className="text-red-500" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      {height >= 32 && (
-                        <span className={`text-[9px] ${color.text} opacity-70`}>
-                          {s.startTime} – {s.endTime}
-                        </span>
-                      )}
+                    {/* "+" hint on hover */}
+                    <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity flex items-center justify-center h-full">
+                      <Plus size={14} className="text-slate-300" />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          );
-        })}
+                ))}
+
+                {/* Schedule blocks */}
+                {daySchedules.map((s) => {
+                  const startAbs = parseTimeOfDayToMinutes(s.startTime);
+                  const endAbs = parseTimeOfDayToMinutes(s.endTime);
+                  if (startAbs === null || endAbs === null) return null;
+
+                  const startMin = startAbs - START_HOUR * 60;
+                  const endMin = endAbs - START_HOUR * 60;
+                  const visibleStartMin = Math.max(startMin, 0);
+                  const visibleEndMin = Math.min(endMin, (END_HOUR - START_HOUR) * 60);
+                  const durationMin = visibleEndMin - visibleStartMin;
+                  if (durationMin <= 0) return null;
+
+                  const top = minutesToPx(visibleStartMin, ROW_HEIGHT);
+                  const height = minutesToPx(durationMin, ROW_HEIGHT);
+                  const colorIdx = groupColorMap.get(s.groupId) ?? 0;
+                  const canEdit = s.canEdit;
+                  const color = canEdit
+                    ? (GROUP_COLORS[colorIdx] ?? GROUP_COLORS[0])
+                    : RESERVED_COLOR;
+                  const knownGroupName = groupNameMap.get(s.groupId);
+                  const group = knownGroupName
+                    ? { id: s.groupId, name: knownGroupName, displayName: knownGroupName }
+                    : null;
+                  const groupName = resolveGroupDisplayName({
+                    groupId: s.groupId,
+                    group,
+                    source: 'schedule',
+                    revealUnknownId: canEdit,
+                  });
+
+                  return (
+                    <div
+                      key={s.id}
+                      className={`absolute inset-x-1 rounded-md border ${color.bg} ${color.border} ${color.hover} overflow-hidden z-10 transition-colors group/block ${
+                        canEdit ? 'cursor-pointer' : 'cursor-default opacity-90'
+                      }`}
+                      style={{ top, height: Math.max(height, 20) }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canEdit) onEditClick(s);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!canEdit) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onEditClick(s);
+                        }
+                      }}
+                      role={canEdit ? 'button' : undefined}
+                      tabIndex={canEdit ? 0 : -1}
+                      aria-label={
+                        canEdit
+                          ? `Editar ${groupName} ${s.startTime}-${s.endTime}`
+                          : `${groupName} ${s.startTime}-${s.endTime}`
+                      }
+                      data-testid={`schedule-block-${s.id}`}
+                      title={`${groupName}\n${s.startTime} – ${s.endTime}`}
+                    >
+                      <div className="px-1.5 py-0.5 h-full flex flex-col justify-between">
+                        <div className="flex items-start justify-between gap-0.5">
+                          <span
+                            className={`text-[10px] font-semibold leading-tight truncate ${color.text}`}
+                          >
+                            {groupName}
+                          </span>
+                          {s.canEdit && (
+                            <div className="flex gap-0.5 opacity-0 group-hover/block:opacity-100 transition-opacity shrink-0">
+                              <button
+                                className="p-0.5 rounded hover:bg-white/60"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditClick(s);
+                                }}
+                                title="Editar"
+                              >
+                                <Edit2 size={10} className={color.text} />
+                              </button>
+                              <button
+                                className="p-0.5 rounded hover:bg-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteClick(s);
+                                }}
+                                title="Eliminar"
+                              >
+                                <Trash2 size={10} className="text-red-500" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {height >= 32 && (
+                          <span className={`text-[9px] ${color.text} opacity-70`}>
+                            {s.startTime} – {s.endTime}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

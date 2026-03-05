@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ScheduleWithPermissions } from '../types';
+import type { OneOffScheduleWithPermissions, ScheduleWithPermissions } from '../types';
 import { trpc } from '../lib/trpc';
 import { resolveTrpcErrorMessage } from '../lib/error-utils';
 import { reportError } from '../lib/reportError';
@@ -19,6 +19,12 @@ interface ScheduleFormData {
   groupId: string;
 }
 
+interface OneOffScheduleFormData {
+  startAt: string;
+  endAt: string;
+  groupId: string;
+}
+
 interface UseClassroomSchedulesParams {
   selectedClassroomId: string | null;
   onSchedulesUpdated?: () => void | Promise<void>;
@@ -29,16 +35,23 @@ export const useClassroomSchedules = ({
   onSchedulesUpdated,
 }: UseClassroomSchedulesParams) => {
   const [schedules, setSchedules] = useState<ScheduleWithPermissions[]>([]);
+  const [oneOffSchedules, setOneOffSchedules] = useState<OneOffScheduleWithPermissions[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleWithPermissions | null>(null);
   const [scheduleFormDay, setScheduleFormDay] = useState<number | undefined>(undefined);
   const [scheduleFormStartTime, setScheduleFormStartTime] = useState<string | undefined>(undefined);
+
+  const [oneOffFormOpen, setOneOffFormOpen] = useState(false);
+  const [editingOneOffSchedule, setEditingOneOffSchedule] =
+    useState<OneOffScheduleWithPermissions | null>(null);
+
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
-  const [scheduleDeleteTarget, setScheduleDeleteTarget] = useState<ScheduleWithPermissions | null>(
-    null
-  );
+  const [scheduleDeleteTarget, setScheduleDeleteTarget] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
 
   const fetchSchedules = useCallback(async (classroomId: string) => {
     try {
@@ -46,10 +59,12 @@ export const useClassroomSchedules = ({
       setScheduleError('');
       const result = await trpc.schedules.getByClassroom.query({ classroomId });
       setSchedules(result.schedules);
+      setOneOffSchedules(result.oneOffSchedules);
     } catch (err) {
       reportError('Failed to fetch schedules:', err);
       setScheduleError('Error al cargar horarios');
       setSchedules([]);
+      setOneOffSchedules([]);
     } finally {
       setLoadingSchedules(false);
     }
@@ -58,6 +73,7 @@ export const useClassroomSchedules = ({
   useEffect(() => {
     if (!selectedClassroomId) {
       setSchedules([]);
+      setOneOffSchedules([]);
       return;
     }
 
@@ -94,6 +110,25 @@ export const useClassroomSchedules = ({
     setEditingSchedule(null);
     setScheduleFormDay(undefined);
     setScheduleFormStartTime(undefined);
+    setScheduleError('');
+  }, [scheduleSaving]);
+
+  const openOneOffScheduleCreate = useCallback(() => {
+    setScheduleError('');
+    setEditingOneOffSchedule(null);
+    setOneOffFormOpen(true);
+  }, []);
+
+  const openOneOffScheduleEdit = useCallback((schedule: OneOffScheduleWithPermissions) => {
+    setScheduleError('');
+    setEditingOneOffSchedule(schedule);
+    setOneOffFormOpen(true);
+  }, []);
+
+  const closeOneOffScheduleForm = useCallback(() => {
+    if (scheduleSaving) return;
+    setOneOffFormOpen(false);
+    setEditingOneOffSchedule(null);
     setScheduleError('');
   }, [scheduleSaving]);
 
@@ -138,9 +173,58 @@ export const useClassroomSchedules = ({
     [selectedClassroomId, editingSchedule, fetchSchedules, onSchedulesUpdated]
   );
 
+  const handleOneOffScheduleSave = useCallback(
+    async (data: OneOffScheduleFormData) => {
+      if (!selectedClassroomId) return;
+
+      try {
+        setScheduleSaving(true);
+        setScheduleError('');
+
+        if (editingOneOffSchedule) {
+          await trpc.schedules.updateOneOff.mutate({
+            id: editingOneOffSchedule.id,
+            startAt: data.startAt,
+            endAt: data.endAt,
+            groupId: data.groupId,
+          });
+        } else {
+          await trpc.schedules.createOneOff.mutate({
+            classroomId: selectedClassroomId,
+            startAt: data.startAt,
+            endAt: data.endAt,
+            groupId: data.groupId,
+          });
+        }
+
+        await fetchSchedules(selectedClassroomId);
+        await onSchedulesUpdated?.();
+        setOneOffFormOpen(false);
+        setEditingOneOffSchedule(null);
+      } catch (err: unknown) {
+        reportError('Failed to save one-off schedule:', err);
+        setScheduleError(formatScheduleError(err, 'Error al guardar horario'));
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [selectedClassroomId, editingOneOffSchedule, fetchSchedules, onSchedulesUpdated]
+  );
+
   const requestScheduleDelete = useCallback((schedule: ScheduleWithPermissions) => {
     setScheduleError('');
-    setScheduleDeleteTarget(schedule);
+    setScheduleDeleteTarget({
+      id: schedule.id,
+      label: `${schedule.startTime}–${schedule.endTime}`,
+    });
+  }, []);
+
+  const requestOneOffScheduleDelete = useCallback((schedule: OneOffScheduleWithPermissions) => {
+    setScheduleError('');
+    setScheduleDeleteTarget({
+      id: schedule.id,
+      label: `${new Date(schedule.startAt).toLocaleString()}–${new Date(schedule.endAt).toLocaleString()}`,
+    });
   }, []);
 
   const closeScheduleDelete = useCallback(() => {
@@ -169,19 +253,27 @@ export const useClassroomSchedules = ({
 
   return {
     schedules,
+    oneOffSchedules,
     loadingSchedules,
     scheduleFormOpen,
     editingSchedule,
     scheduleFormDay,
     scheduleFormStartTime,
+    oneOffFormOpen,
+    editingOneOffSchedule,
     scheduleSaving,
     scheduleError,
     scheduleDeleteTarget,
     openScheduleCreate,
     openScheduleEdit,
     closeScheduleForm,
+    openOneOffScheduleCreate,
+    openOneOffScheduleEdit,
+    closeOneOffScheduleForm,
     handleScheduleSave,
+    handleOneOffScheduleSave,
     requestScheduleDelete,
+    requestOneOffScheduleDelete,
     closeScheduleDelete,
     handleConfirmDeleteSchedule,
   };

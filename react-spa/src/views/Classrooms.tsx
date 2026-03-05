@@ -26,6 +26,7 @@ import { useListDetailSelection } from '../hooks/useListDetailSelection';
 import { normalizeSearchTerm, useNormalizedSearch } from '../hooks/useNormalizedSearch';
 import WeeklyCalendar from '../components/WeeklyCalendar';
 import ScheduleFormModal from '../components/ScheduleFormModal';
+import OneOffScheduleFormModal from '../components/OneOffScheduleFormModal';
 import {
   GroupLabel,
   inferGroupSource,
@@ -263,19 +264,27 @@ const Classrooms = () => {
 
   const {
     schedules,
+    oneOffSchedules,
     loadingSchedules,
     scheduleFormOpen,
     editingSchedule,
     scheduleFormDay,
     scheduleFormStartTime,
+    oneOffFormOpen,
+    editingOneOffSchedule,
     scheduleSaving,
     scheduleError,
     scheduleDeleteTarget,
     openScheduleCreate,
     openScheduleEdit,
     closeScheduleForm,
+    openOneOffScheduleCreate,
+    openOneOffScheduleEdit,
+    closeOneOffScheduleForm,
     handleScheduleSave,
+    handleOneOffScheduleSave,
     requestScheduleDelete,
+    requestOneOffScheduleDelete,
     closeScheduleDelete,
     handleConfirmDeleteSchedule,
   } = useClassroomSchedules({
@@ -287,6 +296,17 @@ const Classrooms = () => {
 
   const activeSchedule = useMemo(() => {
     const now = new Date();
+
+    const activeOneOff =
+      oneOffSchedules.find((s) => {
+        const start = new Date(s.startAt);
+        const end = new Date(s.endAt);
+        if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return false;
+        return start.getTime() <= now.getTime() && end.getTime() > now.getTime();
+      }) ?? null;
+
+    if (activeOneOff) return activeOneOff;
+
     const day = now.getDay();
     if (day === 0 || day === 6) return null;
     const currentTime = now.toTimeString().slice(0, 5);
@@ -295,7 +315,25 @@ const Classrooms = () => {
         (s) => s.dayOfWeek === day && s.startTime <= currentTime && s.endTime > currentTime
       ) ?? null
     );
-  }, [schedules]);
+  }, [oneOffSchedules, schedules]);
+
+  const scheduleBoundarySources = useMemo(
+    () => [...schedules, ...oneOffSchedules],
+    [schedules, oneOffSchedules]
+  );
+
+  const sortedOneOffSchedules = useMemo(() => {
+    return [...oneOffSchedules].sort((a, b) => {
+      const aTime = new Date(a.startAt).getTime();
+      const bTime = new Date(b.startAt).getTime();
+      const aOk = Number.isFinite(aTime);
+      const bOk = Number.isFinite(bTime);
+      if (aOk && bOk) return aTime - bTime;
+      if (aOk) return -1;
+      if (bOk) return 1;
+      return 0;
+    });
+  }, [oneOffSchedules]);
 
   const [exemptions, setExemptions] = useState<
     {
@@ -320,7 +358,7 @@ const Classrooms = () => {
       const result = await trpc.classrooms.listExemptions.query({ classroomId });
       setExemptions(result.exemptions);
     } catch (err) {
-      console.error('Failed to fetch exemptions:', err);
+      reportError('Failed to fetch exemptions:', err);
       setExemptionsError('Error al cargar exenciones');
       setExemptions([]);
     } finally {
@@ -362,7 +400,7 @@ const Classrooms = () => {
         });
         await fetchExemptions(selectedClassroom.id);
       } catch (err) {
-        console.error('Failed to create exemption:', err);
+        reportError('Failed to create exemption:', err);
         setExemptionsError('No se pudo liberar la maquina');
       } finally {
         setMachineExemptionMutating(machineId, false);
@@ -383,7 +421,7 @@ const Classrooms = () => {
         await trpc.classrooms.deleteExemption.mutate({ id: exemption.id });
         await fetchExemptions(selectedClassroom.id);
       } catch (err) {
-        console.error('Failed to delete exemption:', err);
+        reportError('Failed to delete exemption:', err);
         setExemptionsError('No se pudo restaurar la restriccion');
       } finally {
         setMachineExemptionMutating(machineId, false);
@@ -393,7 +431,7 @@ const Classrooms = () => {
   );
 
   useScheduleBoundaryInvalidation({
-    schedules,
+    schedules: scheduleBoundarySources,
     enabled: !!selectedClassroom && !selectedClassroom.activeGroup,
     onBoundary: () => {
       void refetchClassrooms();
@@ -866,12 +904,20 @@ const Classrooms = () => {
                   <Clock size={18} className="text-slate-500" />
                   Horario del Aula
                 </h3>
-                <button
-                  onClick={() => openScheduleCreate()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors shadow-sm font-medium"
-                >
-                  <Plus size={16} /> Nuevo
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openOneOffScheduleCreate()}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors shadow-sm font-medium border border-slate-200"
+                  >
+                    <Plus size={16} /> Puntual
+                  </button>
+                  <button
+                    onClick={() => openScheduleCreate()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors shadow-sm font-medium"
+                  >
+                    <Plus size={16} /> Semanal
+                  </button>
+                </div>
               </div>
 
               {loadingSchedules ? (
@@ -898,6 +944,91 @@ const Classrooms = () => {
                     Tip: haz click en una celda para crear un bloque. Puedes editar o eliminar tus
                     bloques desde el hover.
                   </p>
+
+                  <div className="mt-5 pt-4 border-t border-slate-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        Asignaciones puntuales
+                      </h4>
+                      <button
+                        onClick={() => openOneOffScheduleCreate()}
+                        className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-colors"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <Plus size={14} /> Nueva
+                        </span>
+                      </button>
+                    </div>
+
+                    {sortedOneOffSchedules.length === 0 ? (
+                      <p className="text-xs text-slate-500">No hay asignaciones puntuales.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {sortedOneOffSchedules.map((s) => {
+                          const group = groupById.get(s.groupId);
+                          const groupName = group
+                            ? group.displayName || group.name
+                            : s.canEdit || admin
+                              ? s.groupId
+                              : 'Reservado por otro profesor';
+
+                          const start = new Date(s.startAt);
+                          const end = new Date(s.endAt);
+                          const startLabel = Number.isFinite(start.getTime())
+                            ? start.toLocaleString('es-ES', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : s.startAt;
+                          const endLabel = Number.isFinite(end.getTime())
+                            ? end.toLocaleString('es-ES', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : s.endAt;
+
+                          return (
+                            <div
+                              key={s.id}
+                              className="flex items-center justify-between gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/50"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-900 truncate">
+                                  {groupName}
+                                </p>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {startLabel} – {endLabel}
+                                </p>
+                              </div>
+
+                              {s.canEdit && (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    onClick={() => openOneOffScheduleEdit(s)}
+                                    className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => requestOneOffScheduleDelete(s)}
+                                    className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -1015,6 +1146,18 @@ const Classrooms = () => {
         />
       )}
 
+      {oneOffFormOpen && selectedClassroom && (
+        <OneOffScheduleFormModal
+          key={editingOneOffSchedule?.id ?? 'one-off-create'}
+          schedule={editingOneOffSchedule}
+          groups={allowedGroups}
+          saving={scheduleSaving}
+          error={scheduleError}
+          onSave={(data) => void handleOneOffScheduleSave(data)}
+          onClose={closeOneOffScheduleForm}
+        />
+      )}
+
       {/* Modal: Confirmar Eliminación */}
       {showDeleteConfirm && selectedClassroom && (
         <DangerConfirmDialog
@@ -1055,8 +1198,7 @@ const Classrooms = () => {
               <Trash2 className="text-red-600" size={24} />
             </div>
             <p className="text-sm text-slate-600">
-              ¿Eliminar este bloque ({scheduleDeleteTarget.startTime}–{scheduleDeleteTarget.endTime}
-              )?
+              ¿Eliminar este bloque ({scheduleDeleteTarget.label})?
             </p>
             <p className="text-xs text-slate-500 mt-1">Esta acción no se puede deshacer.</p>
           </div>

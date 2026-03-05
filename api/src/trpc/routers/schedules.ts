@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import { CreateScheduleDTOSchema } from '../../types/index.js';
+import {
+  CreateScheduleDTOSchema,
+  CreateOneOffScheduleDTOSchema,
+  UpdateOneOffScheduleDTOSchema,
+} from '../../types/index.js';
 import { ScheduleService } from '../../services/index.js';
 
 export const schedulesRouter = router({
@@ -42,6 +46,25 @@ export const schedulesRouter = router({
       return result.data;
     }),
 
+  createOneOff: protectedProcedure
+    .input(CreateOneOffScheduleDTOSchema.omit({ teacherId: true, recurrence: true }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await ScheduleService.createOneOffSchedule(
+        {
+          classroomId: input.classroomId,
+          groupId: input.groupId,
+          startAt: input.startAt,
+          endAt: input.endAt,
+        },
+        ctx.user
+      );
+
+      if (!result.ok) {
+        throw new TRPCError({ code: result.error.code, message: result.error.message });
+      }
+      return result.data;
+    }),
+
   update: protectedProcedure
     .input(
       z.object({
@@ -65,6 +88,25 @@ export const schedulesRouter = router({
           dayOfWeek: input.dayOfWeek,
           startTime: input.startTime,
           endTime: input.endTime,
+          groupId: input.groupId,
+        },
+        ctx.user
+      );
+
+      if (!result.ok) {
+        throw new TRPCError({ code: result.error.code, message: result.error.message });
+      }
+      return result.data;
+    }),
+
+  updateOneOff: protectedProcedure
+    .input(UpdateOneOffScheduleDTOSchema)
+    .mutation(async ({ input, ctx }) => {
+      const result = await ScheduleService.updateOneOffSchedule(
+        input.id,
+        {
+          startAt: input.startAt,
+          endAt: input.endAt,
           groupId: input.groupId,
         },
         ctx.user
