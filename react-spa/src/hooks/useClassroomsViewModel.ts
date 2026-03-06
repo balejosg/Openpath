@@ -1,29 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { Classroom } from '../types';
 import { isAdmin } from '../lib/auth';
+import { toClassroomsFromModels } from '../lib/classrooms';
+import { selectFilteredClassroomsFromModels } from '../lib/classroom-selectors';
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from './useAllowedGroups';
-import { useClassroomsQuery } from './useClassroomsList';
+import { useClassroomListModelsQuery } from './useClassroomsList';
 import { useListDetailSelection } from './useListDetailSelection';
-import { normalizeSearchTerm, useNormalizedSearch } from './useNormalizedSearch';
-
-export function filterClassroomsBySearch(
-  classrooms: Classroom[],
-  normalizedSearchQuery: string
-): Classroom[] {
-  if (!normalizedSearchQuery) {
-    return classrooms;
-  }
-
-  return classrooms.filter(
-    (room) =>
-      normalizeSearchTerm(room.name).includes(normalizedSearchQuery) ||
-      (room.activeGroup
-        ? normalizeSearchTerm(room.activeGroup).includes(normalizedSearchQuery)
-        : false)
-  );
-}
+import { useNormalizedSearch } from './useNormalizedSearch';
 
 export function useClassroomsViewModel() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,7 +21,7 @@ export function useClassroomsViewModel() {
 
   const normalizedSearchQuery = useNormalizedSearch(searchQuery);
   const admin = isAdmin();
-  const classroomsQuery = useClassroomsQuery();
+  const classroomsQuery = useClassroomListModelsQuery();
 
   const {
     groups: allowedGroups,
@@ -47,12 +31,12 @@ export function useClassroomsViewModel() {
     error: groupsQueryError,
     refetch: refetchGroups,
   } = useAllowedGroups();
-  const classrooms = classroomsQuery.data;
+  const classroomModels = classroomsQuery.data;
   const loadingError = classroomsQuery.error;
 
   const filteredClassrooms = useMemo(
-    () => filterClassroomsBySearch(classrooms, normalizedSearchQuery),
-    [classrooms, normalizedSearchQuery]
+    () => selectFilteredClassroomsFromModels(classroomModels, normalizedSearchQuery),
+    [classroomModels, normalizedSearchQuery]
   );
 
   const {
@@ -74,7 +58,11 @@ export function useClassroomsViewModel() {
     [allowedGroups]
   );
 
-  const refetchClassrooms = classroomsQuery.refetchClassrooms;
+  const refetchClassroomModels = classroomsQuery.refetchClassrooms;
+  const refetchClassrooms = useCallback(
+    async () => toClassroomsFromModels(await refetchClassroomModels()),
+    [refetchClassroomModels]
+  );
 
   const retryLoad = useCallback(() => {
     void refetchGroups();

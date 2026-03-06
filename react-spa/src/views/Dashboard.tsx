@@ -15,8 +15,8 @@ import {
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
 import { GroupLabel } from '../components/groups/GroupLabel';
-import { toActiveClassroomRows } from '../lib/classrooms';
-import { useClassroomControlStatesQuery } from '../hooks/useClassroomsList';
+import { selectActiveClassroomRowsFromModels } from '../lib/classroom-selectors';
+import { useClassroomListModelsQuery } from '../hooks/useClassroomsList';
 import { useIntervalRefetch, useRefetchOnFocus } from '../hooks/useLiveRefetch';
 
 interface StatsData {
@@ -139,7 +139,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
     loading: classroomsLoading,
     error: classroomsError,
     refetchClassrooms,
-  } = useClassroomControlStatesQuery({
+  } = useClassroomListModelsQuery({
     refetchIntervalMs: shouldPoll ? 30000 : false,
     refetchOnWindowFocus: shouldPoll,
   });
@@ -205,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
   }, [groups]);
 
   const activeGroupsByClassroom = useMemo(() => {
-    return toActiveClassroomRows(classrooms, groupById);
+    return selectActiveClassroomRowsFromModels(classrooms, groupById);
   }, [classrooms, groupById]);
 
   // Close dropdown when clicking outside

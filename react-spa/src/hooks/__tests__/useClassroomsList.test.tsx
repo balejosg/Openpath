@@ -1,7 +1,11 @@
 import { act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useClassroomControlStatesQuery, useClassroomsQuery } from '../useClassroomsList';
+import {
+  useClassroomControlStatesQuery,
+  useClassroomListModelsQuery,
+  useClassroomsQuery,
+} from '../useClassroomsList';
 import { renderHookWithQueryClient } from '../../test-utils/query';
 
 let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
@@ -109,5 +113,31 @@ describe('useClassroomsList', () => {
 
     expect(result.current.data[0]?.activeGroupId).toBeNull();
     expect(result.current.data[0]?.currentGroupId).toBe('group-default');
+  });
+
+  it('exposes canonical classroom list models for shared selectors', async () => {
+    const { result } = renderUseClassroomsQuery(() => useClassroomListModelsQuery());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual([
+      {
+        id: 'classroom-1',
+        name: 'Lab Norte',
+        displayName: 'Lab Norte',
+        defaultGroupId: 'group-default',
+        defaultGroupDisplayName: 'Plan Base',
+        machineCount: 12,
+        activeGroupId: 'group-manual',
+        currentGroupId: 'group-manual',
+        currentGroupDisplayName: 'Plan Manual',
+        currentGroupSource: 'manual',
+        status: 'operational',
+        onlineMachineCount: 10,
+        machines: [],
+      },
+    ]);
   });
 });

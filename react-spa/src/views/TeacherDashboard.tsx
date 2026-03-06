@@ -2,11 +2,14 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Folder, Loader2, ShieldCheck, ShieldOff, MonitorPlay, Calendar } from 'lucide-react';
 import { trpc } from '../lib/trpc';
 import { isTeacherGroupsFeatureEnabled } from '../lib/auth';
-import { toActiveClassroomRows } from '../lib/classrooms';
+import {
+  selectActiveClassroomRowsFromModels,
+  selectClassroomControlConfirmation,
+} from '../lib/classroom-selectors';
 import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from '../hooks/useAllowedGroups';
-import { useClassroomControlStatesQuery } from '../hooks/useClassroomsList';
-import { GroupLabel, resolveGroupDisplayName } from '../components/groups/GroupLabel';
+import { useClassroomListModelsQuery } from '../hooks/useClassroomsList';
+import { GroupLabel } from '../components/groups/GroupLabel';
 import { GroupSelect } from '../components/groups/GroupSelect';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
@@ -22,7 +25,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
     loading: classroomsLoading,
     error: classroomsError,
     refetchClassrooms,
-  } = useClassroomControlStatesQuery({
+  } = useClassroomListModelsQuery({
     refetchIntervalMs: shouldPoll ? 30000 : false,
     refetchOnWindowFocus: shouldPoll,
   });
@@ -48,7 +51,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
   } | null>(null);
 
   const activeGroupsByClassroom = useMemo(() => {
-    return toActiveClassroomRows(classrooms, groupById);
+    return selectActiveClassroomRowsFromModels(classrooms, groupById);
   }, [classrooms, groupById]);
 
   const activeClassrooms = activeGroupsByClassroom;
@@ -80,34 +83,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
   const handleTakeControl = () => {
     if (!selectedClassroomForControl) return;
 
-    const current = classrooms.find((c) => c.id === selectedClassroomForControl);
-    const currentActiveGroupId = current?.activeGroupId ?? null;
     const nextGroupId = selectedGroupForControl || null;
+    const confirmation = selectClassroomControlConfirmation({
+      classrooms,
+      groupById,
+      classroomId: selectedClassroomForControl,
+      nextGroupId,
+    });
 
-    if (currentActiveGroupId && currentActiveGroupId !== nextGroupId) {
-      const currentGroup = groupById.get(currentActiveGroupId);
-      const nextGroup = nextGroupId ? groupById.get(nextGroupId) : null;
-
-      const currentName = resolveGroupDisplayName({
-        groupId: currentActiveGroupId,
-        group: currentGroup ?? null,
-        source: 'manual',
-        revealUnknownId: false,
-      });
-      const nextName = resolveGroupDisplayName({
-        groupId: nextGroupId,
-        group: nextGroup ?? null,
-        source: 'manual',
-        noneLabel: 'Sin grupo',
-        revealUnknownId: true,
-      });
-
-      setControlConfirm({
-        classroomId: selectedClassroomForControl,
-        nextGroupId,
-        currentName,
-        nextName,
-      });
+    if (confirmation) {
+      setControlConfirm(confirmation);
       return;
     }
 

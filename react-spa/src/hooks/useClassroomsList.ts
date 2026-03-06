@@ -67,7 +67,20 @@ function useClassroomsListQuery<TResult>(
 }
 
 const EMPTY_CLASSROOMS: Classroom[] = [];
+const EMPTY_CLASSROOM_LIST_MODELS: readonly ClassroomListModel[] = [];
 const EMPTY_CLASSROOM_CONTROL_STATES: ClassroomControlState[] = [];
+
+export function useClassroomListModelsQuery(options?: {
+  refetchIntervalMs?: number | false;
+  refetchOnWindowFocus?: boolean;
+}): UseClassroomsListQueryResult<readonly ClassroomListModel[]> {
+  return useClassroomsListQuery({
+    select: (items) => items,
+    emptyValue: EMPTY_CLASSROOM_LIST_MODELS,
+    refetchIntervalMs: options?.refetchIntervalMs,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus,
+  });
+}
 
 export function useClassroomsQuery(options?: {
   refetchIntervalMs?: number | false;
