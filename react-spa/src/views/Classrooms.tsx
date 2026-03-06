@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React from 'react';
 import {
   Monitor,
   Plus,
@@ -13,17 +13,11 @@ import {
   Check,
 } from 'lucide-react';
 import type { Classroom } from '../types';
-import { trpc } from '../lib/trpc';
-import { isAdmin } from '../lib/auth';
-import { getAuthTokenForHeader } from '../lib/auth-storage';
-import { reportError } from '../lib/reportError';
-import { useAllowedGroups } from '../hooks/useAllowedGroups';
-import { useClassroomConfigActions } from '../hooks/useClassroomConfigActions';
+import type { AllowedGroupOption } from '../hooks/useAllowedGroups';
+import { useClassroomGroupControls } from '../hooks/useClassroomGroupControls';
+import { useClassroomMachines } from '../hooks/useClassroomMachines';
 import { useClassroomSchedules } from '../hooks/useClassroomSchedules';
-import { useScheduleBoundaryInvalidation } from '../hooks/useScheduleBoundaryInvalidation';
-import { useClipboard } from '../hooks/useClipboard';
-import { useListDetailSelection } from '../hooks/useListDetailSelection';
-import { normalizeSearchTerm, useNormalizedSearch } from '../hooks/useNormalizedSearch';
+import { useClassroomsViewModel } from '../hooks/useClassroomsViewModel';
 import WeeklyCalendar from '../components/WeeklyCalendar';
 import ScheduleFormModal from '../components/ScheduleFormModal';
 import OneOffScheduleFormModal from '../components/OneOffScheduleFormModal';
@@ -31,40 +25,11 @@ import {
   GroupLabel,
   inferGroupSource,
   getGroupSourcePhrase,
-  resolveClassroomGroupSelectState,
-  resolveGroupDisplayName,
   type GroupLike,
 } from '../components/groups/GroupLabel';
 import { GroupSelect } from '../components/groups/GroupSelect';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog, DangerConfirmDialog } from '../components/ui/ConfirmDialog';
-
-type ClassroomListItem = Awaited<ReturnType<typeof trpc.classrooms.list.query>>[number];
-
-function mapApiClassroom(item: ClassroomListItem): Classroom {
-  return {
-    id: item.id,
-    name: item.name,
-    displayName: item.displayName,
-    defaultGroupId: item.defaultGroupId ?? null,
-    computerCount: item.machineCount,
-    activeGroup: item.activeGroupId ?? null,
-    currentGroupId: item.currentGroupId ?? null,
-    currentGroupSource: item.currentGroupSource,
-    status: item.status,
-    onlineMachineCount: item.onlineMachineCount,
-    machines: item.machines,
-  };
-}
-
-function mapApiClassrooms(items: readonly ClassroomListItem[]): Classroom[] {
-  return items.map(mapApiClassroom);
-}
-
-interface GroupOption {
-  value: string;
-  label: string;
-}
 
 interface ClassroomListPaneProps {
   admin: boolean;
@@ -193,7 +158,7 @@ interface NewClassroomModalProps {
   newName: string;
   newGroup: string;
   newError: string;
-  groupOptions: GroupOption[];
+  groupOptions: AllowedGroupOption[];
   onClose: () => void;
   onNameChange: (value: string) => void;
   onGroupChange: (value: string) => void;
@@ -366,223 +331,45 @@ const EnrollClassroomModal: React.FC<EnrollClassroomModalProps> = ({
 };
 
 const Classrooms = () => {
-  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [activeGroupOverwriteConfirm, setActiveGroupOverwriteConfirm] = useState<{
-    classroomId: string;
-    currentGroupId: string;
-    nextGroupId: string | null;
-  } | null>(null);
-  const [activeGroupOverwriteLoading, setActiveGroupOverwriteLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const normalizedSearchQuery = useNormalizedSearch(searchQuery);
-  const admin = isAdmin();
-
   const {
-    groups: allowedGroups,
+    admin,
+    allowedGroups,
+    calendarGroupsForDisplay,
+    deleteDialog,
+    filteredClassrooms,
     groupById,
-    options: groupOptions,
-    isLoading: groupsLoading,
-    error: groupsQueryError,
-    refetch: refetchGroups,
-  } = useAllowedGroups();
-
-  const allowedGroupsError = groupsQueryError ? 'Error al cargar aulas' : null;
-  const isInitialLoading = loading || groupsLoading;
-  const loadError = error ?? allowedGroupsError;
-
-  const calendarGroupsForDisplay = useMemo(
-    () => allowedGroups.map((g) => ({ id: g.id, displayName: g.displayName || g.name })),
-    [allowedGroups]
-  );
-
-  // Enrollment state
-  const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [enrollToken, setEnrollToken] = useState<string | null>(null);
-  const [enrollPlatform, setEnrollPlatform] = useState<'linux' | 'windows'>('linux');
-  const [loadingToken, setLoadingToken] = useState(false);
+    groupOptions,
+    isInitialLoading,
+    loadError,
+    newModal,
+    refetchClassrooms,
+    retryLoad,
+    searchQuery,
+    selectedClassroom,
+    selectedClassroomId,
+    setSearchQuery,
+    setSelectedClassroomId,
+  } = useClassroomsViewModel();
 
   const {
-    copy: copyEnrollCommand,
-    isCopied: isEnrollCommandCopied,
-    clearCopied: clearEnrollCommandCopied,
-  } = useClipboard();
-
-  const closeEnrollModal = () => {
-    clearEnrollCommandCopied();
-    setShowEnrollModal(false);
-  };
-
-  // New classroom form state
-  const [newName, setNewName] = useState('');
-  const [newGroup, setNewGroup] = useState('');
-  const [newError, setNewError] = useState('');
-
-  // Mutation loading states
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  // Fetch classrooms from API
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const apiClassrooms = await trpc.classrooms.list.query();
-
-      const mappedClassrooms = mapApiClassrooms(apiClassrooms);
-      setClassrooms(mappedClassrooms);
-    } catch (err) {
-      reportError('Failed to fetch classrooms:', err);
-      setError('Error al cargar aulas');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchData();
-  }, []);
-
-  // Refetch when needed (without dependency on selectedClassroom)
-  const refetchClassrooms = useCallback(async () => {
-    try {
-      const apiClassrooms = await trpc.classrooms.list.query();
-      const mappedClassrooms = mapApiClassrooms(apiClassrooms);
-      setClassrooms(mappedClassrooms);
-      return mappedClassrooms;
-    } catch (err) {
-      reportError('Failed to refetch classrooms:', err);
-      return [];
-    }
-  }, []);
-
-  // Filter classrooms based on search
-  const filteredClassrooms = useMemo(() => {
-    if (!normalizedSearchQuery) return classrooms;
-    return classrooms.filter(
-      (room) =>
-        normalizeSearchTerm(room.name).includes(normalizedSearchQuery) ||
-        (room.activeGroup
-          ? normalizeSearchTerm(room.activeGroup).includes(normalizedSearchQuery)
-          : false)
-    );
-  }, [classrooms, normalizedSearchQuery]);
-
-  const { selectedItem: selectedClassroom, setSelectedId: setSelectedClassroomId } =
-    useListDetailSelection(filteredClassrooms);
-
-  const {
-    source: selectedClassroomSource,
-    activeGroupValue: activeGroupSelectValue,
-    defaultGroupValue: defaultGroupSelectValue,
-  } = useMemo(
-    () =>
-      resolveClassroomGroupSelectState({
-        classroom: selectedClassroom ?? null,
-        admin,
-      }),
-    [selectedClassroom, admin]
-  );
-
-  const handleCreateClassroom = async () => {
-    if (!newName.trim()) {
-      setNewError('El nombre del aula es obligatorio');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      setNewError('');
-      const created = await trpc.classrooms.create.mutate({
-        name: newName.trim(),
-        defaultGroupId: newGroup || undefined,
-      });
-      const updated = await refetchClassrooms();
-      const newClassroom = updated.find((c) => c.id === created.id);
-      if (newClassroom) {
-        setSelectedClassroomId(newClassroom.id);
-      }
-      setNewName('');
-      setNewGroup('');
-      setShowNewModal(false);
-    } catch (err) {
-      reportError('Failed to create classroom:', err);
-      setNewError('Error al crear aula');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteClassroom = async () => {
-    if (!selectedClassroom) return;
-
-    try {
-      setDeleting(true);
-      await trpc.classrooms.delete.mutate({ id: selectedClassroom.id });
-      const updated = await refetchClassrooms();
-      setSelectedClassroomId(updated[0]?.id ?? null);
-      setShowDeleteConfirm(false);
-    } catch (err) {
-      reportError('Failed to delete classroom:', err);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const { classroomConfigError, handleGroupChange, handleDefaultGroupChange } =
-    useClassroomConfigActions({
-      selectedClassroom,
-      refetchClassrooms,
-      setSelectedClassroom: (classroom) => setSelectedClassroomId(classroom?.id ?? null),
-    });
-
-  const openNewModal = () => {
-    setNewName('');
-    setNewGroup('');
-    setNewError('');
-    setShowNewModal(true);
-  };
-
-  const closeNewModal = () => {
-    if (saving) return;
-    setShowNewModal(false);
-  };
-
-  const resolveGroupName = useCallback(
-    (groupId: string | null) =>
-      resolveGroupDisplayName({
-        groupId,
-        group: groupId ? (groupById.get(groupId) ?? null) : null,
-        source: groupId ? 'manual' : 'none',
-        revealUnknownId: admin,
-        noneLabel: 'Sin grupo activo',
-      }),
-    [admin, groupById]
-  );
-
-  const requestActiveGroupChange = useCallback(
-    (next: string) => {
-      if (!selectedClassroom) return;
-
-      const currentActiveGroupId = selectedClassroom.activeGroup ?? null;
-      const nextGroupId = next || null;
-
-      if (currentActiveGroupId && currentActiveGroupId !== nextGroupId) {
-        setActiveGroupOverwriteConfirm({
-          classroomId: selectedClassroom.id,
-          currentGroupId: currentActiveGroupId,
-          nextGroupId,
-        });
-        return;
-      }
-
-      void handleGroupChange(next);
-    },
-    [selectedClassroom, handleGroupChange]
-  );
+    activeGroupOverwriteConfirm,
+    activeGroupOverwriteLoading,
+    activeGroupSelectValue,
+    classroomConfigError,
+    closeActiveGroupOverwriteConfirm,
+    confirmActiveGroupOverwrite,
+    defaultGroupSelectValue,
+    handleDefaultGroupChange,
+    requestActiveGroupChange,
+    resolveGroupName,
+    selectedClassroomSource,
+  } = useClassroomGroupControls({
+    admin,
+    selectedClassroom,
+    groupById,
+    refetchClassrooms,
+    setSelectedClassroom: (classroom) => setSelectedClassroomId(classroom?.id ?? null),
+  });
 
   const {
     schedules,
@@ -616,215 +403,22 @@ const Classrooms = () => {
     },
   });
 
-  const activeSchedule = useMemo(() => {
-    const now = new Date();
-
-    const activeOneOff =
-      oneOffSchedules.find((s) => {
-        const start = new Date(s.startAt);
-        const end = new Date(s.endAt);
-        if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return false;
-        return start.getTime() <= now.getTime() && end.getTime() > now.getTime();
-      }) ?? null;
-
-    if (activeOneOff) return activeOneOff;
-
-    const day = now.getDay();
-    if (day === 0 || day === 6) return null;
-    const currentTime = now.toTimeString().slice(0, 5);
-    return (
-      schedules.find(
-        (s) => s.dayOfWeek === day && s.startTime <= currentTime && s.endTime > currentTime
-      ) ?? null
-    );
-  }, [oneOffSchedules, schedules]);
-
-  const scheduleBoundarySources = useMemo(
-    () => [...schedules, ...oneOffSchedules],
-    [schedules, oneOffSchedules]
-  );
-
-  const sortedOneOffSchedules = useMemo(() => {
-    return [...oneOffSchedules].sort((a, b) => {
-      const aTime = new Date(a.startAt).getTime();
-      const bTime = new Date(b.startAt).getTime();
-      const aOk = Number.isFinite(aTime);
-      const bOk = Number.isFinite(bTime);
-      if (aOk && bOk) return aTime - bTime;
-      if (aOk) return -1;
-      if (bOk) return 1;
-      return 0;
-    });
-  }, [oneOffSchedules]);
-
-  const [exemptions, setExemptions] = useState<
-    {
-      id: string;
-      machineId: string;
-      machineHostname: string;
-      classroomId: string;
-      scheduleId: string;
-      createdBy: string | null;
-      createdAt: string | null;
-      expiresAt: string;
-    }[]
-  >([]);
-  const [loadingExemptions, setLoadingExemptions] = useState(false);
-  const [exemptionsError, setExemptionsError] = useState<string | null>(null);
-  const [exemptionMutating, setExemptionMutating] = useState<Partial<Record<string, boolean>>>({});
-
-  const fetchExemptions = useCallback(async (classroomId: string) => {
-    try {
-      setLoadingExemptions(true);
-      setExemptionsError(null);
-      const result = await trpc.classrooms.listExemptions.query({ classroomId });
-      setExemptions(result.exemptions);
-    } catch (err) {
-      reportError('Failed to fetch exemptions:', err);
-      setExemptionsError('Error al cargar exenciones');
-      setExemptions([]);
-    } finally {
-      setLoadingExemptions(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedClassroom) {
-      setExemptions([]);
-      setExemptionsError(null);
-      return;
-    }
-    void fetchExemptions(selectedClassroom.id);
-  }, [selectedClassroom?.id, fetchExemptions]);
-
-  const exemptionByMachineId = useMemo(() => {
-    const map = new Map<string, (typeof exemptions)[number]>();
-    exemptions.forEach((e) => map.set(e.machineId, e));
-    return map;
-  }, [exemptions]);
-
-  const setMachineExemptionMutating = useCallback((machineId: string, next: boolean) => {
-    setExemptionMutating((prev) => ({ ...prev, [machineId]: next }));
-  }, []);
-
-  const handleCreateExemption = useCallback(
-    async (machineId: string) => {
-      if (!selectedClassroom) return;
-      if (!activeSchedule) return;
-
-      setMachineExemptionMutating(machineId, true);
-      try {
-        setExemptionsError(null);
-        await trpc.classrooms.createExemption.mutate({
-          machineId,
-          classroomId: selectedClassroom.id,
-          scheduleId: activeSchedule.id,
-        });
-        await fetchExemptions(selectedClassroom.id);
-      } catch (err) {
-        reportError('Failed to create exemption:', err);
-        setExemptionsError('No se pudo liberar la maquina');
-      } finally {
-        setMachineExemptionMutating(machineId, false);
-      }
-    },
-    [selectedClassroom, activeSchedule, fetchExemptions, setMachineExemptionMutating]
-  );
-
-  const handleDeleteExemption = useCallback(
-    async (machineId: string) => {
-      if (!selectedClassroom) return;
-      const exemption = exemptionByMachineId.get(machineId);
-      if (!exemption) return;
-
-      setMachineExemptionMutating(machineId, true);
-      try {
-        setExemptionsError(null);
-        await trpc.classrooms.deleteExemption.mutate({ id: exemption.id });
-        await fetchExemptions(selectedClassroom.id);
-      } catch (err) {
-        reportError('Failed to delete exemption:', err);
-        setExemptionsError('No se pudo restaurar la restriccion');
-      } finally {
-        setMachineExemptionMutating(machineId, false);
-      }
-    },
-    [selectedClassroom, exemptionByMachineId, fetchExemptions, setMachineExemptionMutating]
-  );
-
-  useScheduleBoundaryInvalidation({
-    schedules: scheduleBoundarySources,
-    enabled: !!selectedClassroom && !selectedClassroom.activeGroup,
-    onBoundary: () => {
-      void refetchClassrooms();
-      if (selectedClassroom) {
-        void fetchExemptions(selectedClassroom.id);
-      }
-    },
+  const {
+    activeSchedule,
+    exemptionByMachineId,
+    exemptionMutating,
+    exemptionsError,
+    handleCreateExemption,
+    handleDeleteExemption,
+    loadingExemptions,
+    sortedOneOffSchedules,
+    enrollModal,
+  } = useClassroomMachines({
+    selectedClassroom,
+    schedules,
+    oneOffSchedules,
+    refetchClassrooms,
   });
-
-  const openEnrollModal = async () => {
-    setLoadingToken(true);
-    try {
-      if (!selectedClassroom) {
-        setError('Selecciona un aula primero');
-        return;
-      }
-
-      const authToken = getAuthTokenForHeader();
-      const response = await fetch(
-        `/api/enroll/${encodeURIComponent(selectedClassroom.id)}/ticket`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${String(response.status)}`);
-      }
-
-      const data = (await response.json()) as {
-        success: boolean;
-        enrollmentToken?: string;
-      };
-
-      if (!data.success || !data.enrollmentToken) {
-        throw new Error('No enrollment token received');
-      }
-
-      setEnrollToken(data.enrollmentToken);
-      setEnrollPlatform('linux');
-      setShowEnrollModal(true);
-    } catch (err: unknown) {
-      reportError('Failed to get enrollment ticket:', err);
-      setError('No se pudo generar el comando de instalacion');
-    } finally {
-      setLoadingToken(false);
-    }
-  };
-
-  const apiUrl = window.location.origin;
-  const linuxEnrollCommand =
-    selectedClassroom && enrollToken
-      ? `curl -fsSL -H 'Authorization: Bearer ${enrollToken}' '${apiUrl}/api/enroll/${encodeURIComponent(selectedClassroom.id)}' | sudo bash`
-      : '';
-  const windowsEnrollScriptUrl =
-    selectedClassroom && enrollToken
-      ? `${apiUrl}/api/enroll/${encodeURIComponent(selectedClassroom.id)}/windows.ps1`
-      : '';
-  const windowsEnrollCommand =
-    selectedClassroom && enrollToken
-      ? [
-          'powershell -NoProfile -ExecutionPolicy Bypass -Command',
-          `"$t='${enrollToken}'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;`,
-          `irm -Headers @{Authorization=('Bearer '+$t)} '${windowsEnrollScriptUrl}' | iex"`,
-        ].join(' ')
-      : '';
-  const enrollCommand = enrollPlatform === 'windows' ? windowsEnrollCommand : linuxEnrollCommand;
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col md:flex-row gap-6">
@@ -832,17 +426,14 @@ const Classrooms = () => {
         admin={admin}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onOpenNewModal={openNewModal}
+        onOpenNewModal={newModal.open}
         isInitialLoading={isInitialLoading}
         loadError={loadError}
         filteredClassrooms={filteredClassrooms}
-        selectedClassroomId={selectedClassroom?.id ?? null}
-        onSelectClassroom={setSelectedClassroomId}
+        selectedClassroomId={selectedClassroomId}
+        onSelectClassroom={(id) => setSelectedClassroomId(id)}
         groupById={groupById}
-        onRetry={() => {
-          void refetchGroups();
-          void fetchData();
-        }}
+        onRetry={retryLoad}
       />
 
       {/* Detail Column */}
@@ -857,7 +448,7 @@ const Classrooms = () => {
             </p>
             {admin && (
               <button
-                onClick={openNewModal}
+                onClick={newModal.open}
                 className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm inline-flex items-center gap-2 transition-colors shadow-sm font-medium"
               >
                 <Plus size={16} /> Crear aula
@@ -878,7 +469,7 @@ const Classrooms = () => {
                 <div className="flex gap-2">
                   {admin && (
                     <button
-                      onClick={() => setShowDeleteConfirm(true)}
+                      onClick={deleteDialog.open}
                       className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
                       title="Eliminar Aula"
                     >
@@ -1013,11 +604,11 @@ const Classrooms = () => {
                 <div className="flex items-center gap-2">
                   {admin && (
                     <button
-                      onClick={() => void openEnrollModal()}
-                      disabled={loadingToken}
+                      onClick={() => void enrollModal.open()}
+                      disabled={enrollModal.loadingToken}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors shadow-sm font-medium disabled:opacity-50"
                     >
-                      {loadingToken ? (
+                      {enrollModal.loadingToken ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
                         <Download size={16} />
@@ -1269,23 +860,16 @@ const Classrooms = () => {
       </div>
 
       <NewClassroomModal
-        isOpen={showNewModal}
-        saving={saving}
-        newName={newName}
-        newGroup={newGroup}
-        newError={newError}
+        isOpen={newModal.isOpen}
+        saving={newModal.saving}
+        newName={newModal.newName}
+        newGroup={newModal.newGroup}
+        newError={newModal.newError}
         groupOptions={groupOptions}
-        onClose={closeNewModal}
-        onNameChange={(value) => {
-          setNewName(value);
-          if (newError) {
-            setNewError('');
-          }
-        }}
-        onGroupChange={setNewGroup}
-        onCreate={() => {
-          void handleCreateClassroom();
-        }}
+        onClose={newModal.close}
+        onNameChange={newModal.setName}
+        onGroupChange={newModal.setGroup}
+        onCreate={() => void newModal.create()}
       />
 
       <ConfirmDialog
@@ -1294,23 +878,8 @@ const Classrooms = () => {
         confirmLabel="Reemplazar"
         cancelLabel="Cancelar"
         isLoading={activeGroupOverwriteLoading}
-        onClose={() => setActiveGroupOverwriteConfirm(null)}
-        onConfirm={async () => {
-          if (!activeGroupOverwriteConfirm) return;
-
-          if (selectedClassroom?.id !== activeGroupOverwriteConfirm.classroomId) {
-            setActiveGroupOverwriteConfirm(null);
-            return;
-          }
-
-          setActiveGroupOverwriteLoading(true);
-          try {
-            await handleGroupChange(activeGroupOverwriteConfirm.nextGroupId);
-            setActiveGroupOverwriteConfirm(null);
-          } finally {
-            setActiveGroupOverwriteLoading(false);
-          }
-        }}
+        onClose={closeActiveGroupOverwriteConfirm}
+        onConfirm={() => void confirmActiveGroupOverwrite()}
       >
         <p className="text-sm text-slate-600">
           Este aula ya tiene un grupo aplicado manualmente (
@@ -1351,15 +920,15 @@ const Classrooms = () => {
       )}
 
       {/* Modal: Confirmar Eliminación */}
-      {showDeleteConfirm && selectedClassroom && (
+      {deleteDialog.isOpen && selectedClassroom && (
         <DangerConfirmDialog
           isOpen
           title="Eliminar Aula"
           confirmLabel="Eliminar"
           cancelLabel="Cancelar"
-          isLoading={deleting}
-          onClose={() => setShowDeleteConfirm(false)}
-          onConfirm={() => void handleDeleteClassroom()}
+          isLoading={deleteDialog.deleting}
+          onClose={deleteDialog.close}
+          onConfirm={() => void deleteDialog.confirm()}
         >
           <div className="text-center">
             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1398,17 +967,15 @@ const Classrooms = () => {
       )}
 
       <EnrollClassroomModal
-        isOpen={showEnrollModal}
-        enrollToken={enrollToken}
+        isOpen={enrollModal.isOpen}
+        enrollToken={enrollModal.enrollToken}
         selectedClassroom={selectedClassroom}
-        enrollPlatform={enrollPlatform}
-        enrollCommand={enrollCommand}
-        onClose={closeEnrollModal}
-        onSelectPlatform={setEnrollPlatform}
-        onCopy={() => {
-          void copyEnrollCommand(enrollCommand, 'enroll-command');
-        }}
-        isCopied={isEnrollCommandCopied('enroll-command')}
+        enrollPlatform={enrollModal.enrollPlatform}
+        enrollCommand={enrollModal.enrollCommand}
+        onClose={enrollModal.close}
+        onSelectPlatform={enrollModal.selectPlatform}
+        onCopy={enrollModal.copy}
+        isCopied={enrollModal.isCopied}
       />
     </div>
   );
