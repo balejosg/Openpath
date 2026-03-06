@@ -1,5 +1,5 @@
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
-import { useEffect, useState, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -18,31 +18,6 @@ export function QueryProvider({ children }: Props) {
         },
       })
   );
-
-  // Extend the default focus listener to also refetch on window focus.
-  // React Query's default focus detection relies on visibilitychange only.
-  useEffect(() => {
-    focusManager.setEventListener((handleFocus) => {
-      const onVisibilityChange = () => {
-        const focused = document.visibilityState === 'visible';
-        console.warn(`[QueryProvider] visibilitychange → handleFocus(${focused})`);
-        handleFocus(focused);
-      };
-
-      const onFocus = () => {
-        console.warn('[QueryProvider] window focus → handleFocus(true)');
-        console.trace('[QueryProvider] focus trace');
-        handleFocus(true);
-      };
-
-      window.addEventListener('visibilitychange', onVisibilityChange, false);
-      window.addEventListener('focus', onFocus, false);
-      return () => {
-        window.removeEventListener('visibilitychange', onVisibilityChange);
-        window.removeEventListener('focus', onFocus);
-      };
-    });
-  }, []);
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

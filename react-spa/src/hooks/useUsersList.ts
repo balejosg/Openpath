@@ -95,7 +95,7 @@ export function useUsersList(): {
     const len = query.data?.length;
     const ids = query.data?.map((u) => u.id).join(',') ?? '(undefined)';
     if (prevLenRef.current !== len) {
-      console.warn(
+      console.error(
         `[useUsersList] data changed: ${prevLenRef.current} → ${len} | status=${query.status} fetchStatus=${query.fetchStatus} | ids=${ids}`
       );
       console.trace('[useUsersList] data change trace');
