@@ -9,7 +9,12 @@ import { useClassroomsViewModel } from '../hooks/useClassroomsViewModel';
 import ClassroomDetailPane from '../components/classrooms/ClassroomDetailPane';
 import ScheduleFormModal from '../components/ScheduleFormModal';
 import OneOffScheduleFormModal from '../components/OneOffScheduleFormModal';
-import { GroupLabel, inferGroupSource, type GroupLike } from '../components/groups/GroupLabel';
+import {
+  GroupLabel,
+  inferGroupSource,
+  resolveGroupLike,
+  type GroupLike,
+} from '../components/groups/GroupLabel';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog, DangerConfirmDialog } from '../components/ui/ConfirmDialog';
 
@@ -90,14 +95,11 @@ const ClassroomListPane: React.FC<ClassroomListPaneProps> = ({
               currentGroupId: room.currentGroupId,
               defaultGroupId: room.defaultGroupId,
             });
-            const currentGroup =
-              room.currentGroupId && room.currentGroupDisplayName
-                ? {
-                    id: room.currentGroupId,
-                    name: room.currentGroupDisplayName,
-                    displayName: room.currentGroupDisplayName,
-                  }
-                : null;
+            const currentGroup = resolveGroupLike({
+              groupId: room.currentGroupId,
+              groupById,
+              displayName: room.currentGroupDisplayName,
+            });
 
             return (
               <div
@@ -127,11 +129,7 @@ const ClassroomListPane: React.FC<ClassroomListPaneProps> = ({
                   </span>
                   <GroupLabel
                     groupId={room.currentGroupId}
-                    group={
-                      room.currentGroupId
-                        ? (groupById.get(room.currentGroupId) ?? currentGroup)
-                        : null
-                    }
+                    group={room.currentGroupId ? currentGroup : null}
                     source={inferredSource}
                     revealUnknownId={admin}
                     showSourceTag={inferredSource !== 'none'}

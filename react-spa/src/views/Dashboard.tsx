@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
-import { GroupLabel, inferGroupSource } from '../components/groups/GroupLabel';
+import { GroupLabel, inferGroupSource, resolveGroupLike } from '../components/groups/GroupLabel';
 import { useIntervalRefetch, useRefetchOnFocus } from '../hooks/useLiveRefetch';
 
 interface StatsData {
@@ -252,15 +252,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
         if (!groupId) return null;
 
         const classroomName = c.displayName || c.name;
-        const group =
-          groupById.get(groupId) ??
-          (c.currentGroupDisplayName
-            ? {
-                id: groupId,
-                name: c.currentGroupDisplayName,
-                displayName: c.currentGroupDisplayName,
-              }
-            : null);
+        const group = resolveGroupLike({
+          groupId,
+          groupById,
+          displayName: c.currentGroupDisplayName,
+        });
 
         const source = inferGroupSource({
           currentGroupSource: c.currentGroupSource,

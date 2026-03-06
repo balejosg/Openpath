@@ -9,6 +9,7 @@ import {
   GroupLabel,
   inferGroupSource,
   resolveGroupDisplayName,
+  resolveGroupLike,
 } from '../components/groups/GroupLabel';
 import { GroupSelect } from '../components/groups/GroupSelect';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -103,15 +104,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
         const groupId = c.currentGroupId;
         if (!groupId) return null;
 
-        const group =
-          groupById.get(groupId) ??
-          (c.currentGroupDisplayName
-            ? {
-                id: groupId,
-                name: c.currentGroupDisplayName,
-                displayName: c.currentGroupDisplayName,
-              }
-            : null);
+        const group = resolveGroupLike({
+          groupId,
+          groupById,
+          displayName: c.currentGroupDisplayName,
+        });
         const classroomName = c.displayName || c.name;
 
         const source = inferGroupSource({

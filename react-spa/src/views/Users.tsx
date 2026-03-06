@@ -145,7 +145,6 @@ const UsersView = () => {
   const rangeEnd = visibleCount === 0 ? 0 : visibleCount;
   const showInitialLoading = loading && !hasData;
 
-
   return (
     <div className="space-y-6">
       {/* Toolbar */}

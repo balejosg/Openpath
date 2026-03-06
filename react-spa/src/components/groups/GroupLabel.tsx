@@ -11,6 +11,30 @@ export interface GroupLike {
   status?: string | null;
 }
 
+export function toDisplayOnlyGroup(
+  groupId: string | null | undefined,
+  displayName?: string | null
+): GroupLike | null {
+  if (!groupId || !displayName) return null;
+
+  return {
+    id: groupId,
+    name: displayName,
+    displayName,
+  };
+}
+
+export function resolveGroupLike(params: {
+  groupId: string | null | undefined;
+  groupById: ReadonlyMap<string, GroupLike>;
+  displayName?: string | null;
+}): GroupLike | null {
+  const { groupId, groupById, displayName } = params;
+  if (!groupId) return null;
+
+  return groupById.get(groupId) ?? toDisplayOnlyGroup(groupId, displayName);
+}
+
 export function isGroupEnabled(group: GroupLike): boolean {
   return isGroupEnabledLike(group);
 }
@@ -111,6 +135,25 @@ export function resolveGroupDisplayName(params: {
   if (source === 'schedule') return 'Reservado por otro profesor';
 
   return 'Grupo no disponible';
+}
+
+export function resolveGroupDisplayNameFromLookup(params: {
+  groupId: string | null | undefined;
+  groupById: ReadonlyMap<string, GroupLike>;
+  displayName?: string | null;
+  source: CurrentGroupSource;
+  revealUnknownId?: boolean;
+  noneLabel?: string;
+}): string {
+  const { groupId, groupById, displayName, source, revealUnknownId, noneLabel } = params;
+
+  return resolveGroupDisplayName({
+    groupId,
+    group: resolveGroupLike({ groupId, groupById, displayName }),
+    source,
+    revealUnknownId,
+    noneLabel,
+  });
 }
 
 export function getGroupBadgeVariant(source: CurrentGroupSource, enabled: boolean): string {

@@ -8,7 +8,13 @@ import type {
   ScheduleWithPermissions,
 } from '../../types';
 import WeeklyCalendar from '../WeeklyCalendar';
-import { GroupLabel, getGroupSourcePhrase, type GroupLike } from '../groups/GroupLabel';
+import {
+  GroupLabel,
+  getGroupSourcePhrase,
+  resolveGroupDisplayNameFromLookup,
+  resolveGroupLike,
+  type GroupLike,
+} from '../groups/GroupLabel';
 import { GroupSelect } from '../groups/GroupSelect';
 
 interface CalendarGroupDisplay {
@@ -88,18 +94,6 @@ function renderClassroomStatus(classroom: Classroom) {
       <div className="w-2 h-2 bg-red-500 rounded-full"></div> Sin conexión
     </span>
   );
-}
-
-function toSyntheticGroup(
-  groupId: string | null | undefined,
-  displayName?: string | null
-): GroupLike | null {
-  if (!groupId || !displayName) return null;
-  return {
-    id: groupId,
-    name: displayName,
-    displayName,
-  };
 }
 
 export default function ClassroomDetailPane({
@@ -196,7 +190,12 @@ export default function ClassroomDetailPane({
               inactiveBehavior="hide"
               unknownValueLabel={
                 !admin && activeGroupSelectValue && !groupById.get(activeGroupSelectValue)
-                  ? (selectedClassroom.currentGroupDisplayName ?? 'Aplicado por otro profesor')
+                  ? resolveGroupDisplayNameFromLookup({
+                      groupId: activeGroupSelectValue,
+                      groupById,
+                      displayName: selectedClassroom.currentGroupDisplayName,
+                      source: 'manual',
+                    })
                   : undefined
               }
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:border-blue-500 outline-none shadow-sm"
@@ -208,15 +207,11 @@ export default function ClassroomDetailPane({
                   variant="text"
                   className="font-semibold text-slate-700"
                   groupId={selectedClassroom.currentGroupId}
-                  group={
-                    selectedClassroom.currentGroupId
-                      ? (groupById.get(selectedClassroom.currentGroupId) ??
-                        toSyntheticGroup(
-                          selectedClassroom.currentGroupId,
-                          selectedClassroom.currentGroupDisplayName
-                        ))
-                      : null
-                  }
+                  group={resolveGroupLike({
+                    groupId: selectedClassroom.currentGroupId,
+                    groupById,
+                    displayName: selectedClassroom.currentGroupDisplayName,
+                  })}
                   source={selectedClassroomSource}
                   revealUnknownId={admin}
                   showSourceTag={false}
@@ -247,7 +242,12 @@ export default function ClassroomDetailPane({
               inactiveBehavior="disable"
               unknownValueLabel={
                 !admin && defaultGroupSelectValue && !groupById.get(defaultGroupSelectValue)
-                  ? (selectedClassroom.defaultGroupDisplayName ?? 'Asignado por admin')
+                  ? resolveGroupDisplayNameFromLookup({
+                      groupId: defaultGroupSelectValue,
+                      groupById,
+                      displayName: selectedClassroom.defaultGroupDisplayName,
+                      source: 'default',
+                    })
                   : undefined
               }
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:border-blue-500 outline-none shadow-sm disabled:bg-slate-50 disabled:text-slate-500"
@@ -466,9 +466,11 @@ export default function ClassroomDetailPane({
               ) : (
                 <div className="space-y-2">
                   {sortedOneOffSchedules.map((schedule) => {
-                    const group =
-                      groupById.get(schedule.groupId) ??
-                      toSyntheticGroup(schedule.groupId, schedule.groupDisplayName);
+                    const group = resolveGroupLike({
+                      groupId: schedule.groupId,
+                      groupById,
+                      displayName: schedule.groupDisplayName,
+                    });
                     const groupName = group
                       ? (group.displayName ?? group.name)
                       : schedule.canEdit || admin

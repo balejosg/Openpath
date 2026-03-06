@@ -4,6 +4,9 @@ import {
   GroupLabel,
   resolveClassroomGroupSelectState,
   resolveGroupDisplayName,
+  resolveGroupDisplayNameFromLookup,
+  resolveGroupLike,
+  toDisplayOnlyGroup,
 } from '../GroupLabel';
 
 describe('GroupLabel', () => {
@@ -34,6 +37,41 @@ describe('resolveGroupDisplayName', () => {
   it('uses noneLabel when groupId is empty', () => {
     const name = resolveGroupDisplayName({ groupId: '', source: 'none', noneLabel: 'Sin grupo' });
     expect(name).toBe('Sin grupo');
+  });
+});
+
+describe('display-only group helpers', () => {
+  it('creates a synthetic group when only display metadata is available', () => {
+    expect(toDisplayOnlyGroup('hidden-group', 'Plan Visible')).toEqual({
+      id: 'hidden-group',
+      name: 'Plan Visible',
+      displayName: 'Plan Visible',
+    });
+  });
+
+  it('resolves a group from lookup metadata when the map does not contain it', () => {
+    const group = resolveGroupLike({
+      groupId: 'hidden-group',
+      groupById: new Map(),
+      displayName: 'Plan Visible',
+    });
+
+    expect(group).toEqual({
+      id: 'hidden-group',
+      name: 'Plan Visible',
+      displayName: 'Plan Visible',
+    });
+  });
+
+  it('resolves display text from lookup metadata before using fallback copy', () => {
+    const name = resolveGroupDisplayNameFromLookup({
+      groupId: 'hidden-group',
+      groupById: new Map(),
+      displayName: 'Plan Visible',
+      source: 'schedule',
+    });
+
+    expect(name).toBe('Plan Visible');
   });
 });
 

@@ -3,6 +3,7 @@ import type { Classroom } from '../types';
 import {
   resolveClassroomGroupSelectState,
   resolveGroupDisplayName,
+  resolveGroupLike,
   type GroupLike,
 } from '../components/groups/GroupLabel';
 import { useClassroomConfigActions } from './useClassroomConfigActions';
@@ -46,17 +47,16 @@ export function useClassroomGroupControls(params: {
     (groupId: string | null) =>
       resolveGroupDisplayName({
         groupId,
-        group: groupId
-          ? (groupById.get(groupId) ??
-            (selectedClassroom?.currentGroupId === groupId &&
-            selectedClassroom.currentGroupDisplayName
-              ? {
-                  id: groupId,
-                  name: selectedClassroom.currentGroupDisplayName,
-                  displayName: selectedClassroom.currentGroupDisplayName,
-                }
-              : null))
-          : null,
+        group:
+          selectedClassroom?.currentGroupId === groupId
+            ? resolveGroupLike({
+                groupId,
+                groupById,
+                displayName: selectedClassroom.currentGroupDisplayName,
+              })
+            : groupId
+              ? (groupById.get(groupId) ?? null)
+              : null,
         source: groupId ? 'manual' : 'none',
         revealUnknownId: admin,
         noneLabel: 'Sin grupo activo',
