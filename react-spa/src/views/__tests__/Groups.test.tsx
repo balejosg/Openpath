@@ -1,29 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import Groups from '../Groups';
+import { renderWithQueryClient } from '../../test-utils/query';
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderWithQueryClient>['queryClient'] | null = null;
 
 function renderGroups() {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-      mutations: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <Groups onNavigateToRules={vi.fn()} />
-    </QueryClientProvider>
-  );
+  const rendered = renderWithQueryClient(<Groups onNavigateToRules={vi.fn()} />);
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 afterEach(() => {

@@ -1,30 +1,14 @@
-import { act, renderHook } from '@testing-library/react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useUsersActions } from '../useUsersActions';
+import { renderHookWithQueryClient } from '../../test-utils/query';
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
 
 function renderUseUsersActions() {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-      mutations: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return renderHook(() => useUsersActions(), {
-    wrapper: ({ children }) => {
-      if (!queryClient) throw new Error('queryClient not initialized');
-      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-    },
-  });
+  const rendered = renderHookWithQueryClient(() => useUsersActions());
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 const mockUsersCreateMutate = vi.fn();

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { waitFor } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import { useAllowedGroups } from '../useAllowedGroups';
+import { renderHookWithQueryClient } from '../../test-utils/query';
 
 focusManager.setEventListener((handleFocus) => {
   const onVisibilityChange = () => {
@@ -19,7 +20,7 @@ focusManager.setEventListener((handleFocus) => {
   };
 });
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
 
 const { mockListGroups } = vi.hoisted(() => ({
   mockListGroups: vi.fn(),
@@ -36,23 +37,9 @@ vi.mock('../../lib/trpc', () => ({
 }));
 
 function renderUseAllowedGroups() {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return renderHook(() => useAllowedGroups(), {
-    wrapper: ({ children }) => {
-      if (!queryClient) {
-        throw new Error('queryClient not initialized');
-      }
-      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-    },
-  });
+  const rendered = renderHookWithQueryClient(() => useAllowedGroups());
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 afterEach(() => {

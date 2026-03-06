@@ -1,25 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { screen, waitFor } from '@testing-library/react';
 import TeacherDashboard from '../TeacherDashboard';
+import { renderWithQueryClient } from '../../test-utils/query';
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderWithQueryClient>['queryClient'] | null = null;
 
 function renderTeacherDashboard() {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <TeacherDashboard />
-    </QueryClientProvider>
-  );
+  const rendered = renderWithQueryClient(<TeacherDashboard />);
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 afterEach(() => {

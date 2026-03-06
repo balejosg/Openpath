@@ -1,10 +1,10 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useClassroomControlStatesQuery, useClassroomsQuery } from '../useClassroomsList';
+import { renderHookWithQueryClient } from '../../test-utils/query';
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
 
 const { mockClassroomsList } = vi.hoisted(() => ({
   mockClassroomsList: vi.fn(),
@@ -37,24 +37,9 @@ const baseClassroom = {
 };
 
 function renderUseClassroomsQuery<T>(hook: () => T) {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return renderHook(hook, {
-    wrapper: ({ children }) => {
-      if (!queryClient) {
-        throw new Error('queryClient not initialized');
-      }
-
-      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-    },
-  });
+  const rendered = renderHookWithQueryClient(hook);
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 describe('useClassroomsList', () => {

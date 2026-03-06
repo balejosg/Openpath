@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import DomainRequests from '../DomainRequests';
+import { renderWithQueryClient } from '../../test-utils/query';
 
 focusManager.setEventListener((handleFocus) => {
   const onVisibilityChange = () => {
@@ -19,27 +20,12 @@ focusManager.setEventListener((handleFocus) => {
   };
 });
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderWithQueryClient>['queryClient'] | null = null;
 
 function renderDomainRequests() {
-  queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        gcTime: 0,
-      },
-      mutations: {
-        retry: false,
-        gcTime: 0,
-      },
-    },
-  });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <DomainRequests />
-    </QueryClientProvider>
-  );
+  const rendered = renderWithQueryClient(<DomainRequests />);
+  queryClient = rendered.queryClient;
+  return rendered;
 }
 
 afterEach(() => {

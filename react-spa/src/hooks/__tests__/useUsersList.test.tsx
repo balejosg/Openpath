@@ -1,10 +1,10 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { UserRole } from '../../types';
 import { useUsersList } from '../useUsersList';
+import { renderHookWithQueryClient } from '../../test-utils/query';
 
-let queryClient: QueryClient | null = null;
+let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
 
 const { mockUsersList } = vi.hoisted(() => ({
   mockUsersList: vi.fn(),
@@ -30,21 +30,9 @@ describe('useUsersList', () => {
   });
 
   function renderUseUsersList() {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          gcTime: 0,
-        },
-      },
-    });
-
-    return renderHook(() => useUsersList(), {
-      wrapper: ({ children }) => {
-        if (!queryClient) throw new Error('queryClient not initialized');
-        return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-      },
-    });
+    const rendered = renderHookWithQueryClient(() => useUsersList());
+    queryClient = rendered.queryClient;
+    return rendered;
   }
 
   it('fetches users on mount and maps roles/status', async () => {
