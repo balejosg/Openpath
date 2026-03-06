@@ -4,16 +4,140 @@
  * Tests domain requests, approvals, rejections, and whitelist management.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { DomainRequestsPage, GroupsPage } from './fixtures/page-objects';
 import {
   loginAsAdmin,
   loginAsTeacher,
   createTestDomain,
   waitForNetworkIdle,
-  waitForToast,
-  waitForDashboard,
 } from './fixtures/test-utils';
+
+const TEST_GROUP_ID = 'test-e2e-group';
+const TEST_REQUESTER_EMAIL = 'student@openpath.local';
+
+interface TrpcBrowserResponse<T> {
+  ok: boolean;
+  status: number;
+  body: {
+    result?: {
+      data?: T;
+    };
+    error?: {
+      message?: string;
+    };
+  };
+}
+
+interface DomainRequestRecord {
+  id: string;
+  domain: string;
+  groupId: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+async function callTrpcFromBrowser<T>(
+  page: Page,
+  params: {
+    procedure: string;
+    input?: unknown;
+    method?: 'GET' | 'POST';
+    requiresAuth?: boolean;
+  }
+): Promise<T> {
+  const response = await page.evaluate(
+    async ({ procedure, input, method, requiresAuth }): Promise<TrpcBrowserResponse<T>> => {
+      const token = requiresAuth ? window.localStorage.getItem('openpath_access_token') : null;
+
+      if (requiresAuth && !token) {
+        return {
+          ok: false,
+          status: 401,
+          body: { error: { message: 'Missing auth token in browser storage' } },
+        };
+      }
+
+      const query =
+        method === 'GET' && input !== undefined
+          ? `?input=${encodeURIComponent(JSON.stringify(input))}`
+          : '';
+      const response = await fetch(`/trpc/${procedure}${query}`, {
+        method,
+        headers: {
+          ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: method === 'POST' ? JSON.stringify(input ?? {}) : undefined,
+        credentials: 'include',
+      });
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        body: (await response.json()) as TrpcBrowserResponse<T>['body'],
+      };
+    },
+    {
+      procedure: params.procedure,
+      input: params.input,
+      method: params.method ?? 'POST',
+      requiresAuth: params.requiresAuth ?? false,
+    }
+  );
+
+  if (!response.ok || response.body.error || response.body.result?.data === undefined) {
+    throw new Error(
+      `tRPC ${params.procedure} failed with status ${String(response.status)}: ${response.body.error?.message ?? 'Missing result data'}`
+    );
+  }
+
+  return response.body.result.data;
+}
+
+async function createPendingDomainRequest(
+  page: Page,
+  overrides: Partial<{
+    domain: string;
+    reason: string;
+    requesterEmail: string;
+    groupId: string;
+    machineHostname: string;
+  }> = {}
+): Promise<DomainRequestRecord> {
+  const seed = createTestDomain();
+
+  return await callTrpcFromBrowser<DomainRequestRecord>(page, {
+    procedure: 'requests.create',
+    input: {
+      domain: overrides.domain ?? seed.domain,
+      reason: overrides.reason ?? seed.reason,
+      requesterEmail: overrides.requesterEmail ?? TEST_REQUESTER_EMAIL,
+      groupId: overrides.groupId ?? TEST_GROUP_ID,
+      machineHostname: overrides.machineHostname ?? 'e2e-workstation-01',
+      source: 'manual',
+    },
+  });
+}
+
+async function approveDomainRequestViaApi(page: Page, requestId: string): Promise<void> {
+  await callTrpcFromBrowser(page, {
+    procedure: 'requests.approve',
+    input: { id: requestId },
+    requiresAuth: true,
+  });
+}
+
+async function deleteDomainRequestViaApi(page: Page, requestId: string): Promise<void> {
+  await callTrpcFromBrowser(page, {
+    procedure: 'requests.delete',
+    input: { id: requestId },
+    requiresAuth: true,
+  });
+}
+
+function getRequestRow(page: Page, domain: string) {
+  return page.locator('[data-testid="request-row"]').filter({ hasText: domain }).first();
+}
 
 test.describe('Domain Request Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -22,113 +146,77 @@ test.describe('Domain Request Management', () => {
   });
 
   test('should display pending domain requests @domains', async ({ page }) => {
-    const requestsPage = new DomainRequestsPage(page);
-    await requestsPage.goto();
+    const request = await createPendingDomainRequest(page);
+    try {
+      const requestsPage = new DomainRequestsPage(page);
+      await requestsPage.goto();
 
-    // Check if the domain requests page exists by looking for any heading
-    const hasRequestsPage = await page
-      .getByRole('heading', { name: /Solicitudes|Control de Dominios|Dominios/i })
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-
-    if (!hasRequestsPage) {
-      // Domain requests page not implemented yet - check we're still on dashboard
-      await expect(page.getByRole('heading', { name: /Vista General/i })).toBeVisible();
-      return;
+      await expect(page.getByRole('heading', { name: /Solicitudes de Acceso/i })).toBeVisible();
+      await expect(getRequestRow(page, request.domain)).toHaveAttribute('data-status', 'pending');
+    } finally {
+      await deleteDomainRequestViaApi(page, request.id);
     }
-
-    // If we have the page, check for filter options or empty state
-    const hasFilters = await page
-      .getByRole('combobox')
-      .or(page.getByRole('button', { name: /Filtrar/i }))
-      .isVisible()
-      .catch(() => false);
-    const hasEmptyState = await page
-      .getByText(/no hay solicitudes|sin solicitudes|vacío/i)
-      .isVisible()
-      .catch(() => false);
-
-    // Page should have either filters or empty state
-    expect(hasFilters || hasEmptyState || true).toBe(true);
   });
 
   test('should approve a domain request @domains', async ({ page }) => {
-    const requestsPage = new DomainRequestsPage(page);
-    await requestsPage.goto();
+    const request = await createPendingDomainRequest(page);
+    try {
+      const requestsPage = new DomainRequestsPage(page);
+      await requestsPage.goto();
+      const pendingRow = getRequestRow(page, request.domain);
 
-    // Find a pending request (if any)
-    const pendingRow = page.locator('[data-status="pending"]').first();
-
-    if (await pendingRow.isVisible()) {
-      const domain = await pendingRow.locator('[data-testid="domain-name"]').textContent();
-
-      // Click approve
-      await pendingRow.getByRole('button', { name: /Aprobar|Approve/i }).click();
-
-      // Confirm in modal if present
-      const confirmButton = page.getByRole('button', { name: /Confirmar|Confirm/i });
-      if (await confirmButton.isVisible()) {
-        await confirmButton.click();
-      }
-
-      // Should show success message
-      await expect(page.getByText(/aprobado|approved|éxito/i)).toBeVisible({ timeout: 5000 });
-    } else {
-      // No pending requests - test is valid but skipped
-      test.skip(true, 'No pending requests available for testing');
+      await expect(pendingRow).toHaveAttribute('data-status', 'pending');
+      await pendingRow.getByTitle('Aprobar').click();
+      await expect(page.getByRole('heading', { name: 'Aprobar Solicitud' })).toBeVisible();
+      await page.getByRole('button', { name: 'Aprobar' }).last().click();
+      await expect(pendingRow).toHaveAttribute('data-status', 'approved');
+    } finally {
+      await deleteDomainRequestViaApi(page, request.id);
     }
   });
 
   test('should reject a domain request with reason @domains', async ({ page }) => {
-    const requestsPage = new DomainRequestsPage(page);
-    await requestsPage.goto();
+    const request = await createPendingDomainRequest(page);
+    try {
+      const requestsPage = new DomainRequestsPage(page);
+      await requestsPage.goto();
+      const pendingRow = getRequestRow(page, request.domain);
 
-    // Find a pending request
-    const pendingRow = page.locator('[data-status="pending"]').first();
-
-    if (await pendingRow.isVisible()) {
-      // Click reject
-      await pendingRow.getByRole('button', { name: /Rechazar|Reject/i }).click();
-
-      // Fill rejection reason in modal
-      const reasonInput = page.getByLabel(/Motivo|Razón|Reason/i);
-      if (await reasonInput.isVisible()) {
-        await reasonInput.fill('Not allowed per school policy');
-      }
-
-      // Confirm rejection
+      await expect(pendingRow).toHaveAttribute('data-status', 'pending');
+      await pendingRow.getByTitle('Rechazar').click();
+      await expect(page.getByRole('heading', { name: 'Rechazar Solicitud' })).toBeVisible();
       await page
-        .getByRole('button', { name: /Confirmar|Confirm|Rechazar/i })
-        .last()
-        .click();
-
-      // Should show success message
-      await expect(page.getByText(/rechazado|rejected|éxito/i)).toBeVisible({ timeout: 5000 });
-    } else {
-      test.skip(true, 'No pending requests available for testing');
+        .getByPlaceholder('Explica por qué se rechaza esta solicitud...')
+        .fill('Not allowed per school policy');
+      await page.getByRole('button', { name: 'Rechazar' }).last().click();
+      await expect(pendingRow).toHaveAttribute('data-status', 'rejected');
+    } finally {
+      await deleteDomainRequestViaApi(page, request.id);
     }
   });
 
   test('should filter requests by status @domains', async ({ page }) => {
-    const requestsPage = new DomainRequestsPage(page);
-    await requestsPage.goto();
+    const approvedRequest = await createPendingDomainRequest(page);
+    await approveDomainRequestViaApi(page, approvedRequest.id);
+    const pendingRequest = await createPendingDomainRequest(page);
+    try {
+      const requestsPage = new DomainRequestsPage(page);
+      await requestsPage.goto();
 
-    const statusFilter = page.getByRole('combobox', { name: /Filtrar por estado/i });
-    if (!(await statusFilter.isVisible().catch(() => false))) {
-      test.skip(true, 'Status filter not available on this page');
-      return;
+      const statusFilter = page.getByRole('combobox', { name: /Filtrar por estado/i });
+      await expect(statusFilter).toBeVisible();
+      await statusFilter.selectOption('approved');
+
+      await expect(page.locator('.animate-spin')).toBeHidden();
+      await expect(getRequestRow(page, approvedRequest.domain)).toHaveAttribute(
+        'data-status',
+        'approved'
+      );
+      await expect(getRequestRow(page, pendingRequest.domain)).toHaveCount(0);
+    } finally {
+      await deleteDomainRequestViaApi(page, approvedRequest.id);
+      await deleteDomainRequestViaApi(page, pendingRequest.id);
     }
-
-    // Select "Approved" filter
-    await statusFilter.selectOption('approved');
-
-    // Wait for the list to settle after refetch.
-    await expect(page.locator('.animate-spin')).toBeHidden();
-
-    // All visible requests should be approved (or no rows exist).
-    await expect(
-      page.locator('[data-testid="request-row"]:not([data-status="approved"])')
-    ).toHaveCount(0);
   });
 
   test('should show domain details on click @domains', async ({ page }) => {
@@ -147,42 +235,26 @@ test.describe('Domain Request Management', () => {
   });
 });
 
-test.describe('Teacher Domain Approval Workflow', () => {
-  test('should allow teacher to view their group requests @domains @teacher', async ({ page }) => {
-    await loginAsTeacher(page);
-    await waitForNetworkIdle(page);
-
-    // Navigate to requests via sidebar
-    const requestsButton = page.getByRole('button', { name: /Control de Dominios|Solicitudes/i });
-    if (await requestsButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await requestsButton.click();
-    }
-
-    // Teacher should see request list or dashboard - use heading
-    await expect(
-      page.getByRole('heading', { name: /Solicitudes de Acceso|Mi Panel|Vista General/i })
-    ).toBeVisible();
-  });
-
-  test('should allow teacher to approve requests for their groups @domains @teacher', async ({
+test.describe('Teacher Access Boundaries', () => {
+  test('should keep domain request navigation admin-only for teachers @domains @teacher', async ({
     page,
   }) => {
     await loginAsTeacher(page);
     await waitForNetworkIdle(page);
 
-    // Navigate to requests via sidebar
-    const requestsButton = page.getByRole('button', { name: /Control de Dominios|Solicitudes/i });
-    if (await requestsButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await requestsButton.click();
-    }
+    await expect(page.getByRole('button', { name: /Control de Dominios/i })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Mi Panel/i })).toBeVisible();
+  });
 
-    const pendingRow = page.locator('[data-status="pending"]').first();
+  test('should show the teacher allowed policies on the panel @domains @teacher', async ({
+    page,
+  }) => {
+    await loginAsTeacher(page);
+    await waitForNetworkIdle(page);
 
-    if (await pendingRow.isVisible({ timeout: 3000 }).catch(() => false)) {
-      // Teacher should have approve button
-      const approveButton = pendingRow.getByRole('button', { name: /Aprobar|Approve/i });
-      await expect(approveButton).toBeVisible();
-    }
+    const policySelect = page.locator('#teacher-control-group');
+    await expect(policySelect).toBeVisible();
+    await expect(policySelect).toContainText('E2E Test Group');
   });
 });
 
