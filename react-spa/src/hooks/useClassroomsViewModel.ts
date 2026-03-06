@@ -1,39 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Classroom } from '../types';
 import { isAdmin } from '../lib/auth';
+import { toClassrooms } from '../lib/classrooms';
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from './useAllowedGroups';
 import { useListDetailSelection } from './useListDetailSelection';
 import { normalizeSearchTerm, useNormalizedSearch } from './useNormalizedSearch';
-
-type ClassroomListItem = Awaited<ReturnType<typeof trpc.classrooms.list.query>>[number];
-type ClassroomListItemWithMetadata = ClassroomListItem & {
-  defaultGroupDisplayName?: string | null;
-  currentGroupDisplayName?: string | null;
-};
-
-export function mapApiClassroom(item: ClassroomListItemWithMetadata): Classroom {
-  return {
-    id: item.id,
-    name: item.name,
-    displayName: item.displayName,
-    defaultGroupId: item.defaultGroupId ?? null,
-    defaultGroupDisplayName: item.defaultGroupDisplayName ?? null,
-    computerCount: item.machineCount,
-    activeGroup: item.activeGroupId ?? null,
-    currentGroupId: item.currentGroupId ?? null,
-    currentGroupDisplayName: item.currentGroupDisplayName ?? null,
-    currentGroupSource: item.currentGroupSource,
-    status: item.status,
-    onlineMachineCount: item.onlineMachineCount,
-    machines: item.machines,
-  };
-}
-
-export function mapApiClassrooms(items: readonly ClassroomListItem[]): Classroom[] {
-  return items.map(mapApiClassroom);
-}
 
 export function filterClassroomsBySearch(
   classrooms: Classroom[],
@@ -82,7 +55,7 @@ export function useClassroomsViewModel() {
       setLoading(true);
       setError(null);
       const apiClassrooms = await trpc.classrooms.list.query();
-      const mappedClassrooms = mapApiClassrooms(apiClassrooms);
+      const mappedClassrooms = toClassrooms(apiClassrooms);
       setClassrooms(mappedClassrooms);
       return mappedClassrooms;
     } catch (err) {
@@ -125,7 +98,7 @@ export function useClassroomsViewModel() {
   const refetchClassrooms = useCallback(async () => {
     try {
       const apiClassrooms = await trpc.classrooms.list.query();
-      const mappedClassrooms = mapApiClassrooms(apiClassrooms);
+      const mappedClassrooms = toClassrooms(apiClassrooms);
       setClassrooms(mappedClassrooms);
       return mappedClassrooms;
     } catch (err) {

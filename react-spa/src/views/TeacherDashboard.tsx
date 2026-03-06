@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Folder, Loader2, ShieldCheck, ShieldOff, MonitorPlay, Calendar } from 'lucide-react';
 import { trpc } from '../lib/trpc';
 import { isTeacherGroupsFeatureEnabled } from '../lib/auth';
+import { toClassroomControlStates, type ClassroomControlState } from '../lib/classrooms';
 import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from '../hooks/useAllowedGroups';
 import { useIntervalRefetch, useRefetchOnFocus } from '../hooks/useLiveRefetch';
@@ -14,32 +15,13 @@ import {
 import { GroupSelect } from '../components/groups/GroupSelect';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
-interface ClassroomFromAPI {
-  id: string;
-  name: string;
-  displayName: string;
-  defaultGroupId: string | null;
-  defaultGroupDisplayName?: string | null;
-  activeGroupId: string | null;
-  currentGroupId: string | null;
-  currentGroupDisplayName?: string | null;
-  currentGroupSource: 'manual' | 'schedule' | 'default' | 'none' | null;
-}
-
-type ClassroomListItemWithMetadata = Awaited<
-  ReturnType<typeof trpc.classrooms.list.query>
->[number] & {
-  defaultGroupDisplayName?: string | null;
-  currentGroupDisplayName?: string | null;
-};
-
 interface TeacherDashboardProps {
   onNavigateToRules?: (group: { id: string; name: string }) => void;
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }) => {
   const teacherGroupsEnabled = isTeacherGroupsFeatureEnabled();
-  const [classrooms, setClassrooms] = useState<ClassroomFromAPI[]>([]);
+  const [classrooms, setClassrooms] = useState<ClassroomControlState[]>([]);
   const [classroomsLoading, setClassroomsLoading] = useState(true);
   const [classroomsError, setClassroomsError] = useState<string | null>(null);
 
@@ -66,20 +48,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigateToRules }
   const fetchClassrooms = useCallback(async () => {
     try {
       setClassroomsLoading(true);
-      const apiClassrooms = (await trpc.classrooms.list.query()) as ClassroomListItemWithMetadata[];
-      setClassrooms(
-        apiClassrooms.map((c) => ({
-          id: c.id,
-          name: c.name,
-          displayName: c.displayName,
-          defaultGroupId: c.defaultGroupId ?? null,
-          defaultGroupDisplayName: c.defaultGroupDisplayName ?? null,
-          activeGroupId: c.activeGroupId ?? null,
-          currentGroupId: c.currentGroupId ?? null,
-          currentGroupDisplayName: c.currentGroupDisplayName ?? null,
-          currentGroupSource: c.currentGroupSource,
-        }))
-      );
+      const apiClassrooms = await trpc.classrooms.list.query();
+      setClassrooms(toClassroomControlStates(apiClassrooms));
       setClassroomsError(null);
     } catch (err) {
       reportError('Failed to fetch classrooms:', err);

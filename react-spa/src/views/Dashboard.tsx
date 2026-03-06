@@ -12,6 +12,7 @@ import {
   ArrowRight,
   ChevronDown,
 } from 'lucide-react';
+import { toClassroomControlStates, type ClassroomControlState } from '../lib/classrooms';
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
 import { GroupLabel, inferGroupSource, resolveGroupLike } from '../components/groups/GroupLabel';
@@ -58,25 +59,6 @@ interface GroupFromAPI {
   updatedAt?: string | null;
 }
 
-interface ClassroomFromAPI {
-  id: string;
-  name: string;
-  displayName: string;
-  defaultGroupId: string | null;
-  defaultGroupDisplayName?: string | null;
-  activeGroupId: string | null;
-  currentGroupId: string | null;
-  currentGroupDisplayName?: string | null;
-  currentGroupSource: 'manual' | 'schedule' | 'default' | 'none' | null;
-}
-
-type ClassroomListItemWithMetadata = Awaited<
-  ReturnType<typeof trpc.classrooms.list.query>
->[number] & {
-  defaultGroupDisplayName?: string | null;
-  currentGroupDisplayName?: string | null;
-};
-
 interface DashboardProps {
   onNavigateToRules?: (group: { id: string; name: string }) => void;
 }
@@ -115,7 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
   const [error, setError] = useState<string | null>(null);
 
   // Classrooms state (used for "active groups by classroom" banner)
-  const [classrooms, setClassrooms] = useState<ClassroomFromAPI[]>([]);
+  const [classrooms, setClassrooms] = useState<ClassroomControlState[]>([]);
   const [classroomsLoading, setClassroomsLoading] = useState(true);
   const [classroomsError, setClassroomsError] = useState<string | null>(null);
 
@@ -158,20 +140,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToRules }) => {
   const fetchClassrooms = useCallback(async () => {
     try {
       setClassroomsLoading(true);
-      const apiClassrooms = (await trpc.classrooms.list.query()) as ClassroomListItemWithMetadata[];
-      setClassrooms(
-        apiClassrooms.map((c) => ({
-          id: c.id,
-          name: c.name,
-          displayName: c.displayName,
-          defaultGroupId: c.defaultGroupId ?? null,
-          defaultGroupDisplayName: c.defaultGroupDisplayName ?? null,
-          activeGroupId: c.activeGroupId ?? null,
-          currentGroupId: c.currentGroupId ?? null,
-          currentGroupDisplayName: c.currentGroupDisplayName ?? null,
-          currentGroupSource: c.currentGroupSource,
-        }))
-      );
+      const apiClassrooms = await trpc.classrooms.list.query();
+      setClassrooms(toClassroomControlStates(apiClassrooms));
       setClassroomsError(null);
     } catch (err) {
       reportError('Failed to fetch classrooms:', err);
