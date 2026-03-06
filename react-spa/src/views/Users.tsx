@@ -146,7 +146,7 @@ const UsersView = () => {
   const showInitialLoading = loading && !hasData;
 
   // ── DIAGNOSTIC ──
-  console.warn(
+  console.error(
     `[UsersView] render: users=${users.length} filtered=${filteredUsers.length} showNewModal=${showNewModal} showEditModal=${showEditModal} loading=${loading} hasData=${hasData} fetching=${fetching} error=${error}`
   );
   // ── END DIAGNOSTIC ──
