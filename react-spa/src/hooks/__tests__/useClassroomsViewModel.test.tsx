@@ -1,6 +1,7 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useClassroomsViewModel } from '../useClassroomsViewModel';
+import { renderHookWithQueryClient } from '../../test-utils/query';
 
 const {
   mockIsAdmin,
@@ -36,6 +37,14 @@ vi.mock('../useAllowedGroups', () => ({
   useAllowedGroups: (): unknown => mockUseAllowedGroups(),
 }));
 
+let queryClient: ReturnType<typeof renderHookWithQueryClient>['queryClient'] | null = null;
+
+function renderUseClassroomsViewModel() {
+  const rendered = renderHookWithQueryClient(() => useClassroomsViewModel());
+  queryClient = rendered.queryClient;
+  return rendered;
+}
+
 describe('useClassroomsViewModel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -51,6 +60,11 @@ describe('useClassroomsViewModel', () => {
       error: null,
       refetch: mockRefetchGroups,
     });
+  });
+
+  afterEach(() => {
+    queryClient?.clear();
+    queryClient = null;
   });
 
   it('loads classrooms, derives display state, and clears selection when the filter empties the list', async () => {
@@ -83,7 +97,7 @@ describe('useClassroomsViewModel', () => {
       },
     ]);
 
-    const { result } = renderHook(() => useClassroomsViewModel());
+    const { result } = renderUseClassroomsViewModel();
 
     await waitFor(() => {
       expect(result.current.isInitialLoading).toBe(false);
@@ -162,7 +176,7 @@ describe('useClassroomsViewModel', () => {
         },
       ]);
 
-    const { result } = renderHook(() => useClassroomsViewModel());
+    const { result } = renderUseClassroomsViewModel();
 
     await waitFor(() => {
       expect(result.current.isInitialLoading).toBe(false);
@@ -193,7 +207,7 @@ describe('useClassroomsViewModel', () => {
   it('validates blank classroom names before calling the API', async () => {
     mockListClassrooms.mockResolvedValueOnce([]);
 
-    const { result } = renderHook(() => useClassroomsViewModel());
+    const { result } = renderUseClassroomsViewModel();
 
     await waitFor(() => {
       expect(result.current.isInitialLoading).toBe(false);
@@ -259,7 +273,7 @@ describe('useClassroomsViewModel', () => {
         },
       ]);
 
-    const { result } = renderHook(() => useClassroomsViewModel());
+    const { result } = renderUseClassroomsViewModel();
 
     await waitFor(() => {
       expect(result.current.isInitialLoading).toBe(false);

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   toClassroomControlStatesFromModels,
@@ -10,7 +11,6 @@ import {
 import { trpc } from '../lib/trpc';
 import { reportError } from '../lib/reportError';
 import type { Classroom } from '../types';
-import { useIntervalRefetch, useRefetchOnFocus } from './useLiveRefetch';
 
 export const CLASSROOMS_LIST_QUERY_KEY = ['classrooms.list'] as const;
 
@@ -34,67 +34,35 @@ function useClassroomsListQuery<TResult>(
   options: UseClassroomsListQueryOptions<TResult>
 ): UseClassroomsListQueryResult<TResult> {
   const { select, emptyValue, refetchIntervalMs = false, refetchOnWindowFocus = false } = options;
-  const [data, setData] = useState<TResult>(emptyValue);
-  const [hasData, setHasData] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [fetching, setFetching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const latestDataRef = useRef(data);
-  const hasDataRef = useRef(false);
-  latestDataRef.current = data;
-
-  const fetchClassrooms = useCallback(
-    async (mode: 'initial' | 'refresh' = 'refresh') => {
-      if (mode === 'initial') {
-        setLoading(true);
-      } else {
-        setFetching(true);
-      }
-
-      try {
-        const items = await trpc.classrooms.list.query();
-        const nextData = select(toClassroomListModels(items));
-        setData(nextData);
-        setHasData(true);
-        hasDataRef.current = true;
-        setError(null);
-        return nextData;
-      } catch (err) {
-        reportError('Failed to fetch classrooms:', err);
-        setError('Error al cargar aulas');
-        return hasDataRef.current ? latestDataRef.current : emptyValue;
-      } finally {
-        setLoading(false);
-        setFetching(false);
-      }
+  const query = useQuery<readonly ClassroomListModel[], Error, TResult>({
+    queryKey: CLASSROOMS_LIST_QUERY_KEY,
+    queryFn: async () => {
+      const items = await trpc.classrooms.list.query();
+      return toClassroomListModels(items);
     },
-    [emptyValue, select]
-  );
+    select,
+    refetchInterval: typeof refetchIntervalMs === 'number' ? refetchIntervalMs : false,
+    refetchOnWindowFocus,
+  });
 
   useEffect(() => {
-    void fetchClassrooms('initial');
-  }, [fetchClassrooms]);
-
-  const refreshClassrooms = useCallback(() => {
-    void fetchClassrooms();
-  }, [fetchClassrooms]);
-
-  useIntervalRefetch(
-    refreshClassrooms,
-    typeof refetchIntervalMs === 'number' ? refetchIntervalMs : 0,
-    {
-      enabled: typeof refetchIntervalMs === 'number',
+    if (query.error) {
+      reportError('Failed to fetch classrooms:', query.error);
     }
-  );
-  useRefetchOnFocus(refreshClassrooms, { enabled: refetchOnWindowFocus });
+  }, [query.error]);
+
+  const refetchClassrooms = useCallback(async () => {
+    const result = await query.refetch();
+    return result.data ?? query.data ?? emptyValue;
+  }, [emptyValue, query.data, query.refetch]);
 
   return {
-    data,
-    hasData,
-    loading,
-    fetching,
-    error,
-    refetchClassrooms: fetchClassrooms,
+    data: query.data ?? emptyValue,
+    hasData: query.data !== undefined,
+    loading: query.status === 'pending',
+    fetching: query.fetchStatus === 'fetching',
+    error: query.error ? 'Error al cargar aulas' : null,
+    refetchClassrooms,
   };
 }
 
