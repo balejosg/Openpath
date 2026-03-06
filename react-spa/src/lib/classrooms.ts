@@ -76,6 +76,8 @@ export function toClassroomControlState(item: ClassroomListItem): ClassroomContr
   };
 }
 
-export function toClassroomControlStates(items: readonly ClassroomListItem[]): ClassroomControlState[] {
+export function toClassroomControlStates(
+  items: readonly ClassroomListItem[]
+): ClassroomControlState[] {
   return items.map(toClassroomControlState);
 }
