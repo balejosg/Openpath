@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import UsersView from '../Users';
 import { renderWithQueryClient } from '../../test-utils/query';
 
@@ -191,6 +191,34 @@ describe('Users View', () => {
     });
     expect(screen.getByText('Usuario 1')).toBeInTheDocument();
     expect(screen.queryByText('Usuario 11')).not.toBeInTheDocument();
+  });
+
+  it('shows assigned roles as read-only information in the edit modal', async () => {
+    mockUsersList.mockResolvedValue([
+      {
+        id: 'user-edit',
+        name: 'Admin QA',
+        email: 'admin@example.com',
+        isActive: true,
+        roles: [{ role: 'admin' }, { role: 'teacher' }],
+      },
+    ]);
+
+    renderUsersView();
+
+    await screen.findByText('Admin QA');
+
+    fireEvent.click(screen.getByTitle('Editar'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Editar Usuario' });
+
+    expect(within(dialog).getByText('Roles actuales')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Administrador')).toBeInTheDocument();
+    expect(within(dialog).getByText('Profesor')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/La gestión de roles se realiza desde el flujo de permisos/i)
+    ).toBeInTheDocument();
   });
 
   it('shows feedback when exporting with no users', async () => {

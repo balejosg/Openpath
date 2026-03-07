@@ -14,9 +14,15 @@ function renderUseUsersActions() {
 const mockUsersCreateMutate = vi.fn();
 const mockUsersUpdateMutate = vi.fn();
 const mockUsersDeleteMutate = vi.fn();
+const mockGenerateResetTokenMutate = vi.fn();
 
 vi.mock('../../lib/trpc', () => ({
   trpc: {
+    auth: {
+      generateResetToken: {
+        mutate: (input: unknown): unknown => mockGenerateResetTokenMutate(input),
+      },
+    },
     users: {
       create: { mutate: (input: unknown): unknown => mockUsersCreateMutate(input) },
       update: { mutate: (input: unknown): unknown => mockUsersUpdateMutate(input) },
@@ -84,5 +90,20 @@ describe('useUsersActions', () => {
 
     expect(ok).toBe(false);
     expect(result.current.deleteError).toBe('No se pudo eliminar usuario. Intenta nuevamente.');
+  });
+
+  it('maps reset-token permission failures into actionable message', async () => {
+    mockGenerateResetTokenMutate.mockRejectedValueOnce({ data: { code: 'FORBIDDEN' } });
+    const { result } = renderUseUsersActions();
+
+    let resetResult: Awaited<ReturnType<typeof result.current.handleGenerateResetToken>> = {
+      ok: false,
+    };
+    await act(async () => {
+      resetResult = await result.current.handleGenerateResetToken({ email: 'admin@example.com' });
+    });
+
+    expect(resetResult.ok).toBe(false);
+    expect(result.current.resetError).toBe('No tienes permisos para restablecer contraseñas');
   });
 });

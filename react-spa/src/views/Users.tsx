@@ -30,6 +30,11 @@ const RoleBadge: React.FC<{ role: UserRole }> = ({ role }) => {
 
 const PAGE_SIZE = 10;
 
+type ResetFlowState =
+  | { status: 'idle' }
+  | { status: 'confirm'; user: User }
+  | { status: 'success'; user: User; token: string };
+
 const UsersView = () => {
   const { users, hasData, loading, fetching, error, fetchUsers } = useUsersList();
   const [showEditModal, setShowEditModal] = useState(false);
@@ -37,13 +42,11 @@ const UsersView = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageIndex, setPageIndex] = useState(0);
-  const [resetTarget, setResetTarget] = useState<User | null>(null);
-  const [generatedResetToken, setGeneratedResetToken] = useState('');
+  const [resetFlow, setResetFlow] = useState<ResetFlowState>({ status: 'idle' });
 
   // Edit form state
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editRoles, setEditRoles] = useState<UserRole[]>([]);
 
   // New user form state
   const [newName, setNewName] = useState('');
@@ -92,7 +95,6 @@ const UsersView = () => {
     setSelectedUser(user);
     setEditName(user.name);
     setEditEmail(user.email);
-    setEditRoles([...user.roles]);
     setShowEditModal(true);
   };
 
@@ -137,14 +139,6 @@ const UsersView = () => {
     setShowNewModal(false);
   };
 
-  const toggleRole = (role: UserRole) => {
-    if (editRoles.includes(role)) {
-      setEditRoles(editRoles.filter((r) => r !== role));
-    } else {
-      setEditRoles([...editRoles, role]);
-    }
-  };
-
   const handleExportUsers = () => {
     if (filteredUsers.length === 0) {
       setExportMessage('No hay usuarios para exportar');
@@ -169,27 +163,31 @@ const UsersView = () => {
   const hasPreviousPage = pageIndex > 0;
   const hasNextPage = rangeEnd < totalCount;
   const showInitialLoading = loading && !hasData;
+  const resetUser = resetFlow.status === 'idle' ? null : resetFlow.user;
+  const generatedResetToken = resetFlow.status === 'success' ? resetFlow.token : '';
 
   const requestPasswordReset = (user: User) => {
-    setGeneratedResetToken('');
     clearResetError();
-    setResetTarget(user);
+    setResetFlow({ status: 'confirm', user });
   };
 
   const closeResetFlow = () => {
     if (resettingPassword) return;
-    setGeneratedResetToken('');
     clearResetError();
-    setResetTarget(null);
+    setResetFlow({ status: 'idle' });
   };
 
   const confirmGenerateResetToken = async () => {
-    if (!resetTarget) return;
+    if (resetFlow.status !== 'confirm') return;
 
-    const result = await handleGenerateResetToken({ email: resetTarget.email });
+    const result = await handleGenerateResetToken({ email: resetFlow.user.email });
     if (!result.ok) return;
 
-    setGeneratedResetToken(result.token);
+    setResetFlow({
+      status: 'success',
+      user: resetFlow.user,
+      token: result.token,
+    });
   };
 
   return (
@@ -324,6 +322,7 @@ const UsersView = () => {
                       <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleEdit(user)}
+                          aria-label={`Editar usuario ${user.name}`}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                           title="Editar"
                         >
@@ -428,22 +427,20 @@ const UsersView = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Roles</label>
-              <div className="flex flex-wrap gap-2">
-                {[UserRole.ADMIN, UserRole.TEACHER].map((role) => (
-                  <label
-                    key={role}
-                    className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm cursor-pointer hover:bg-slate-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={editRoles.includes(role)}
-                      onChange={() => toggleRole(role)}
-                      className="rounded"
-                    />
-                    {role === UserRole.ADMIN ? 'Administrador' : 'Profesor'}
-                  </label>
-                ))}
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Roles actuales
+              </label>
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {selectedUser.roles.length > 0 ? (
+                    selectedUser.roles.map((role) => <RoleBadge key={role} role={role} />)
+                  ) : (
+                    <span className="text-sm text-slate-500">Sin roles asignados</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  La gestión de roles se realiza desde el flujo de permisos.
+                </p>
               </div>
             </div>
             <div className="flex gap-3 pt-2">
@@ -558,7 +555,7 @@ const UsersView = () => {
       )}
 
       <DangerConfirmDialog
-        isOpen={!!resetTarget && generatedResetToken.length === 0}
+        isOpen={resetFlow.status === 'confirm'}
         title="Generar token de recuperación"
         confirmLabel="Generar token"
         cancelLabel="Cancelar"
@@ -567,19 +564,19 @@ const UsersView = () => {
         onClose={closeResetFlow}
         onConfirm={confirmGenerateResetToken}
       >
-        {resetTarget ? (
+        {resetUser ? (
           <div className="space-y-2 text-sm text-slate-600">
             <p>
               Vas a generar un token de recuperación para{' '}
-              <span className="font-semibold text-slate-800">{resetTarget.name}</span>.
+              <span className="font-semibold text-slate-800">{resetUser.name}</span>.
             </p>
-            <p className="font-mono text-xs text-slate-500">{resetTarget.email}</p>
+            <p className="font-mono text-xs text-slate-500">{resetUser.email}</p>
           </div>
         ) : null}
       </DangerConfirmDialog>
 
       <Modal
-        isOpen={!!resetTarget && generatedResetToken.length > 0}
+        isOpen={resetFlow.status === 'success'}
         onClose={closeResetFlow}
         title="Token de recuperación generado"
         className="max-w-md"
