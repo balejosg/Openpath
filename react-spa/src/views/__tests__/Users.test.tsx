@@ -16,11 +16,14 @@ afterEach(() => {
   queryClient = null;
 });
 
-const { mockUsersList, mockCreateUser, mockDeleteUser } = vi.hoisted(() => ({
-  mockUsersList: vi.fn(),
-  mockCreateUser: vi.fn(),
-  mockDeleteUser: vi.fn(),
-}));
+const { mockUsersList, mockCreateUser, mockDeleteUser, mockGenerateResetToken } = vi.hoisted(
+  () => ({
+    mockUsersList: vi.fn(),
+    mockCreateUser: vi.fn(),
+    mockDeleteUser: vi.fn(),
+    mockGenerateResetToken: vi.fn(),
+  })
+);
 
 const { mockDownloadFile } = vi.hoisted(() => ({
   mockDownloadFile: vi.fn<(content: string, filename: string, mimeType: string) => void>(),
@@ -28,6 +31,11 @@ const { mockDownloadFile } = vi.hoisted(() => ({
 
 vi.mock('../../lib/trpc', () => ({
   trpc: {
+    auth: {
+      generateResetToken: {
+        mutate: mockGenerateResetToken,
+      },
+    },
     users: {
       list: {
         query: mockUsersList,
@@ -71,6 +79,7 @@ describe('Users View', () => {
       roles: [],
     });
     mockDeleteUser.mockResolvedValue({});
+    mockGenerateResetToken.mockResolvedValue({ token: 'RESET-123' });
   });
 
   it('shows role selector with default teacher', async () => {
@@ -144,6 +153,44 @@ describe('Users View', () => {
     expect(screen.getByRole('button', { name: 'Filtros' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+  });
+
+  it('paginates users ten at a time and updates the visible range', async () => {
+    mockUsersList.mockResolvedValue(
+      Array.from({ length: 12 }, (_, index) => ({
+        id: `user-${index + 1}`,
+        name: `Usuario ${index + 1}`,
+        email: `user${index + 1}@example.com`,
+        isActive: true,
+        roles: [{ role: 'teacher' }],
+      }))
+    );
+
+    renderUsersView();
+
+    expect(await screen.findByText('Mostrando 1-10 de 12 usuarios')).toBeInTheDocument();
+    expect(screen.getByText('Usuario 1')).toBeInTheDocument();
+    expect(screen.getByText('Usuario 10')).toBeInTheDocument();
+    expect(screen.queryByText('Usuario 11')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Mostrando 11-12 de 12 usuarios')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Usuario 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Usuario 11')).toBeInTheDocument();
+    expect(screen.getByText('Usuario 12')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Mostrando 1-10 de 12 usuarios')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Usuario 1')).toBeInTheDocument();
+    expect(screen.queryByText('Usuario 11')).not.toBeInTheDocument();
   });
 
   it('shows feedback when exporting with no users', async () => {
@@ -443,6 +490,37 @@ describe('Users View', () => {
     await waitFor(() => {
       expect(mockDeleteUser).toHaveBeenCalledWith({ id: 'user-1' });
     });
+  });
+
+  it('generates a reset token from the user actions table and shows it in a modal', async () => {
+    mockUsersList.mockResolvedValue([
+      {
+        id: 'user-reset',
+        name: 'Admin QA',
+        email: 'admin@example.com',
+        isActive: true,
+        roles: [{ role: 'admin' }],
+      },
+    ]);
+
+    renderUsersView();
+
+    await screen.findByText('Admin QA');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restablecer contraseña de Admin QA' }));
+
+    expect(await screen.findByText('Generar token de recuperación')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generar token' }));
+
+    await waitFor(() => {
+      expect(mockGenerateResetToken).toHaveBeenCalledWith({ email: 'admin@example.com' });
+    });
+
+    expect(await screen.findByDisplayValue('RESET-123')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Comparte este token de forma segura con la persona usuaria/i)
+    ).toBeInTheDocument();
   });
 
   it('shows inline error when delete fails', async () => {

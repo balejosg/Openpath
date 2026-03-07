@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Filter, Mail, Edit2, Trash, Key, Loader2, AlertCircle } from 'lucide-react';
 import { User, UserRole } from '../types';
 import type { CreateUserRole } from '../lib/roles';
@@ -28,12 +28,17 @@ const RoleBadge: React.FC<{ role: UserRole }> = ({ role }) => {
   );
 };
 
+const PAGE_SIZE = 10;
+
 const UsersView = () => {
   const { users, hasData, loading, fetching, error, fetchUsers } = useUsersList();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageIndex, setPageIndex] = useState(0);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [generatedResetToken, setGeneratedResetToken] = useState('');
 
   // Edit form state
   const [editName, setEditName] = useState('');
@@ -50,15 +55,19 @@ const UsersView = () => {
   const {
     saving,
     deleting,
+    resettingPassword,
     createError,
     setCreateError,
     deleteError,
     deleteTarget,
+    resetError,
     handleSaveEdit,
     handleCreateUser,
     requestDeleteUser,
     clearDeleteState,
     handleConfirmDeleteUser,
+    clearResetError,
+    handleGenerateResetToken,
   } = useUsersActions();
 
   // Filter users based on search
@@ -69,6 +78,15 @@ const UsersView = () => {
       (user) => user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query)
     );
   }, [users, searchQuery]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const maxPageIndex = Math.max(0, Math.ceil(filteredUsers.length / PAGE_SIZE) - 1);
+    setPageIndex((current) => Math.min(current, maxPageIndex));
+  }, [filteredUsers.length]);
 
   const handleEdit = (user: User) => {
     setSelectedUser(user);
@@ -139,11 +157,40 @@ const UsersView = () => {
     setExportMessage('Exportación iniciada');
   };
 
-  const visibleCount = filteredUsers.length;
-  const totalCount = users.length;
-  const rangeStart = visibleCount === 0 ? 0 : 1;
-  const rangeEnd = visibleCount === 0 ? 0 : visibleCount;
+  const visibleUsers = useMemo(() => {
+    const start = pageIndex * PAGE_SIZE;
+    return filteredUsers.slice(start, start + PAGE_SIZE);
+  }, [filteredUsers, pageIndex]);
+
+  const visibleCount = visibleUsers.length;
+  const totalCount = filteredUsers.length;
+  const rangeStart = visibleCount === 0 ? 0 : pageIndex * PAGE_SIZE + 1;
+  const rangeEnd = visibleCount === 0 ? 0 : pageIndex * PAGE_SIZE + visibleCount;
+  const hasPreviousPage = pageIndex > 0;
+  const hasNextPage = rangeEnd < totalCount;
   const showInitialLoading = loading && !hasData;
+
+  const requestPasswordReset = (user: User) => {
+    setGeneratedResetToken('');
+    clearResetError();
+    setResetTarget(user);
+  };
+
+  const closeResetFlow = () => {
+    if (resettingPassword) return;
+    setGeneratedResetToken('');
+    clearResetError();
+    setResetTarget(null);
+  };
+
+  const confirmGenerateResetToken = async () => {
+    if (!resetTarget) return;
+
+    const result = await handleGenerateResetToken({ email: resetTarget.email });
+    if (!result.ok) return;
+
+    setGeneratedResetToken(result.token);
+  };
 
   return (
     <div className="space-y-6">
@@ -237,7 +284,7 @@ const UsersView = () => {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => (
+                visibleUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-3">
@@ -283,6 +330,8 @@ const UsersView = () => {
                           <Edit2 size={16} />
                         </button>
                         <button
+                          onClick={() => requestPasswordReset(user)}
+                          aria-label={`Restablecer contraseña de ${user.name}`}
                           className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
                           title="Restablecer Contraseña"
                         >
@@ -339,13 +388,15 @@ const UsersView = () => {
           </div>
           <div className="flex gap-2">
             <button
-              disabled={visibleCount === 0}
+              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+              disabled={!hasPreviousPage}
               className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Anterior
             </button>
             <button
-              disabled={visibleCount === 0}
+              onClick={() => setPageIndex((current) => current + 1)}
+              disabled={!hasNextPage}
               className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Siguiente
@@ -505,6 +556,61 @@ const UsersView = () => {
           </div>
         </Modal>
       )}
+
+      <DangerConfirmDialog
+        isOpen={!!resetTarget && generatedResetToken.length === 0}
+        title="Generar token de recuperación"
+        confirmLabel="Generar token"
+        cancelLabel="Cancelar"
+        isLoading={resettingPassword}
+        errorMessage={resetError}
+        onClose={closeResetFlow}
+        onConfirm={confirmGenerateResetToken}
+      >
+        {resetTarget ? (
+          <div className="space-y-2 text-sm text-slate-600">
+            <p>
+              Vas a generar un token de recuperación para{' '}
+              <span className="font-semibold text-slate-800">{resetTarget.name}</span>.
+            </p>
+            <p className="font-mono text-xs text-slate-500">{resetTarget.email}</p>
+          </div>
+        ) : null}
+      </DangerConfirmDialog>
+
+      <Modal
+        isOpen={!!resetTarget && generatedResetToken.length > 0}
+        onClose={closeResetFlow}
+        title="Token de recuperación generado"
+        className="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Comparte este token de forma segura con la persona usuaria para que pueda completar el
+            restablecimiento desde la pantalla de acceso.
+          </p>
+          <div className="space-y-2">
+            <label htmlFor="reset-token" className="text-sm font-medium text-slate-700">
+              Token
+            </label>
+            <input
+              id="reset-token"
+              type="text"
+              readOnly
+              value={generatedResetToken}
+              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={closeResetFlow}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal: Confirmar Eliminacion */}
       {deleteTarget && (

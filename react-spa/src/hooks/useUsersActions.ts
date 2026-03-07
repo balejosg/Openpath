@@ -30,6 +30,10 @@ interface UpdateUserInput {
   email: string;
 }
 
+interface GenerateResetTokenInput {
+  email: string;
+}
+
 export const useUsersActions = () => {
   const queryClient = useQueryClient();
 
@@ -49,6 +53,7 @@ export const useUsersActions = () => {
   const [createError, setCreateError] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UserDeleteTarget | null>(null);
+  const [resetError, setResetError] = useState('');
 
   const createMutation = useMutation({
     mutationFn: async (input: CreateUserInput) => {
@@ -68,8 +73,15 @@ export const useUsersActions = () => {
     },
   });
 
+  const resetTokenMutation = useMutation({
+    mutationFn: async (input: GenerateResetTokenInput) => {
+      return await trpc.auth.generateResetToken.mutate(input);
+    },
+  });
+
   const saving = createMutation.status === 'pending' || updateMutation.status === 'pending';
   const deleting = deleteMutation.status === 'pending';
+  const resettingPassword = resetTokenMutation.status === 'pending';
 
   const upsertUserInCache = useCallback(
     async (apiUser: unknown) => {
@@ -184,6 +196,10 @@ export const useUsersActions = () => {
     setDeleteTarget(null);
   }, []);
 
+  const clearResetError = useCallback(() => {
+    setResetError('');
+  }, []);
+
   const handleConfirmDeleteUser = useCallback(async (): Promise<boolean> => {
     if (!deleteTarget) return false;
 
@@ -207,17 +223,45 @@ export const useUsersActions = () => {
     }
   }, [deleteTarget, deleteMutation, deferredInvalidate, queryClient]);
 
+  const handleGenerateResetToken = useCallback(
+    async (
+      input: GenerateResetTokenInput
+    ): Promise<{ ok: true; token: string } | { ok: false }> => {
+      try {
+        setResetError('');
+        const result = await resetTokenMutation.mutateAsync(input);
+        return { ok: true, token: result.token };
+      } catch (err) {
+        reportError('Failed to generate reset token:', err);
+        setResetError(
+          resolveTrpcErrorMessage(err, {
+            forbidden: 'No tienes permisos para restablecer contraseñas',
+            unauthorized: 'No tienes permisos para restablecer contraseñas',
+            notFound: 'No existe un usuario con ese email',
+            fallback: 'No se pudo generar el token. Intenta nuevamente.',
+          })
+        );
+        return { ok: false };
+      }
+    },
+    [resetTokenMutation]
+  );
+
   return {
     saving,
     deleting,
+    resettingPassword,
     createError,
     setCreateError,
     deleteError,
     deleteTarget,
+    resetError,
     handleSaveEdit,
     handleCreateUser,
     requestDeleteUser,
     clearDeleteState,
     handleConfirmDeleteUser,
+    clearResetError,
+    handleGenerateResetToken,
   };
 };
