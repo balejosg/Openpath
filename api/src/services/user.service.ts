@@ -193,7 +193,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
  */
 export async function register(input: CreateUserData): Promise<UserResult<{ user: SafeUser }>> {
   try {
-    const user = await userStorage.createUser(input);
+    const user = await userStorage.createUser(input, { emailVerified: true });
     return { ok: true, data: { user } };
   } catch (error) {
     return {

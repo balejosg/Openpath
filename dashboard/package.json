@@ -16,7 +16,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "test": "NODE_ENV=test node --import tsx --test --test-force-exit --test-concurrency=1 tests/*.test.ts",
-    "test:coverage": "NODE_ENV=test c8 node --import tsx --test --test-force-exit --test-concurrency=1 tests/*.test.ts"
+    "test:coverage": "NODE_ENV=test node ../scripts/run-c8-coverage.js \"node --import tsx --test --test-force-exit --test-concurrency=1 tests/*.test.ts\""
   },
   "dependencies": {
     "@openpath/api": "file:../api",

@@ -18,6 +18,7 @@ import {
   trpcQuery as _trpcQuery,
   parseTRPC,
   getAvailablePort,
+  registerAndVerifyUser,
   resetDb,
   type AuthResult,
   type RequestResult,
@@ -162,22 +163,24 @@ await describe('E2E: Teacher Role Workflow (tRPC)', { timeout: 75000 }, async ()
 
       if (response.status === 403 || response.status === 401) {
         // Fallback to register
-        const regResponse = await trpcMutate('auth.register', {
-          email: TEACHER_EMAIL,
-          password: TEACHER_PASSWORD,
-          name: 'Pedro Profesor',
-        });
+        const { registerResponse, registerData, verifyResponse } = await registerAndVerifyUser(
+          API_URL,
+          {
+            email: TEACHER_EMAIL,
+            password: TEACHER_PASSWORD,
+            name: 'Pedro Profesor',
+          }
+        );
 
         // 200 = new user, 409 = already exists
         assert.ok(
-          [200, 409].includes(regResponse.status),
-          `Expected 200 or 409, got ${String(regResponse.status)}`
+          [200, 409].includes(registerResponse.status),
+          `Expected 200 or 409, got ${String(registerResponse.status)}`
         );
 
-        if (regResponse.status === 200) {
-          const res = await parseTRPC(regResponse);
-          const data = res.data as AuthResult;
-          teacherId = data.user?.id ?? null;
+        if (registerResponse.status === 200) {
+          assert.strictEqual(verifyResponse?.status, 200);
+          teacherId = registerData?.user?.id ?? null;
         }
       } else {
         assert.ok(

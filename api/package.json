@@ -36,7 +36,7 @@
     "test:classroom-status": "NODE_ENV=test node --import tsx --test --test-force-exit tests/classroom-status.test.ts",
     "test:sse": "NODE_ENV=test node --import tsx --test --test-force-exit tests/sse.test.ts",
     "test:all": "NODE_ENV=test node --import tsx tests/run-all.ts",
-    "test:coverage": "NODE_ENV=test c8 node --import tsx --test --test-force-exit --test-concurrency=1 tests/*.test.ts",
+    "test:coverage": "NODE_ENV=test node ../scripts/run-api-coverage.js",
     "coverage": "npm run test:coverage",
     "test:load": "NODE_ENV=test k6 run tests/load/load-test.js",
     "db:seed:e2e": "tsx scripts/seed-e2e.ts",

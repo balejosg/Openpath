@@ -15,7 +15,7 @@
     "lint:fix": "eslint . --fix",
     "dev": "tsc --watch",
     "test": "npx tsx --test tests/*.test.ts",
-    "test:coverage": "c8 npx tsx --test tests/*.test.ts"
+    "test:coverage": "node ../scripts/run-c8-coverage.js \"npx tsx --test tests/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^22.19.3",

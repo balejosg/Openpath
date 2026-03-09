@@ -8,6 +8,7 @@ import * as userStorage from '../lib/user-storage.js';
 import * as roleStorage from '../lib/role-storage.js';
 import * as auth from '../lib/auth.js';
 import * as resetTokenStorage from '../lib/reset-token-storage.js';
+import * as emailVerificationTokenStorage from '../lib/email-verification-token-storage.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import type { AuthUser, LoginResponse, RoleInfo } from '../types/index.js';
@@ -36,6 +37,22 @@ export interface TokenPair {
   expiresIn: string;
   tokenType: 'Bearer';
 }
+
+export interface RegisterResponse {
+  user: AuthUser;
+  verificationRequired: true;
+  verificationToken: string;
+  verificationExpiresAt: string;
+}
+
+export interface EmailVerificationTokenResponse {
+  email: string;
+  verificationRequired: true;
+  verificationToken: string;
+  verificationExpiresAt: string;
+}
+
+export const EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Email verification required before signing in';
 
 function parseDurationToSeconds(value: string): number | null {
   const trimmed = value.trim();
@@ -136,6 +153,7 @@ function buildAuthUser(
     id: string;
     email: string;
     name: string;
+    emailVerified?: boolean | undefined;
   },
   roleInfo: RoleInfo[]
 ): AuthUser {
@@ -143,6 +161,7 @@ function buildAuthUser(
     id: user.id,
     email: user.email,
     name: user.name,
+    emailVerified: user.emailVerified ?? false,
     roles: roleInfo,
   };
 }
@@ -165,6 +184,22 @@ function buildLoginResponse(
   };
 }
 
+async function issueEmailVerificationToken(user: {
+  id: string;
+  email: string;
+}): Promise<EmailVerificationTokenResponse> {
+  const { token, expiresAt } = await emailVerificationTokenStorage.createEmailVerificationToken(
+    user.id
+  );
+
+  return {
+    email: user.email,
+    verificationRequired: true,
+    verificationToken: token,
+    verificationExpiresAt: expiresAt.toISOString(),
+  };
+}
+
 // =============================================================================
 // Service Implementation
 // =============================================================================
@@ -172,7 +207,7 @@ function buildLoginResponse(
 /**
  * Register a new user
  */
-export async function register(input: CreateUserData): Promise<AuthResult<{ user: AuthUser }>> {
+export async function register(input: CreateUserData): Promise<AuthResult<RegisterResponse>> {
   try {
     if (await userStorage.emailExists(input.email)) {
       return {
@@ -181,7 +216,7 @@ export async function register(input: CreateUserData): Promise<AuthResult<{ user
       };
     }
 
-    const user = await userStorage.createUser(input);
+    const user = await userStorage.createUser(input, { emailVerified: false });
 
     const roles = await roleStorage.getUserRoles(user.id);
     const roleInfo: RoleInfo[] = roles
@@ -192,7 +227,17 @@ export async function register(input: CreateUserData): Promise<AuthResult<{ user
       })
       .filter((r): r is RoleInfo => r !== null);
 
-    return { ok: true, data: { user: buildAuthUser(user, roleInfo) } };
+    const verification = await issueEmailVerificationToken(user);
+
+    return {
+      ok: true,
+      data: {
+        user: buildAuthUser(user, roleInfo),
+        verificationRequired: true,
+        verificationToken: verification.verificationToken,
+        verificationExpiresAt: verification.verificationExpiresAt,
+      },
+    };
   } catch (error) {
     logger.error('auth.register error', { error: getErrorMessage(error) });
     return {
@@ -213,6 +258,12 @@ export async function login(email: string, password: string): Promise<AuthResult
     }
     if (!user.isActive) {
       return { ok: false, error: { code: 'FORBIDDEN', message: 'Account inactive' } };
+    }
+    if (!user.emailVerified) {
+      return {
+        ok: false,
+        error: { code: 'FORBIDDEN', message: EMAIL_VERIFICATION_REQUIRED_MESSAGE },
+      };
     }
 
     const roles = await roleStorage.getUserRoles(user.id);
@@ -245,8 +296,17 @@ export async function refresh(refreshToken: string): Promise<AuthResult<TokenPai
   }
 
   const user = await userStorage.getUserById(decoded.sub);
-  if (user?.isActive !== true) {
-    return { ok: false, error: { code: 'UNAUTHORIZED', message: 'User not found or inactive' } };
+  if (user?.isActive !== true || user.emailVerified !== true) {
+    return {
+      ok: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message:
+          user?.emailVerified === false
+            ? EMAIL_VERIFICATION_REQUIRED_MESSAGE
+            : 'User not found or inactive',
+      },
+    };
   }
 
   await auth.blacklistToken(refreshToken);
@@ -298,10 +358,78 @@ export async function getProfile(userId: string): Promise<AuthResult<{ user: Aut
     id: user.id,
     email: user.email,
     name: user.name,
+    emailVerified: user.emailVerified ?? false,
     roles: roleInfo,
   };
 
   return { ok: true, data: { user: authUser } };
+}
+
+export async function generateEmailVerificationToken(
+  email: string
+): Promise<AuthResult<EmailVerificationTokenResponse>> {
+  try {
+    const user = await userStorage.getUserByEmail(email);
+    if (!user) {
+      return { ok: false, error: { code: 'NOT_FOUND', message: 'User not found' } };
+    }
+
+    if (user.emailVerified) {
+      return {
+        ok: false,
+        error: { code: 'CONFLICT', message: 'Email is already verified' },
+      };
+    }
+
+    return {
+      ok: true,
+      data: await issueEmailVerificationToken(user),
+    };
+  } catch (error) {
+    logger.error('auth.generateEmailVerificationToken error', {
+      error: getErrorMessage(error),
+    });
+    return {
+      ok: false,
+      error: { code: 'UNAUTHORIZED', message: getErrorMessage(error) },
+    };
+  }
+}
+
+export async function verifyEmail(
+  email: string,
+  token: string
+): Promise<AuthResult<{ success: boolean }>> {
+  try {
+    const user = await userStorage.getUserByEmail(email);
+    if (!user) {
+      return { ok: false, error: { code: 'NOT_FOUND', message: 'User not found' } };
+    }
+
+    if (user.emailVerified) {
+      return { ok: true, data: { success: true } };
+    }
+
+    const isValid = await emailVerificationTokenStorage.verifyEmailVerificationToken(
+      user.id,
+      token
+    );
+    if (!isValid) {
+      return {
+        ok: false,
+        error: { code: 'BAD_REQUEST', message: 'Invalid or expired verification token' },
+      };
+    }
+
+    await userStorage.verifyEmail(user.id);
+    return { ok: true, data: { success: true } };
+  } catch (error) {
+    logger.error('auth.verifyEmail error', { error: getErrorMessage(error) });
+    return {
+      ok: false,
+      error: { code: 'UNAUTHORIZED', message: getErrorMessage(error) },
+    };
+  }
 }
 
 /**
@@ -471,6 +599,9 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
       if (user) {
         logger.info('auth.loginWithGoogle: found user by email, linking googleId');
         await userStorage.linkGoogleId(user.id, payload.sub);
+        if (!user.emailVerified) {
+          await userStorage.verifyEmail(user.id);
+        }
         user = await userStorage.getUserById(user.id);
       } else {
         logger.info('auth.loginWithGoogle: creating new user');
@@ -536,6 +667,8 @@ export default {
   refresh,
   logout,
   getProfile,
+  generateEmailVerificationToken,
+  verifyEmail,
   generateResetToken,
   resetPassword,
   changePassword,

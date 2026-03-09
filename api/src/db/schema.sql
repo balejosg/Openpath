@@ -180,6 +180,15 @@ CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
 );
 
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
+	"id" varchar(50) PRIMARY KEY NOT NULL,
+	"user_id" varchar(50) NOT NULL,
+	"token_hash" varchar(255) NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now()
+);
+
+--> statement-breakpoint
 DO $$ BEGIN
     ALTER TABLE "machines" ADD CONSTRAINT "machines_classroom_id_classrooms_id_fk" FOREIGN KEY ("classroom_id") REFERENCES "public"."classrooms"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -236,6 +245,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
 	ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "email_verification_tokens" ADD CONSTRAINT "email_verification_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END $$;

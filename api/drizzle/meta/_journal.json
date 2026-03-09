@@ -64,6 +64,13 @@
       "when": 1773034149190,
       "tag": "0008_fine_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773071567005,
+      "tag": "0009_add_email_verification",
+      "breakpoints": true
     }
   ]
 }

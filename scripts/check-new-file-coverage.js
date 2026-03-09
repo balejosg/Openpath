@@ -11,6 +11,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
+import ts from 'typescript';
 
 const ROOT_DIR = resolve(import.meta.dirname, '..');
 const COVERAGE_THRESHOLD = 80;
@@ -145,6 +146,35 @@ function calculateLineCoverage(fileCoverage) {
   return Math.round((covered / total) * 100);
 }
 
+function isTypeOnlyModule(filePath) {
+  const fullPath = resolve(ROOT_DIR, filePath);
+
+  try {
+    const source = readFileSync(fullPath, 'utf-8');
+    const { outputText } = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+        isolatedModules: true,
+        verbatimModuleSyntax: true,
+      },
+      fileName: fullPath,
+    });
+
+    const normalizedOutput = outputText
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*export\s*\{\s*\};?\s*$/gm, '')
+      .replace(/^\s*\/\/# sourceMappingURL=.*$/gm, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .trim();
+
+    return normalizedOutput.length === 0;
+  } catch (error) {
+    console.warn(`  Could not determine runtime shape for ${filePath}: ${error.message}`);
+    return false;
+  }
+}
+
 function main() {
   console.log('');
   console.log('Checking coverage for new/modified files...');
@@ -177,11 +207,16 @@ function main() {
   const failures = [];
   const successes = [];
   const missing = [];
+  const typeOnly = [];
 
   for (const file of changedFiles) {
     const fileCoverage = coverage[file];
 
     if (!fileCoverage) {
+      if (isTypeOnlyModule(file)) {
+        typeOnly.push(file);
+        continue;
+      }
       missing.push(file);
       continue;
     }
@@ -189,6 +224,10 @@ function main() {
     const lineCoverage = calculateLineCoverage(fileCoverage);
 
     if (lineCoverage === null) {
+      if (isTypeOnlyModule(file)) {
+        typeOnly.push(file);
+        continue;
+      }
       missing.push(file);
       continue;
     }
@@ -205,6 +244,14 @@ function main() {
     console.log('\x1b[32mFiles meeting coverage threshold:\x1b[0m');
     successes.forEach(({ file, coverage: cov }) => {
       console.log(`  ${file}: ${cov}%`);
+    });
+    console.log('');
+  }
+
+  if (typeOnly.length > 0) {
+    console.log('\x1b[36mType-only files skipped (no runtime coverage possible):\x1b[0m');
+    typeOnly.forEach((file) => {
+      console.log(`  ${file}`);
     });
     console.log('');
   }

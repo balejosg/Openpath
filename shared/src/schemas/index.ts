@@ -71,6 +71,7 @@ export const AuthUser = SafeUser.pick({
   email: true,
   name: true,
 }).extend({
+  emailVerified: z.boolean(),
   roles: z.array(RoleInfo),
 });
 

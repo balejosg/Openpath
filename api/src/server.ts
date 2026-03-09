@@ -1637,11 +1637,14 @@ if (isMainModule) {
         if (!existingAdmin) {
           logger.info('Creating default admin user from environment variables...');
           try {
-            const admin = await userStorage.createUser({
-              email: process.env.ADMIN_EMAIL,
-              name: 'System Admin',
-              password: process.env.ADMIN_PASSWORD,
-            });
+            const admin = await userStorage.createUser(
+              {
+                email: process.env.ADMIN_EMAIL,
+                name: 'System Admin',
+                password: process.env.ADMIN_PASSWORD,
+              },
+              { emailVerified: true }
+            );
 
             await roleStorage.assignRole({
               userId: admin.id,

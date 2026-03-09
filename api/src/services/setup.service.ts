@@ -104,7 +104,7 @@ export async function createFirstAdmin(
   }
 
   // Create the user
-  const user = await userStorage.createUser(input);
+  const user = await userStorage.createUser(input, { emailVerified: true });
 
   // Assign admin role
   await roleStorage.assignRole({

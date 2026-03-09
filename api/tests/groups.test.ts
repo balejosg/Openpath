@@ -20,6 +20,7 @@ import {
   assertStatus,
   TEST_RUN_ID,
   resetDb,
+  registerAndVerifyUser,
 } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
@@ -148,11 +149,12 @@ await describe('Groups Router (tRPC)', { timeout: 30000 }, async () => {
       const email = `nonadmin-${TEST_RUN_ID}@test.local`;
       const password = 'SecurePassword123!';
 
-      await trpcMutate(API_URL, 'auth.register', {
+      const { verifyResponse } = await registerAndVerifyUser(API_URL, {
         email,
         password,
         name: 'Non Admin User',
       });
+      assert.strictEqual(verifyResponse?.status, 200);
 
       const loginResp = await trpcMutate(API_URL, 'auth.login', { email, password });
       const { data } = (await parseTRPC(loginResp)) as { data?: { accessToken?: string } };

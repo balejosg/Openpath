@@ -98,7 +98,12 @@ export interface IUserStorage {
   getAllUsers(): Promise<SafeUser[]>;
   getUserById(id: string): Promise<User | null>;
   getUserByEmail(email: string): Promise<User | null>;
-  createUser(data: CreateUserData): Promise<SafeUser>;
+  createUser(
+    data: CreateUserData,
+    options?: {
+      emailVerified?: boolean;
+    }
+  ): Promise<SafeUser>;
   updateUser(id: string, data: UpdateUserData): Promise<SafeUser | null>;
   deleteUser(id: string): Promise<boolean>;
   verifyPassword(user: User, password: string): Promise<boolean>;

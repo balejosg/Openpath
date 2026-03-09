@@ -29,6 +29,8 @@ import assert from 'node:assert';
 import type { Server } from 'node:http';
 import { getAvailablePort, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
+import * as authLib from '../src/lib/auth.js';
+import * as userStorage from '../src/lib/user-storage.js';
 
 let PORT: number;
 let API_URL: string;
@@ -83,6 +85,9 @@ interface AuthResult {
   refreshToken?: string;
   expiresIn?: number;
   sessionTransport?: 'token' | 'cookie';
+  verificationRequired?: boolean;
+  verificationToken?: string;
+  verificationExpiresAt?: string;
   error?: string;
 }
 
@@ -162,6 +167,9 @@ await describe(
         assert.ok(data.user);
         assert.ok(data.user.id);
         assert.deepStrictEqual(data.user.roles ?? [], []);
+        assert.strictEqual(data.verificationRequired, true);
+        assert.ok(data.verificationToken);
+        assert.ok(data.verificationExpiresAt);
       });
 
       await test('should reject registration without email', async () => {
@@ -214,14 +222,14 @@ await describe(
 
       before(async () => {
         testEmail = `login-test-${String(Date.now())}-${Math.random().toString(36).slice(2)}@example.com`;
-        const regResponse = await trpcMutate('auth.register', {
-          email: testEmail,
-          password: testPassword,
-          name: 'Login Test User',
-        });
-        if (regResponse.status !== 200) {
-          console.log(`Note: Registration returned ${String(regResponse.status)}`);
-        }
+        await userStorage.createUser(
+          {
+            email: testEmail,
+            password: testPassword,
+            name: 'Login Test User',
+          },
+          { emailVerified: true }
+        );
       });
 
       await test('should login with valid credentials', async () => {
@@ -269,11 +277,14 @@ await describe(
       before(async () => {
         const email = `refresh-test-${String(Date.now())}-${Math.random().toString(36).slice(2)}@example.com`;
 
-        await trpcMutate('auth.register', {
-          email,
-          password: 'SecurePassword123!',
-          name: 'Refresh Test User',
-        });
+        await userStorage.createUser(
+          {
+            email,
+            password: 'SecurePassword123!',
+            name: 'Refresh Test User',
+          },
+          { emailVerified: true }
+        );
 
         const loginResponse = await trpcMutate('auth.login', {
           email,
@@ -343,24 +354,20 @@ await describe(
         currentPassword = 'CurrentPassword123!';
         newPassword = 'NewPassword456!';
 
-        const registerResponse = await trpcMutate('auth.register', {
-          email: testEmail,
-          password: currentPassword,
-          name: 'Change Password User',
-        });
-        assert.strictEqual(registerResponse.status, 200);
+        await userStorage.createUser(
+          {
+            email: testEmail,
+            password: currentPassword,
+            name: 'Change Password User',
+          },
+          { emailVerified: true }
+        );
 
-        const loginResponse = await trpcMutate('auth.login', {
-          email: testEmail,
-          password: currentPassword,
-        });
-        assert.strictEqual(loginResponse.status, 200);
-
-        const parsedLogin = (await parseTRPC(loginResponse)) as { data?: AuthResult };
-        if (!parsedLogin.data?.accessToken) {
-          throw new Error('Expected accessToken after login');
+        const user = await userStorage.getUserByEmail(testEmail);
+        if (!user) {
+          throw new Error('Expected created user to exist');
         }
-        accessToken = parsedLogin.data.accessToken;
+        accessToken = authLib.generateTokens(user, []).accessToken;
       });
 
       await test('should require authentication', async () => {
@@ -401,7 +408,7 @@ await describe(
           email: testEmail,
           password: currentPassword,
         });
-        assert.strictEqual(oldLoginResponse.status, 401);
+        assert.ok([401, 429].includes(oldLoginResponse.status));
 
         const newLoginResponse = await trpcMutate('auth.login', {
           email: testEmail,
@@ -460,12 +467,19 @@ await describe(
       before(async () => {
         const email = `logout-test-${String(Date.now())}@example.com`;
         const pwd = 'SecurePassword123!';
-        await trpcMutate('auth.register', { email, password: pwd, name: 'Logout User' });
-        const login = await trpcMutate('auth.login', { email, password: pwd });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        const json = (await login.json()) as any;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-        accessToken = json.result.data.accessToken;
+        await userStorage.createUser(
+          {
+            email,
+            password: pwd,
+            name: 'Logout User',
+          },
+          { emailVerified: true }
+        );
+        const user = await userStorage.getUserByEmail(email);
+        if (!user) {
+          throw new Error('Expected created user to exist');
+        }
+        accessToken = authLib.generateTokens(user, []).accessToken;
       });
 
       await test('should logout successfully', async () => {

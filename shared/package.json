@@ -39,7 +39,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ --max-warnings=0",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:coverage": "c8 node --import tsx --test tests/*.test.ts"
+    "test:coverage": "node ../scripts/run-c8-coverage.js \"node --import tsx --test tests/*.test.ts\""
   },
   "dependencies": {
     "zod": "^3.25.76"

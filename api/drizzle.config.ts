@@ -24,6 +24,7 @@ export default defineConfig({
     'tokens',
     'settings',
     'password_reset_tokens',
+    'email_verification_tokens',
     'push_subscriptions',
     'health_reports',
     'whitelist_groups',

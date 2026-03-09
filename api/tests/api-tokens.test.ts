@@ -17,6 +17,7 @@ import {
   parseTRPC,
   uniqueEmail,
   bearerAuth,
+  registerAndVerifyUser,
 } from './test-utils.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
@@ -97,12 +98,13 @@ await describe('API Tokens Router Tests', { timeout: 30000 }, async () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Register and login a test user
-    const registerResponse = await trpcMutate(API_URL, 'auth.register', {
+    const { registerResponse, verifyResponse } = await registerAndVerifyUser(API_URL, {
       email: testEmail,
       password: testPassword,
       name: 'Token Test User',
     });
     assert.strictEqual(registerResponse.status, 200, 'Registration should succeed');
+    assert.strictEqual(verifyResponse?.status, 200, 'Verification should succeed');
 
     const loginResponse = await trpcMutate(API_URL, 'auth.login', {
       email: testEmail,

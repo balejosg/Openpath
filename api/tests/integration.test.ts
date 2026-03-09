@@ -8,7 +8,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { getAvailablePort, resetDb } from './test-utils.js';
+import { getAvailablePort, registerAndVerifyUser, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
 let PORT: number;
@@ -151,13 +151,14 @@ await describe('Integration Tests (tRPC)', async () => {
   await describe('User Workflow', async () => {
     await it('should complete user registration → login → profile access flow', async () => {
       // Step 1: Register a new user with unique email
-      const registerRes = await trpcMutate('auth.register', {
+      const { registerResponse, verifyResponse } = await registerAndVerifyUser(BASE_URL, {
         email: INTEGRATION_EMAIL,
         password: 'IntegrationTest123!',
         name: 'Integration Test User',
       });
 
-      assert.strictEqual(registerRes.status, 200, 'Registration should succeed');
+      assert.strictEqual(registerResponse.status, 200, 'Registration should succeed');
+      assert.strictEqual(verifyResponse?.status, 200, 'Verification should succeed');
 
       // Step 2: Login with credentials
       const loginRes = await trpcMutate('auth.login', {

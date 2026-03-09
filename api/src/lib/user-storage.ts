@@ -32,6 +32,10 @@ interface StoredUserResult extends User {
   emailVerified: boolean;
 }
 
+interface CreateUserOptions {
+  emailVerified?: boolean;
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -168,9 +172,13 @@ export async function linkGoogleId(userId: string, googleId: string): Promise<bo
  * @returns Promise resolving to the created user (without password hash)
  * @throws {Error} If database insertion fails
  */
-export async function createUser(userData: CreateUserData): Promise<SafeUser> {
+export async function createUser(
+  userData: CreateUserData,
+  options: CreateUserOptions = {}
+): Promise<SafeUser> {
   const passwordHash = await bcrypt.hash(userData.password, config.bcryptRounds);
   const id = `user_${uuidv4().slice(0, 8)}`;
+  const emailVerified = options.emailVerified ?? false;
 
   const [result] = await db
     .insert(users)
@@ -179,11 +187,13 @@ export async function createUser(userData: CreateUserData): Promise<SafeUser> {
       email: normalize.email(userData.email),
       name: userData.name.trim(),
       passwordHash,
+      emailVerified,
     })
     .returning({
       id: users.id,
       email: users.email,
       name: users.name,
+      emailVerified: users.emailVerified,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     });
@@ -197,6 +207,7 @@ export async function createUser(userData: CreateUserData): Promise<SafeUser> {
     email: result.email,
     name: result.name,
     isActive: true,
+    emailVerified: result.emailVerified,
     createdAt: result.createdAt?.toISOString() ?? new Date().toISOString(),
     updatedAt: result.updatedAt?.toISOString() ?? new Date().toISOString(),
   };
@@ -272,7 +283,10 @@ export async function deleteUser(id: string): Promise<boolean> {
 }
 
 export async function verifyEmail(id: string): Promise<boolean> {
-  const result = await db.update(users).set({ updatedAt: new Date() }).where(eq(users.id, id));
+  const result = await db
+    .update(users)
+    .set({ emailVerified: true, updatedAt: new Date() })
+    .where(eq(users.id, id));
 
   return (result.rowCount ?? 0) > 0;
 }

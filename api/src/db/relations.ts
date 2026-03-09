@@ -16,6 +16,7 @@ import {
   machineExemptions,
   tokens,
   passwordResetTokens,
+  emailVerificationTokens,
 } from './schema.js';
 
 // =============================================================================
@@ -27,6 +28,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   schedules: many(schedules),
   tokens: many(tokens),
   passwordResetTokens: many(passwordResetTokens),
+  emailVerificationTokens: many(emailVerificationTokens),
 }));
 
 // =============================================================================
@@ -119,6 +121,13 @@ export const tokensRelations = relations(tokens, ({ one }) => ({
 export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
   user: one(users, {
     fields: [passwordResetTokens.userId],
+    references: [users.id],
+  }),
+}));
+
+export const emailVerificationTokensRelations = relations(emailVerificationTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [emailVerificationTokens.userId],
     references: [users.id],
   }),
 }));

@@ -99,10 +99,36 @@ async function ensureMachinesSchema(): Promise<void> {
   );
 }
 
+async function ensureEmailVerificationSchema(): Promise<void> {
+  const statements = [
+    'DO $$ BEGIN\n' +
+      '  CREATE TABLE IF NOT EXISTS "email_verification_tokens" (\n' +
+      '    "id" varchar(50) PRIMARY KEY NOT NULL,\n' +
+      '    "user_id" varchar(50) NOT NULL,\n' +
+      '    "token_hash" varchar(255) NOT NULL,\n' +
+      '    "expires_at" timestamp with time zone NOT NULL,\n' +
+      '    "created_at" timestamp with time zone DEFAULT now()\n' +
+      '  );\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_table OR unique_violation THEN NULL;\n' +
+      'END $$;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "email_verification_tokens" ADD CONSTRAINT "email_verification_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
+  ];
+
+  for (const stmt of statements) {
+    await db.execute(sql.raw(stmt));
+  }
+}
+
 export async function ensureTestSchema(): Promise<void> {
   await ensureSchedulesOneOffSchema();
   await ensureMachineExemptionsSchema();
   await ensureMachinesSchema();
+  await ensureEmailVerificationSchema();
 }
 
 /**
@@ -127,6 +153,7 @@ export async function resetDb(): Promise<void> {
     'settings',
     'whitelist_groups',
     'whitelist_rules',
+    'email_verification_tokens',
   ];
 
   for (const table of tables) {
@@ -181,6 +208,9 @@ export interface AuthResult {
   expiresIn?: number;
   tokenType?: string;
   user?: UserResult;
+  verificationRequired?: boolean;
+  verificationToken?: string;
+  verificationExpiresAt?: string;
 }
 
 export interface RequestResult {
@@ -257,6 +287,43 @@ export async function parseTRPC(response: Response): Promise<{
 export function bearerAuth(token: string | null): Record<string, string> {
   if (token === null || token === '') return {};
   return { Authorization: `Bearer ${token}` };
+}
+
+export async function registerAndVerifyUser(
+  baseUrl: string,
+  input: {
+    email: string;
+    password: string;
+    name: string;
+  },
+  headers: Record<string, string> = {}
+): Promise<{
+  registerResponse: Response;
+  registerData?: AuthResult;
+  verifyResponse?: Response;
+}> {
+  const registerResponse = await trpcMutate(baseUrl, 'auth.register', input, headers);
+  const { data } = (await parseTRPC(registerResponse)) as { data?: AuthResult };
+
+  if (registerResponse.status !== 200 || !data?.verificationToken) {
+    return data ? { registerResponse, registerData: data } : { registerResponse };
+  }
+
+  const verifyResponse = await trpcMutate(
+    baseUrl,
+    'auth.verifyEmail',
+    {
+      email: input.email,
+      token: data.verificationToken,
+    },
+    headers
+  );
+
+  return {
+    registerResponse,
+    registerData: data,
+    verifyResponse,
+  };
 }
 
 /**

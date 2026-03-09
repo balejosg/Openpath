@@ -1,7 +1,13 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { getAvailablePort, resetDb, trpcMutate as _trpcMutate, parseTRPC } from './test-utils.js';
+import {
+  getAvailablePort,
+  resetDb,
+  trpcMutate as _trpcMutate,
+  parseTRPC,
+  registerAndVerifyUser,
+} from './test-utils.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 
@@ -61,12 +67,13 @@ void describe('Enrollment API (secure tickets)', { timeout: 30000 }, async () =>
     const password = 'SecurePassword123!';
     teacherEmail = email.toLowerCase();
 
-    const registerRes = await trpcMutate('auth.register', {
+    const { registerResponse, verifyResponse } = await registerAndVerifyUser(API_URL, {
       email,
       password,
       name: 'Enroll Teacher',
     });
-    assert.strictEqual(registerRes.status, 200);
+    assert.strictEqual(registerResponse.status, 200);
+    assert.strictEqual(verifyResponse?.status, 200);
 
     const loginRes = await trpcMutate('auth.login', { email, password });
     assert.strictEqual(loginRes.status, 200);
