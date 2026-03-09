@@ -34,7 +34,8 @@
     "branches": 55,
     "reporter": [
       "text",
-      "lcov"
+      "lcov",
+      "json"
     ],
     "include": [
       "src/**/*.ts"

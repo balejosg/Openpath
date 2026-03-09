@@ -167,11 +167,11 @@ function main() {
   console.log('');
 
   if (Object.keys(coverage).length === 0) {
-    console.log('WARNING: No coverage data found. Run tests with coverage first.');
-    console.log('Skipping coverage check for this commit.');
+    console.log('ERROR: No coverage data found for this commit.');
+    console.log('Run coverage generation before committing:');
+    console.log('  npm run verify:coverage');
     console.log('');
-    // Don't fail - coverage might not be generated yet
-    process.exit(0);
+    process.exit(1);
   }
 
   const failures = [];
@@ -233,11 +233,13 @@ function main() {
     process.exit(1);
   }
 
-  // Treat missing coverage as warning, not failure (tests might not exist yet)
   if (missing.length > 0) {
-    console.log('\x1b[33mWARNING: Some files have no coverage data.\x1b[0m');
-    console.log('Make sure to add tests for these files.');
+    console.log('\x1b[31mERROR: Some files have no coverage data.\x1b[0m');
+    console.log('To fix:');
+    console.log('  1. Add tests that import or execute the changed files');
+    console.log('  2. Run "npm run verify:coverage" to regenerate coverage');
     console.log('');
+    process.exit(1);
   }
 
   console.log('\x1b[32mAll checked files meet the coverage threshold.\x1b[0m');

@@ -34,6 +34,7 @@
     "verify:checks": "concurrently --group --names 'shell,format,files' 'npm:lint:shell' 'npm:format:check' 'npm:security:files'",
     "verify:unit": "npm run build --workspace=@openpath/shared && turbo run test --parallel",
     "verify:security": "concurrently --group --names 'audit,secrets,size' 'npm:security:audit' 'npm:security:secrets' 'npm:size:check'",
+    "verify:coverage": "node scripts/run-changed-coverage.js && node scripts/check-new-file-coverage.js",
     "verify:full": "npm run verify:static && npm run verify:checks && npm run verify:unit && npm run e2e:full && npm run verify:security",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",

@@ -23,10 +23,10 @@ echo ""
 echo "[3/4] Running full verification suite..."
 npm run verify:full
 
-# 4. FAST: Check coverage on new/modified files (80% threshold)
+# 4. FAST: Generate coverage for changed workspaces and enforce threshold
 echo ""
 echo "[4/4] Checking coverage on changed files..."
-node scripts/check-new-file-coverage.js
+npm run verify:coverage
 
 echo ""
 echo "=========================================="
