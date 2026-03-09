@@ -577,7 +577,7 @@ app.get('/export/:name.txt', (req: Request, res: Response): void => {
 // Setup REST Endpoints (for SPA compatibility)
 // =============================================================================
 
-import { SetupService } from './services/index.js';
+import { SetupService, ClassroomService } from './services/index.js';
 
 // Get setup status
 app.get('/api/setup/status', (_req: Request, res: Response): void => {
@@ -816,21 +816,22 @@ app.post('/api/enroll/:classroomId/ticket', (req: Request, res: Response): void 
         return;
       }
 
-      const classroom = await classroomStorage.getClassroomById(classroomId);
-      if (!classroom) {
-        res.status(404).json({ success: false, error: 'Classroom not found' });
+      const access = await ClassroomService.ensureUserCanAccessClassroom(decoded, classroomId);
+      if (!access.ok) {
+        const statusCode = access.error.code === 'NOT_FOUND' ? 404 : 403;
+        res.status(statusCode).json({ success: false, error: access.error.message });
         return;
       }
 
-      const enrollmentToken = generateEnrollmentToken(classroom.id);
+      const enrollmentToken = generateEnrollmentToken(access.data.id);
 
       res.setHeader('Cache-Control', 'no-store, max-age=0');
       res.setHeader('Pragma', 'no-cache');
       res.json({
         success: true,
         enrollmentToken,
-        classroomId: classroom.id,
-        classroomName: classroom.name,
+        classroomId: access.data.id,
+        classroomName: access.data.name,
       });
     } catch (error) {
       logger.error('Enrollment ticket error', { error: getErrorMessage(error) });
@@ -1066,21 +1067,8 @@ Write-Host 'Installation completed. Current status:'
 
 app.post('/api/machines/:hostname/rotate-download-token', (req: Request, res: Response): void => {
   void (async (): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      res.status(401).json({ success: false, error: 'Authorization header required' });
-      return;
-    }
-
-    const sharedSecret = process.env.SHARED_SECRET;
-    if (!sharedSecret) {
-      res.status(500).json({ success: false, error: 'SHARED_SECRET not configured' });
-      return;
-    }
-
-    const providedSecret = authHeader.slice(7);
-    if (providedSecret !== sharedSecret) {
-      res.status(403).json({ success: false, error: 'Invalid shared secret' });
+    const machine = await authenticateMachineToken(req, res);
+    if (!machine) {
       return;
     }
 
@@ -1089,9 +1077,16 @@ app.post('/api/machines/:hostname/rotate-download-token', (req: Request, res: Re
       res.status(400).json({ success: false, error: 'hostname parameter required' });
       return;
     }
-    const machine = await classroomStorage.getMachineOnlyByHostname(hostname);
-    if (!machine) {
-      res.status(404).json({ success: false, error: `Machine "${hostname}" not found` });
+
+    const normalizedHostname = hostname.trim().toLowerCase();
+    const reportedHostname = machine.reportedHostname?.trim().toLowerCase();
+    if (
+      normalizedHostname !== machine.hostname.trim().toLowerCase() &&
+      normalizedHostname !== reportedHostname
+    ) {
+      res
+        .status(403)
+        .json({ success: false, error: 'Machine token is not valid for this hostname' });
       return;
     }
 

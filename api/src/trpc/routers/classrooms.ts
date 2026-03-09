@@ -1,9 +1,16 @@
 import { z } from 'zod';
-import { router, adminProcedure, sharedSecretProcedure, teacherProcedure } from '../trpc.js';
+import {
+  router,
+  publicProcedure,
+  adminProcedure,
+  teacherProcedure,
+  requireEnrollmentTokenAccess,
+} from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import { CreateClassroomDTOSchema, getErrorMessage } from '../../types/index.js';
 import type { CreateClassroomData, UpdateClassroomData } from '../../types/storage.js';
 import * as classroomStorage from '../../lib/classroom-storage.js';
+import * as auth from '../../lib/auth.js';
 import { stripUndefined } from '../../lib/utils.js';
 import { logger } from '../../lib/logger.js';
 import { ClassroomService } from '../../services/index.js';
@@ -18,16 +25,17 @@ import {
   MachineExemptionError,
   createMachineExemption,
   deleteMachineExemption,
+  getMachineExemptionById,
   getActiveMachineExemptionsByClassroom,
 } from '../../lib/exemption-storage.js';
 
 export const classroomsRouter = router({
-  list: teacherProcedure.query(async () => {
-    return await ClassroomService.listClassrooms();
+  list: teacherProcedure.query(async ({ ctx }) => {
+    return await ClassroomService.listClassrooms(ctx.user);
   }),
 
-  get: teacherProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
-    const result = await ClassroomService.getClassroom(input.id);
+  get: teacherProcedure.input(z.object({ id: z.string() })).query(async ({ input, ctx }) => {
+    const result = await ClassroomService.getClassroom(input.id, ctx.user);
     if (!result.ok) {
       throw new TRPCError({ code: result.error.code, message: result.error.message });
     }
@@ -89,13 +97,29 @@ export const classroomsRouter = router({
         groupId: z.string().nullable(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const access = await ClassroomService.ensureUserCanAccessClassroom(ctx.user, input.id);
+      if (!access.ok) {
+        throw new TRPCError({ code: access.error.code, message: access.error.message });
+      }
+
+      if (
+        input.groupId !== null &&
+        !auth.isAdminToken(ctx.user) &&
+        !auth.canApproveGroup(ctx.user, input.groupId)
+      ) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You can only set groups within your assigned scope',
+        });
+      }
+
       const updated = await classroomStorage.setActiveGroup(input.id, input.groupId);
       if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Classroom not found' });
 
       emitClassroomChanged(updated.id);
 
-      const result = await ClassroomService.getClassroom(input.id);
+      const result = await ClassroomService.getClassroom(input.id, ctx.user);
       if (!result.ok)
         throw new TRPCError({ code: result.error.code, message: result.error.message });
 
@@ -114,6 +138,14 @@ export const classroomsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const access = await ClassroomService.ensureUserCanAccessClassroom(
+        ctx.user,
+        input.classroomId
+      );
+      if (!access.ok) {
+        throw new TRPCError({ code: access.error.code, message: access.error.message });
+      }
+
       try {
         const created = await createMachineExemption({
           machineId: input.machineId,
@@ -143,7 +175,20 @@ export const classroomsRouter = router({
 
   deleteExemption: teacherProcedure
     .input(z.object({ id: z.string().min(1) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const existing = await getMachineExemptionById(input.id);
+      if (!existing) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Exemption not found' });
+      }
+
+      const access = await ClassroomService.ensureUserCanAccessClassroom(
+        ctx.user,
+        existing.classroomId
+      );
+      if (!access.ok) {
+        throw new TRPCError({ code: access.error.code, message: access.error.message });
+      }
+
       const deleted = await deleteMachineExemption(input.id);
       if (!deleted) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Exemption not found' });
@@ -155,7 +200,15 @@ export const classroomsRouter = router({
 
   listExemptions: teacherProcedure
     .input(z.object({ classroomId: z.string().min(1) }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const access = await ClassroomService.ensureUserCanAccessClassroom(
+        ctx.user,
+        input.classroomId
+      );
+      if (!access.ok) {
+        throw new TRPCError({ code: access.error.code, message: access.error.message });
+      }
+
       const rows = await getActiveMachineExemptionsByClassroom(input.classroomId, new Date());
       return {
         classroomId: input.classroomId,
@@ -184,7 +237,7 @@ export const classroomsRouter = router({
   }),
 
   // Shared Secret / Machine endpoints
-  registerMachine: sharedSecretProcedure
+  registerMachine: publicProcedure
     .input(
       z.object({
         hostname: z.string().min(1),
@@ -193,8 +246,28 @@ export const classroomsRouter = router({
         version: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      const result = await ClassroomService.registerMachine(input);
+    .mutation(async ({ input, ctx }) => {
+      const enrollment = await requireEnrollmentTokenAccess(ctx.req);
+
+      if (input.classroomId && input.classroomId !== enrollment.classroomId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Enrollment token is not valid for this classroom',
+        });
+      }
+
+      if (input.classroomName && input.classroomName !== enrollment.classroomName) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Enrollment token is not valid for this classroom',
+        });
+      }
+
+      const result = await ClassroomService.registerMachine({
+        ...input,
+        classroomId: enrollment.classroomId,
+        classroomName: enrollment.classroomName,
+      });
       if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
       }

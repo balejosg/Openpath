@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { router, adminProcedure, sharedSecretProcedure } from '../trpc.js';
+import {
+  router,
+  publicProcedure,
+  adminProcedure,
+  requireMachineTokenAccess,
+  machineMatchesHostname,
+} from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import * as healthReports from '../../lib/health-reports.js';
 import { HealthReport } from '../../lib/health-reports.js';
@@ -7,7 +13,7 @@ import { PROBLEM_HEALTH_STATUSES } from '../../lib/health-status.js';
 import { stripUndefined } from '../../lib/utils.js';
 
 export const healthReportsRouter = router({
-  submit: sharedSecretProcedure
+  submit: publicProcedure
     .input(
       z
         .object({
@@ -21,9 +27,17 @@ export const healthReportsRouter = router({
         })
         .strict()
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const machine = await requireMachineTokenAccess(ctx.req);
+      if (!machineMatchesHostname(machine, input.hostname)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Machine token is not valid for this hostname',
+        });
+      }
+
       await healthReports.saveHealthReport(
-        input.hostname,
+        machine.hostname,
         stripUndefined({
           status: input.status,
           dnsmasqRunning: input.dnsmasqRunning ?? null,

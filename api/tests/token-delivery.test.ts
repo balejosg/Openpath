@@ -265,6 +265,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
 
   await describe('POST /api/machines/:hostname/rotate-download-token', async () => {
     let machineHostname: string;
+    let machineToken: string;
 
     before(async () => {
       await createTestClassroom('RotateTestClassroom', 'rotate-group');
@@ -285,10 +286,13 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       const data = (await response.json()) as {
         machineHostname?: string;
         reportedHostname?: string;
+        whitelistUrl?: string;
       };
       assert.ok(data.machineHostname, 'register should return canonical machineHostname');
       assert.strictEqual(data.reportedHostname, 'rotate-test-pc');
       machineHostname = data.machineHostname;
+      assert.ok(data.whitelistUrl);
+      machineToken = extractMachineToken(data.whitelistUrl);
     });
 
     await test('should rotate token and return new URL', async () => {
@@ -298,7 +302,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer test-shared-secret',
+            Authorization: `Bearer ${machineToken}`,
           },
         }
       );
@@ -321,7 +325,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       assert.strictEqual(response.status, 401);
     });
 
-    await test('should reject invalid shared secret', async () => {
+    await test('should reject invalid machine token', async () => {
       const response = await fetch(
         `${API_URL}/api/machines/${machineHostname}/rotate-download-token`,
         {
@@ -336,19 +340,19 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       assert.strictEqual(response.status, 403);
     });
 
-    await test('should reject non-existent machine', async () => {
+    await test('should reject hostname mismatches even with a valid machine token', async () => {
       const response = await fetch(
         `${API_URL}/api/machines/non-existent-pc/rotate-download-token`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer test-shared-secret',
+            Authorization: `Bearer ${machineToken}`,
           },
         }
       );
 
-      assert.strictEqual(response.status, 404);
+      assert.strictEqual(response.status, 403);
     });
   });
 

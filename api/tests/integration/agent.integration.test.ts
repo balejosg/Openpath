@@ -22,9 +22,67 @@ import { closeConnection } from '../../src/db/index.js';
 let PORT: number;
 let API_URL: string;
 const ADMIN_TOKEN = 'test-admin-token';
-const SHARED_SECRET = 'test-shared-secret';
 
 let server: Server | undefined;
+
+async function createMachineToken(
+  hostname: string
+): Promise<{ machineHostname: string; machineToken: string }> {
+  const suffix = `${hostname}-${String(Date.now())}`;
+
+  const groupResponse = await trpcMutate(
+    API_URL,
+    'groups.create',
+    { name: `group-${suffix}`, displayName: `group-${suffix}` },
+    bearerAuth(ADMIN_TOKEN)
+  );
+  assertStatus(groupResponse, 200);
+  const groupId = ((await parseTRPC(groupResponse)).data as { id: string }).id;
+
+  const classroomResponse = await trpcMutate(
+    API_URL,
+    'classrooms.create',
+    { name: `room-${suffix}`, displayName: `room-${suffix}`, defaultGroupId: groupId },
+    bearerAuth(ADMIN_TOKEN)
+  );
+  assertStatus(classroomResponse, 200);
+  const classroomId = ((await parseTRPC(classroomResponse)).data as { id: string }).id;
+
+  const ticketResponse = await fetch(`${API_URL}/api/enroll/${classroomId}/ticket`, {
+    method: 'POST',
+    headers: bearerAuth(ADMIN_TOKEN),
+  });
+  assert.strictEqual(ticketResponse.status, 200);
+  const ticketData = (await ticketResponse.json()) as { enrollmentToken?: string };
+  assert.ok(ticketData.enrollmentToken);
+
+  const registerResponse = await fetch(`${API_URL}/api/machines/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${ticketData.enrollmentToken}`,
+    },
+    body: JSON.stringify({
+      hostname,
+      classroomId,
+    }),
+  });
+  assert.strictEqual(registerResponse.status, 200);
+  const registerData = (await registerResponse.json()) as {
+    machineHostname: string;
+    whitelistUrl: string;
+  };
+
+  const match = /\/w\/([^/]+)\//.exec(registerData.whitelistUrl);
+  assert.ok(match);
+  const machineToken = match[1];
+  assert.ok(machineToken);
+
+  return {
+    machineHostname: registerData.machineHostname,
+    machineToken,
+  };
+}
 
 void describe('Agent & Health Integration', () => {
   before(async () => {
@@ -34,7 +92,6 @@ void describe('Agent & Health Integration', () => {
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
-    process.env.SHARED_SECRET = SHARED_SECRET;
 
     const { app } = await import('../../src/server.js');
 
@@ -51,6 +108,7 @@ void describe('Agent & Health Integration', () => {
 
   void test('should receive health reports from agents', async () => {
     const hostname = 'agent-01';
+    const machine = await createMachineToken(hostname);
 
     // 1. Submit report (Agent context)
     const reportResp = await trpcMutate(
@@ -63,7 +121,7 @@ void describe('Agent & Health Integration', () => {
         dnsResolving: true,
         version: '1.0.0',
       },
-      bearerAuth(SHARED_SECRET)
+      bearerAuth(machine.machineToken)
     );
 
     assertStatus(reportResp, 200);
@@ -80,13 +138,14 @@ void describe('Agent & Health Integration', () => {
       data: { hosts: { hostname: string; status: string }[] };
     };
 
-    const agent = summary.hosts.find((h) => h.hostname === hostname);
+    const agent = summary.hosts.find((h) => h.hostname === machine.machineHostname);
     assert.ok(agent);
     assert.strictEqual(agent.status, 'HEALTHY');
   });
 
   void test('should detect stale agents', async () => {
     const staleHostname = 'stale-agent';
+    const machine = await createMachineToken(staleHostname);
 
     await trpcMutate(
       API_URL,
@@ -95,7 +154,7 @@ void describe('Agent & Health Integration', () => {
         hostname: staleHostname,
         status: 'HEALTHY',
       },
-      bearerAuth(SHARED_SECRET)
+      bearerAuth(machine.machineToken)
     );
 
     const alertsResp = await trpcQuery(
@@ -109,13 +168,14 @@ void describe('Agent & Health Integration', () => {
     };
 
     const staleAlert = alerts.alerts.find(
-      (a) => a.hostname === staleHostname && a.type === 'stale'
+      (a) => a.hostname === machine.machineHostname && a.type === 'stale'
     );
     assert.ok(!staleAlert, 'Agent should not be stale yet');
   });
 
   void test('should normalize legacy health statuses to canonical values', async () => {
     const legacyHostname = 'legacy-status-agent';
+    const machine = await createMachineToken(legacyHostname);
 
     await trpcMutate(
       API_URL,
@@ -125,7 +185,7 @@ void describe('Agent & Health Integration', () => {
         status: 'OK',
         actions: 'legacy_probe',
       },
-      bearerAuth(SHARED_SECRET)
+      bearerAuth(machine.machineToken)
     );
 
     const listResp = await trpcQuery(
@@ -140,13 +200,14 @@ void describe('Agent & Health Integration', () => {
       data: { hosts: { hostname: string; status: string }[] };
     };
 
-    const host = summary.hosts.find((h) => h.hostname === legacyHostname);
+    const host = summary.hosts.find((h) => h.hostname === machine.machineHostname);
     assert.ok(host, 'Legacy host should exist in health list');
     assert.strictEqual(host.status, 'HEALTHY');
   });
 
   void test('should include tampered agents in status alerts', async () => {
     const tamperedHostname = 'tampered-agent';
+    const machine = await createMachineToken(tamperedHostname);
 
     await trpcMutate(
       API_URL,
@@ -155,7 +216,7 @@ void describe('Agent & Health Integration', () => {
         hostname: tamperedHostname,
         status: 'TAMPERED',
       },
-      bearerAuth(SHARED_SECRET)
+      bearerAuth(machine.machineToken)
     );
 
     const alertsResp = await trpcQuery(
@@ -171,13 +232,15 @@ void describe('Agent & Health Integration', () => {
     };
 
     const tamperedAlert = alerts.alerts.find(
-      (a) => a.hostname === tamperedHostname && a.type === 'status' && a.status === 'TAMPERED'
+      (a) =>
+        a.hostname === machine.machineHostname && a.type === 'status' && a.status === 'TAMPERED'
     );
     assert.ok(tamperedAlert, 'Tampered agent should appear in status alerts');
   });
 
   void test('should map legacy WARNING status to DEGRADED alerts', async () => {
     const warningHostname = 'legacy-warning-agent';
+    const machine = await createMachineToken(warningHostname);
 
     await trpcMutate(
       API_URL,
@@ -186,7 +249,7 @@ void describe('Agent & Health Integration', () => {
         hostname: warningHostname,
         status: 'WARNING',
       },
-      bearerAuth(SHARED_SECRET)
+      bearerAuth(machine.machineToken)
     );
 
     const alertsResp = await trpcQuery(
@@ -202,7 +265,8 @@ void describe('Agent & Health Integration', () => {
     };
 
     const degradedAlert = alerts.alerts.find(
-      (a) => a.hostname === warningHostname && a.type === 'status' && a.status === 'DEGRADED'
+      (a) =>
+        a.hostname === machine.machineHostname && a.type === 'status' && a.status === 'DEGRADED'
     );
     assert.ok(degradedAlert, 'Legacy WARNING status should surface as DEGRADED');
   });

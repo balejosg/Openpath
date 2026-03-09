@@ -20,7 +20,6 @@ process.env.SHARED_SECRET = 'integration-test-shared-secret';
 process.env.JWT_SECRET = 'integration-test-jwt-secret';
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-const SHARED_SECRET = process.env.SHARED_SECRET;
 
 // Unique ID for this test run
 const TEST_RUN_ID = `${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`;
@@ -114,6 +113,14 @@ function hasHosts(obj: unknown): obj is { hosts: unknown[] } {
   return Array.isArray(o.hosts);
 }
 
+function extractMachineToken(whitelistUrl: string): string {
+  const match = /\/w\/([^/]+)\//.exec(whitelistUrl);
+  assert.ok(match, `Expected tokenized whitelist URL, got: ${whitelistUrl}`);
+  const token = match[1];
+  assert.ok(token);
+  return token;
+}
+
 // Global test timeout
 const TIMEOUT = setTimeout((): void => {
   console.error('\n❌ Integration tests timed out!');
@@ -178,6 +185,63 @@ await describe('Integration Tests (tRPC)', async () => {
   await describe('Health Report Flow', async () => {
     await it('should complete health report submission → retrieval flow', async () => {
       const testHostname = 'test-machine-' + String(Date.now());
+      const groupSuffix = String(Date.now());
+      const groupRes = await trpcMutate(
+        'groups.create',
+        {
+          name: `integration-group-${groupSuffix}`,
+          displayName: `integration-group-${groupSuffix}`,
+        },
+        {
+          Authorization: `Bearer ${ADMIN_TOKEN}`,
+        }
+      );
+      assert.strictEqual(groupRes.status, 200);
+      const groupResult = await parseTRPC(groupRes);
+      assert.ok(hasId(groupResult.data));
+
+      const classroomRes = await trpcMutate(
+        'classrooms.create',
+        {
+          name: 'Integration Health Room ' + String(Date.now()),
+          displayName: 'Integration Health Room',
+          defaultGroupId: groupResult.data.id,
+        },
+        {
+          Authorization: `Bearer ${ADMIN_TOKEN}`,
+        }
+      );
+      assert.ok([200, 201].includes(classroomRes.status));
+      const classroomResult = await parseTRPC(classroomRes);
+      assert.ok(hasId(classroomResult.data));
+
+      const ticketResponse = await fetch(
+        `${BASE_URL}/api/enroll/${classroomResult.data.id}/ticket`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${ADMIN_TOKEN}`,
+          },
+        }
+      );
+      assert.strictEqual(ticketResponse.status, 200);
+      const ticketData = (await ticketResponse.json()) as { enrollmentToken?: string };
+      assert.ok(ticketData.enrollmentToken);
+
+      const registerResponse = await fetch(`${BASE_URL}/api/machines/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ticketData.enrollmentToken}`,
+        },
+        body: JSON.stringify({
+          hostname: testHostname,
+          classroomId: classroomResult.data.id,
+        }),
+      });
+      assert.strictEqual(registerResponse.status, 200);
+      const registerData = (await registerResponse.json()) as { whitelistUrl: string };
+      const machineToken = extractMachineToken(registerData.whitelistUrl);
 
       // Step 1: Submit health report via tRPC
       const reportRes = await trpcMutate(
@@ -188,7 +252,7 @@ await describe('Integration Tests (tRPC)', async () => {
           version: '3.5',
         },
         {
-          Authorization: `Bearer ${SHARED_SECRET}`,
+          Authorization: `Bearer ${machineToken}`,
         }
       );
 

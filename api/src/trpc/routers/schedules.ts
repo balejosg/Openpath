@@ -130,14 +130,15 @@ export const schedulesRouter = router({
 
   getCurrentForClassroom: protectedProcedure
     .input(z.object({ classroomId: z.string() }))
-    .query(async ({ input }) => {
-      const currentSchedule = await ScheduleService.getCurrentSchedule(input.classroomId);
-      // We need activeGroupId here for the frontend
-      // Let's get it from ClassroomService or just handle it here
+    .query(async ({ input, ctx }) => {
+      const result = await ScheduleService.getCurrentScheduleForUser(input.classroomId, ctx.user);
+      if (!result.ok) {
+        throw new TRPCError({ code: result.error.code, message: result.error.message });
+      }
+
       return {
         classroomId: input.classroomId,
-        currentSchedule,
-        // Fallback handled by service/router logic
+        currentSchedule: result.data,
       };
     }),
 });

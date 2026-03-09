@@ -64,6 +64,21 @@ export function buildMachineKey(classroomId: string, reportedHostname: string): 
   return `${safeHostname}--${classroomHash}`;
 }
 
+export function machineHostnameMatches(
+  machine: Pick<DBMachine, 'hostname' | 'reportedHostname'>,
+  hostname: string
+): boolean {
+  const candidate = hostname.trim().toLowerCase();
+  if (!candidate) {
+    return false;
+  }
+
+  const normalizedPersisted = machine.hostname.trim().toLowerCase();
+  const normalizedReported = machine.reportedHostname?.trim().toLowerCase();
+
+  return candidate === normalizedPersisted || candidate === normalizedReported;
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================

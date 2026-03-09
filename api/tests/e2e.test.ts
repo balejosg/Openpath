@@ -134,6 +134,20 @@ await describe('E2E: Teacher Role Workflow (tRPC)', { timeout: 75000 }, async ()
   });
 
   await describe('Step 2: Admin Creates Teacher User (Pedro)', async () => {
+    await test('should ensure teacher approval group exists', async (): Promise<void> => {
+      const token = adminToken ?? '';
+      const response = await trpcMutate(
+        'groups.create',
+        { name: TEACHER_GROUP, displayName: TEACHER_GROUP },
+        { Authorization: `Bearer ${token}` }
+      );
+
+      assert.ok(
+        [200, 201, 409].includes(response.status),
+        `Expected 200, 201 or 409, got ${String(response.status)}`
+      );
+    });
+
     await test('should create teacher user', async (): Promise<void> => {
       const token = adminToken ?? '';
       const response = await trpcMutate(
@@ -187,6 +201,7 @@ await describe('E2E: Teacher Role Workflow (tRPC)', { timeout: 75000 }, async ()
         const res = await parseTRPC(loginRes);
         const data = res.data as AuthResult;
         teacherId = data.user?.id ?? null;
+        teacherToken = data.accessToken ?? null;
       }
 
       assert.ok(teacherId !== null && teacherId !== '', 'Should have valid teacherId');
@@ -204,16 +219,18 @@ await describe('E2E: Teacher Role Workflow (tRPC)', { timeout: 75000 }, async ()
         { Authorization: `Bearer ${token}` }
       );
 
-      if (response.status === 200) {
-        await parseTRPC(response);
-      } else {
-        console.log('Note: Role assignment results vary by environment');
-      }
+      assert.strictEqual(response.status, 200);
+      await parseTRPC(response);
     });
   });
 
   await describe('Step 3: Teacher Login and Verify Access', async () => {
     await test('should login as teacher (Pedro)', async (): Promise<void> => {
+      if (teacherToken !== null && teacherToken !== '') {
+        assert.ok(teacherToken.length > 0);
+        return;
+      }
+
       const response = await trpcMutate('auth.login', {
         email: TEACHER_EMAIL,
         password: TEACHER_PASSWORD,

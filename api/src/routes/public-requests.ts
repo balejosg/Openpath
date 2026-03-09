@@ -5,28 +5,45 @@ import { touchGroupAndEmitWhitelistChanged } from '../lib/rule-events.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
 import { RequestService } from '../services/index.js';
-import { isValidMachineProofToken, normalizeHostInput } from '../lib/machine-proof.js';
+import { normalizeHostInput } from '../lib/machine-proof.js';
+import { hashMachineToken } from '../lib/machine-download-token.js';
 import {
   parseAutoRequestPayload,
   parseSubmitRequestPayload,
   parseWhitelistDomain,
 } from '../lib/public-request-input.js';
 
-function requireValidMachineProofToken(params: {
+async function requireValidMachineToken(params: {
   hostnameRaw: string;
   token: string;
-  sharedSecret: string;
   logContext: string;
   res: Response;
-}): { ok: true; hostname: string } | { ok: false } {
+}): Promise<{ ok: true; machineHostname: string; requestedHostname: string } | { ok: false }> {
   const hostname = normalizeHostInput(params.hostnameRaw);
-  if (!isValidMachineProofToken(hostname, params.token, params.sharedSecret)) {
-    logger.warn(`${params.logContext} rejected: invalid proof token`, { hostname });
-    params.res.status(403).json({ success: false, error: 'Invalid token proof' });
+  const machine = await classroomStorage.getMachineByDownloadTokenHash(
+    hashMachineToken(params.token)
+  );
+
+  if (!machine) {
+    logger.warn(`${params.logContext} rejected: invalid machine token`, { hostname });
+    params.res.status(403).json({ success: false, error: 'Invalid machine token' });
     return { ok: false };
   }
 
-  return { ok: true, hostname };
+  const requestedHostname = normalizeHostInput(hostname);
+  const machineHostname = machine.hostname.trim().toLowerCase();
+  const reportedHostname = machine.reportedHostname?.trim().toLowerCase();
+  if (requestedHostname !== machineHostname && requestedHostname !== reportedHostname) {
+    logger.warn(`${params.logContext} rejected: hostname mismatch`, {
+      requestedHostname,
+      machineHostname,
+      reportedHostname,
+    });
+    params.res.status(403).json({ success: false, error: 'Token is not valid for this hostname' });
+    return { ok: false };
+  }
+
+  return { ok: true, machineHostname: machine.hostname, requestedHostname };
 }
 
 export function registerPublicRequestRoutes(app: Express): void {
@@ -42,16 +59,9 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const sharedSecret = process.env.SHARED_SECRET;
-      if (!sharedSecret) {
-        res.status(500).json({ success: false, error: 'SHARED_SECRET not configured' });
-        return;
-      }
-
-      const proof = requireValidMachineProofToken({
+      const proof = await requireValidMachineToken({
         hostnameRaw: body.hostnameRaw,
         token: body.token,
-        sharedSecret,
         logContext: 'Auto request',
         res,
       });
@@ -65,7 +75,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.hostname);
+      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.machineHostname);
       if (!groupContext) {
         res.status(404).json({
           success: false,
@@ -122,16 +132,9 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const sharedSecret = process.env.SHARED_SECRET;
-      if (!sharedSecret) {
-        res.status(500).json({ success: false, error: 'SHARED_SECRET not configured' });
-        return;
-      }
-
-      const proof = requireValidMachineProofToken({
+      const proof = await requireValidMachineToken({
         hostnameRaw: body.hostnameRaw,
         token: body.token,
-        sharedSecret,
         logContext: 'Request submit',
         res,
       });
@@ -145,7 +148,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.hostname);
+      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.machineHostname);
       if (!groupContext) {
         res.status(404).json({
           success: false,
@@ -159,7 +162,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         reason: body.reasonRaw.slice(0, 200) || 'Submitted via Firefox extension',
         groupId: groupContext.groupId,
         source: 'firefox-extension',
-        machineHostname: proof.hostname,
+        machineHostname: proof.machineHostname,
         originHost: body.originHostRaw.slice(0, 255) || undefined,
         originPage: body.originPageRaw.slice(0, 2048) || undefined,
         clientVersion: body.clientVersionRaw.slice(0, 50) || undefined,

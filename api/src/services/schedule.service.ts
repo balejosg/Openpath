@@ -3,11 +3,11 @@
  */
 
 import * as scheduleStorage from '../lib/schedule-storage.js';
-import * as classroomStorage from '../lib/classroom-storage.js';
 import * as auth from '../lib/auth.js';
 import { emitClassroomChanged } from '../lib/rule-events.js';
 import type { Schedule, OneOffSchedule, JWTPayload } from '../types/index.js';
 import { getErrorMessage } from '@openpath/shared';
+import { ensureUserCanAccessClassroom } from './classroom.service.js';
 
 // =============================================================================
 // Types
@@ -118,9 +118,9 @@ export async function getSchedulesByClassroom(
   classroomId: string,
   user: JWTPayload
 ): Promise<ScheduleResult<ClassroomScheduleResult>> {
-  const classroom = await classroomStorage.getClassroomById(classroomId);
-  if (!classroom) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  const access = await ensureUserCanAccessClassroom(user, classroomId);
+  if (!access.ok) {
+    return access;
   }
 
   const schedules = await scheduleStorage.getSchedulesByClassroom(classroomId);
@@ -132,9 +132,9 @@ export async function getSchedulesByClassroom(
     ok: true,
     data: {
       classroom: {
-        id: classroom.id,
-        name: classroom.name,
-        displayName: classroom.displayName,
+        id: access.data.id,
+        name: access.data.name,
+        displayName: access.data.displayName,
       },
       schedules: schedules.map((s) => ({
         ...mapToWeeklySchedule(s),
@@ -163,9 +163,9 @@ export async function createSchedule(
   },
   user: JWTPayload
 ): Promise<ScheduleResult<Schedule>> {
-  const classroom = await classroomStorage.getClassroomById(input.classroomId);
-  if (!classroom) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  const access = await ensureUserCanAccessClassroom(user, input.classroomId);
+  if (!access.ok) {
+    return access;
   }
 
   const isAdmin = auth.isAdminToken(user);
@@ -215,9 +215,9 @@ export async function createOneOffSchedule(
   },
   user: JWTPayload
 ): Promise<ScheduleResult<OneOffSchedule>> {
-  const classroom = await classroomStorage.getClassroomById(input.classroomId);
-  if (!classroom) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  const access = await ensureUserCanAccessClassroom(user, input.classroomId);
+  if (!access.ok) {
+    return access;
   }
 
   const isAdmin = auth.isAdminToken(user);
@@ -279,6 +279,11 @@ export async function updateSchedule(
   const schedule = await scheduleStorage.getScheduleById(id);
   if (!schedule) {
     return { ok: false, error: { code: 'NOT_FOUND', message: 'Schedule not found' } };
+  }
+
+  const access = await ensureUserCanAccessClassroom(user, schedule.classroomId);
+  if (!access.ok) {
+    return access;
   }
 
   const isAdmin = auth.isAdminToken(user);
@@ -343,6 +348,11 @@ export async function updateOneOffSchedule(
   const schedule = await scheduleStorage.getScheduleById(id);
   if (!schedule) {
     return { ok: false, error: { code: 'NOT_FOUND', message: 'Schedule not found' } };
+  }
+
+  const access = await ensureUserCanAccessClassroom(user, schedule.classroomId);
+  if (!access.ok) {
+    return access;
   }
 
   if (schedule.recurrence !== 'one_off') {
@@ -426,6 +436,11 @@ export async function deleteSchedule(
     return { ok: false, error: { code: 'NOT_FOUND', message: 'Schedule not found' } };
   }
 
+  const access = await ensureUserCanAccessClassroom(user, schedule.classroomId);
+  if (!access.ok) {
+    return access;
+  }
+
   const isAdmin = auth.isAdminToken(user);
   const isOwner = schedule.teacherId === user.sub;
 
@@ -454,6 +469,18 @@ export async function getCurrentSchedule(
   return mapToWeeklySchedule(s);
 }
 
+export async function getCurrentScheduleForUser(
+  classroomId: string,
+  user: JWTPayload
+): Promise<ScheduleResult<Schedule | OneOffSchedule | null>> {
+  const access = await ensureUserCanAccessClassroom(user, classroomId);
+  if (!access.ok) {
+    return access;
+  }
+
+  return { ok: true, data: await getCurrentSchedule(classroomId) };
+}
+
 /**
  * Get schedules for a teacher
  */
@@ -475,4 +502,5 @@ export default {
   updateOneOffSchedule,
   deleteSchedule,
   getCurrentSchedule,
+  getCurrentScheduleForUser,
 };

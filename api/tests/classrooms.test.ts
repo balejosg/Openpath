@@ -215,8 +215,6 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
 
   await describe('Machine Operations', async () => {
     await test('classrooms.registerMachine - should register computer', async (): Promise<void> => {
-      process.env.SHARED_SECRET = 'test-shared-secret';
-
       const listResponse = await trpcQuery('classrooms.list', undefined, {
         Authorization: `Bearer ${ADMIN_TOKEN}`,
       });
@@ -225,6 +223,17 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
       const firstClassroom = listData[0];
       if (!firstClassroom) throw new Error('No classroom found');
       const classroomName = firstClassroom.name;
+      const classroomId = firstClassroom.id;
+
+      const ticketResponse = await fetch(`${API_URL}/api/enroll/${classroomId}/ticket`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${ADMIN_TOKEN}`,
+        },
+      });
+      assert.strictEqual(ticketResponse.status, 200);
+      const ticketData = (await ticketResponse.json()) as { enrollmentToken?: string };
+      assert.ok(ticketData.enrollmentToken);
 
       const response = await trpcMutate(
         'classrooms.registerMachine',
@@ -232,7 +241,7 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
           hostname: 'pc-01',
           classroomName: classroomName,
         },
-        { Authorization: `Bearer ${process.env.SHARED_SECRET}` }
+        { Authorization: `Bearer ${ticketData.enrollmentToken}` }
       );
 
       assert.ok(

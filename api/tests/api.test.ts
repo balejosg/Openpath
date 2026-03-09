@@ -20,9 +20,13 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
-import { ensureTestSchema, getAvailablePort } from './test-utils.js';
-import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
+
+process.env.NODE_ENV = 'test';
+delete process.env.ENABLE_RATE_LIMIT_IN_TEST;
+
+const { ensureTestSchema, getAvailablePort } = await import('./test-utils.js');
+const { closeConnection, db } = await import('../src/db/index.js');
 
 let PORT: number;
 let API_URL: string;
@@ -83,10 +87,8 @@ async function parseTRPC(
   return {};
 }
 
-function buildMachineProofToken(hostname: string, secret: string): string {
-  return createHash('sha256')
-    .update(hostname + secret)
-    .digest('base64');
+function hashMachineToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
 await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async () => {
@@ -154,10 +156,6 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       const hostname = `host-${suffix}`;
       const domain = `ajax-${suffix}.example.com`;
       const reason = 'auto-allow ajax (xmlhttprequest)';
-      const sharedSecret = process.env.SHARED_SECRET;
-
-      assert.ok(sharedSecret, 'SHARED_SECRET must be defined in test environment');
-
       await db.execute(
         sql.raw(
           "ALTER TABLE whitelist_rules ADD COLUMN IF NOT EXISTS source varchar(50) DEFAULT 'manual' NOT NULL"
@@ -176,11 +174,11 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       );
       await db.execute(
         sql.raw(
-          `INSERT INTO machines (id, hostname, classroom_id, version) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test')`
+          `INSERT INTO machines (id, hostname, classroom_id, version, download_token_hash) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test', '${hashMachineToken(`machine-token-${suffix}`)}')`
         )
       );
 
-      const token = buildMachineProofToken(hostname, sharedSecret);
+      const token = `machine-token-${suffix}`;
 
       const response = await fetch(`${API_URL}/api/requests/auto`, {
         method: 'POST',
@@ -259,10 +257,6 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       const machineId = `mach-${suffix}`;
       const hostname = `host-${suffix}`;
       const domain = `manual-${suffix}.example.com`;
-      const sharedSecret = process.env.SHARED_SECRET;
-
-      assert.ok(sharedSecret, 'SHARED_SECRET must be defined in test environment');
-
       await db.execute(
         sql.raw(
           `INSERT INTO whitelist_groups (id, name, display_name, enabled) VALUES ('${activeGroupId}', '${activeGroupId}', '${activeGroupId}', 1)`
@@ -280,11 +274,11 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       );
       await db.execute(
         sql.raw(
-          `INSERT INTO machines (id, hostname, classroom_id, version) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test')`
+          `INSERT INTO machines (id, hostname, classroom_id, version, download_token_hash) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test', '${hashMachineToken(`machine-token-${suffix}`)}')`
         )
       );
 
-      const token = buildMachineProofToken(hostname, sharedSecret);
+      const token = `machine-token-${suffix}`;
 
       const response = await fetch(`${API_URL}/api/requests/submit`, {
         method: 'POST',
@@ -348,10 +342,6 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       const machineId = `mach-${suffix}`;
       const hostname = `host-${suffix}`;
       const domain = `manual-default-${suffix}.example.com`;
-      const sharedSecret = process.env.SHARED_SECRET;
-
-      assert.ok(sharedSecret, 'SHARED_SECRET must be defined in test environment');
-
       await db.execute(
         sql.raw(
           `INSERT INTO whitelist_groups (id, name, display_name, enabled) VALUES ('${defaultGroupId}', '${defaultGroupId}', '${defaultGroupId}', 1)`
@@ -364,11 +354,11 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       );
       await db.execute(
         sql.raw(
-          `INSERT INTO machines (id, hostname, classroom_id, version) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test')`
+          `INSERT INTO machines (id, hostname, classroom_id, version, download_token_hash) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test', '${hashMachineToken(`machine-token-${suffix}`)}')`
         )
       );
 
-      const token = buildMachineProofToken(hostname, sharedSecret);
+      const token = `machine-token-${suffix}`;
 
       const response = await fetch(`${API_URL}/api/requests/submit`, {
         method: 'POST',

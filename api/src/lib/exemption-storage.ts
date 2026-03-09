@@ -234,6 +234,18 @@ export async function deleteMachineExemption(id: string): Promise<{ classroomId:
   return { classroomId: row.classroomId };
 }
 
+export async function getMachineExemptionById(
+  id: string
+): Promise<{ id: string; classroomId: string } | null> {
+  const rows = await db
+    .select({ id: machineExemptions.id, classroomId: machineExemptions.classroomId })
+    .from(machineExemptions)
+    .where(eq(machineExemptions.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function isMachineExempt(
   machineId: string,
   classroomId: string,
