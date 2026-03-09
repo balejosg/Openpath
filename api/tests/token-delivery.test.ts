@@ -282,7 +282,13 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       });
 
       assert.strictEqual(response.status, 200);
-      machineHostname = 'rotate-test-pc';
+      const data = (await response.json()) as {
+        machineHostname?: string;
+        reportedHostname?: string;
+      };
+      assert.ok(data.machineHostname, 'register should return canonical machineHostname');
+      assert.strictEqual(data.reportedHostname, 'rotate-test-pc');
+      machineHostname = data.machineHostname;
     });
 
     await test('should rotate token and return new URL', async () => {

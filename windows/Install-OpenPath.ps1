@@ -50,6 +50,7 @@ param(
     [string]$RegistrationToken = "",
     [string]$EnrollmentToken = "",
     [string]$ClassroomId = "",
+    [string]$MachineName = "",
     [switch]$Unattended,
     [string]$HealthApiSecret = ""
 )
@@ -412,6 +413,9 @@ if ($classroomModeRequested) {
             }
             if ($EnrollmentToken) {
                 $enrollArgs += @('-EnrollmentToken', $EnrollmentToken)
+            }
+            if ($MachineName) {
+                $enrollArgs += @('-MachineName', $MachineName)
             }
             if ($RegistrationToken) {
                 $enrollArgs += @('-RegistrationToken', $RegistrationToken)

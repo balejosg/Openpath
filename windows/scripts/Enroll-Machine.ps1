@@ -54,6 +54,8 @@ param(
 
     [string]$ClassroomId = "",
 
+    [string]$MachineName = "",
+
     [string]$OpenPathRoot = "C:\OpenPath",
 
     [switch]$SkipTokenValidation,
@@ -122,10 +124,18 @@ if ($RegistrationToken -and -not $SkipTokenValidation) {
     Write-Host "  Registration token validated" -ForegroundColor Green
 }
 
-$hostname = $env:COMPUTERNAME
 $config = Get-OpenPathConfig
 $version = if ($config.PSObject.Properties['version'] -and $config.version) { [string]$config.version } else { '1.0.0' }
 $authToken = if ($EnrollmentToken) { $EnrollmentToken } else { $RegistrationToken }
+$machineName = if ($MachineName) {
+    [string](Set-OpenPathMachineName -Config $config -MachineName $MachineName)
+}
+elseif ($EnrollmentToken -and $ClassroomId) {
+    [string](New-OpenPathScopedMachineName -Hostname $env:COMPUTERNAME -ClassroomId $ClassroomId)
+}
+else {
+    [string](Get-OpenPathMachineName)
+}
 
 function Set-ConfigValue {
     param(
@@ -150,7 +160,7 @@ function Set-ConfigValue {
 }
 
 Write-Host "Registering machine in classroom..." -ForegroundColor Yellow
-Write-Host "  Hostname: $hostname"
+Write-Host "  Machine name: $machineName"
 if ($Classroom) {
     Write-Host "  Classroom: $Classroom"
 }
@@ -161,7 +171,7 @@ Write-Host "  API URL: $apiBaseUrl"
 Write-Host "  Auth mode: $(if ($EnrollmentToken) { 'enrollment token' } else { 'registration token' })"
 
 $registerBody = [ordered]@{
-    hostname = $hostname
+    hostname = $machineName
     version = $version
 }
 
@@ -212,12 +222,20 @@ else {
     ''
 }
 
+$resolvedMachineName = if ($registerResponse.PSObject.Properties['machineHostname'] -and $registerResponse.machineHostname) {
+    [string]$registerResponse.machineHostname
+}
+else {
+    $machineName
+}
+
 if ($resolvedClassroom) {
     Set-ConfigValue -Config $config -Name 'classroom' -Value $resolvedClassroom
 }
 if ($resolvedClassroomId) {
     Set-ConfigValue -Config $config -Name 'classroomId' -Value $resolvedClassroomId
 }
+Set-OpenPathMachineName -Config $config -MachineName $resolvedMachineName | Out-Null
 Set-ConfigValue -Config $config -Name 'apiUrl' -Value $apiBaseUrl
 Set-ConfigValue -Config $config -Name 'whitelistUrl' -Value ([string]$registerResponse.whitelistUrl)
 
@@ -228,7 +246,8 @@ Write-Host "  Tokenized whitelist URL saved" -ForegroundColor Green
 
 [PSCustomObject]@{
     Success = $true
-    Hostname = $hostname
+    Hostname = $resolvedMachineName
+    MachineName = $resolvedMachineName
     Classroom = $resolvedClassroom
     ClassroomId = $resolvedClassroomId
     WhitelistUrl = [string]$registerResponse.whitelistUrl

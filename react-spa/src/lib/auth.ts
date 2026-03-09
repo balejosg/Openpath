@@ -1,9 +1,11 @@
 import { trpc } from './trpc';
 import {
   ACCESS_TOKEN_KEY,
+  COOKIE_SESSION_MARKER,
   USER_KEY,
   clearAuthStorage,
   getAccessToken,
+  getRefreshToken,
   getUserJson,
   setAuthSession,
 } from './auth-storage';
@@ -89,7 +91,7 @@ export async function login(email: string, password: string): Promise<User> {
   const result = await trpc.auth.login.mutate({ email, password });
 
   // Guardar tokens
-  setAuthSession(result.accessToken, result.refreshToken, result.user);
+  setAuthSession(result.accessToken, result.refreshToken, result.user, result.sessionTransport);
 
   return result.user;
 }
@@ -101,7 +103,7 @@ export async function loginWithGoogle(idToken: string): Promise<User> {
   const result = await trpc.auth.googleLogin.mutate({ idToken });
 
   // Guardar tokens
-  setAuthSession(result.accessToken, result.refreshToken, result.user);
+  setAuthSession(result.accessToken, result.refreshToken, result.user, result.sessionTransport);
 
   return result.user;
 }
@@ -110,8 +112,13 @@ export async function loginWithGoogle(idToken: string): Promise<User> {
  * Cierra la sesión actual.
  */
 export function logout(): void {
+  const accessToken = getAccessToken();
+  const refreshToken =
+    accessToken && accessToken !== COOKIE_SESSION_MARKER
+      ? (getRefreshToken() ?? undefined)
+      : undefined;
   void trpc.auth.logout
-    .mutate({})
+    .mutate({ refreshToken })
     .catch(() => {
       // Ignore network/auth errors during logout cleanup.
     })

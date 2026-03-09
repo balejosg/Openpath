@@ -112,6 +112,29 @@ read_prompt_secret() {
     return 0
 }
 
+normalize_machine_name_value() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//'
+}
+
+compute_scoped_machine_name() {
+    local raw_hostname="$1"
+    local classroom_id="$2"
+    local base hash suffix max_base_length
+
+    base=$(normalize_machine_name_value "$raw_hostname")
+    [ -z "$base" ] && base="machine"
+
+    hash=$(printf '%s' "$classroom_id" | sha256sum | awk '{print $1}' | cut -c1-8)
+    suffix="-$hash"
+    max_base_length=$((63 - ${#suffix}))
+    [ "$max_base_length" -lt 1 ] && max_base_length=1
+    base="${base:0:max_base_length}"
+    base="${base%-}"
+    [ -z "$base" ] && base="machine"
+
+    printf '%s\n' "${base}${suffix}"
+}
+
 # Mostrar estado
 cmd_status() {
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
@@ -391,7 +414,7 @@ cmd_health() {
 
 # Registrar maquina en un aula
 cmd_enroll() {
-    local classroom="" classroom_id="" api_url="" token="" enrollment_token=""
+    local classroom="" classroom_id="" api_url="" token="" enrollment_token="" machine_name=""
     local token_file=""
     local token_from_stdin=false
     
@@ -405,6 +428,7 @@ cmd_enroll() {
             --token-file) token_file="$2"; shift 2 ;;
             --token-stdin) token_from_stdin=true; shift ;;
             --enrollment-token) enrollment_token="$2"; shift 2 ;;
+            --machine-name) machine_name="$2"; shift 2 ;;
             *)            echo -e "${RED}Opcion desconocida: $1${NC}"; exit 1 ;;
         esac
     done
@@ -507,12 +531,19 @@ except Exception:
     # Step 3: Register with API
     local hostname version response
     hostname=$(hostname)
+    if [[ -n "$machine_name" ]]; then
+        machine_name=$(normalize_machine_name_value "$machine_name")
+    else
+        machine_name="$hostname"
+    fi
+
+    [[ -z "$machine_name" ]] && { echo -e "${RED}Error: nombre de maquina invalido${NC}"; exit 1; }
     version=$(dpkg -s openpath-dnsmasq 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
 
     local payload
 
     if [[ -n "$enrollment_token" ]]; then
-        payload=$(HN="$hostname" CID="$classroom_id" VER="$version" python3 -c 'import json,os
+        payload=$(HN="$machine_name" CID="$classroom_id" VER="$version" python3 -c 'import json,os
 print(json.dumps({"hostname": os.environ.get("HN",""), "classroomId": os.environ.get("CID",""), "version": os.environ.get("VER","unknown")}))
 ')
         response=$(curl -s -X POST \
@@ -521,7 +552,7 @@ print(json.dumps({"hostname": os.environ.get("HN",""), "classroomId": os.environ
             -d "$payload" \
             "$api_url/api/machines/register" 2>/dev/null)
     else
-        payload=$(HN="$hostname" CNAME="$classroom" VER="$version" python3 -c 'import json,os
+        payload=$(HN="$machine_name" CNAME="$classroom" VER="$version" python3 -c 'import json,os
 print(json.dumps({"hostname": os.environ.get("HN",""), "classroomName": os.environ.get("CNAME",""), "version": os.environ.get("VER","unknown")}))
 ')
         response=$(curl -s -X POST \
@@ -545,9 +576,12 @@ if d.get("success") is True and isinstance(d.get("whitelistUrl"), str) and d.get
   print(d.get("whitelistUrl"))
   name=d.get("classroomName")
   cid=d.get("classroomId")
+  machine_name=d.get("machineHostname")
   print(name if isinstance(name, str) else "")
   print(cid if isinstance(cid, str) else "")
+  print(machine_name if isinstance(machine_name, str) else "")
 else:
+  print("")
   print("")
   print("")
   print("")
@@ -558,11 +592,13 @@ else:
     local tokenized_url="${parsed_lines[0]:-}"
     local server_classroom="${parsed_lines[1]:-}"
     local server_classroom_id="${parsed_lines[2]:-}"
+    local registered_machine_name="${parsed_lines[3]:-}"
 
     if [[ -n "$tokenized_url" ]]; then
         echo "$tokenized_url" > "$WHITELIST_URL_CONF"
         chown root:root "$WHITELIST_URL_CONF" 2>/dev/null || true
         chmod 640 "$WHITELIST_URL_CONF"
+        persist_machine_name "${registered_machine_name:-$machine_name}" || true
 
         if [[ -n "$server_classroom" ]]; then
             classroom="$server_classroom"
@@ -608,6 +644,7 @@ cmd_setup() {
     local token_from_stdin=false
     local token_prompt=""
     local enrollment_token=""
+    local machine_name=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -617,9 +654,10 @@ cmd_setup() {
             --token-file)   token_file="$2"; shift 2 ;;
             --token-stdin)  token_from_stdin=true; shift ;;
             --enrollment-token) enrollment_token="$2"; shift 2 ;;
+            --machine-name) machine_name="$2"; shift 2 ;;
             --help)
                 echo "Uso: openpath setup [--api-url URL] [--classroom AULA] [--token-file ARCHIVO|--token-stdin]"
-                echo "   o: openpath setup --api-url URL --classroom-id ID --enrollment-token TOKEN"
+                echo "   o: openpath setup --api-url URL --classroom-id ID --enrollment-token TOKEN [--machine-name NOMBRE]"
                 echo "Si no pasas argumentos, se inicia modo interactivo."
                 return 0
                 ;;
@@ -658,6 +696,10 @@ cmd_setup() {
             return 1
         fi
 
+        if [ -n "$machine_name" ]; then
+            "$0" enroll --api-url "$api_url" --classroom-id "$classroom_id" --enrollment-token "$enrollment_token" --machine-name "$machine_name"
+            return $?
+        fi
         "$0" enroll --api-url "$api_url" --classroom-id "$classroom_id" --enrollment-token "$enrollment_token"
         return $?
     fi
@@ -689,14 +731,27 @@ cmd_setup() {
         chmod 600 "$token_tmp"
         printf '%s' "$token_prompt" > "$token_tmp"
 
-        "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-file "$token_tmp"
+        if [ -n "$machine_name" ]; then
+            "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-file "$token_tmp" --machine-name "$machine_name"
+        else
+            "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-file "$token_tmp"
+        fi
         local enroll_status=$?
         rm -f "$token_tmp"
         return $enroll_status
     fi
 
     if [ -n "$token_file" ]; then
+        if [ -n "$machine_name" ]; then
+            "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-file "$token_file" --machine-name "$machine_name"
+            return $?
+        fi
         "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-file "$token_file"
+        return $?
+    fi
+
+    if [ -n "$machine_name" ]; then
+        "$0" enroll --classroom "$classroom" --api-url "$api_url" --token-stdin --machine-name "$machine_name"
         return $?
     fi
 
@@ -786,7 +841,7 @@ cmd_rotate_token() {
     local api_url
     api_url=$(cat "$ETC_CONFIG_DIR/api-url.conf")
     local hostname
-    hostname=$(hostname)
+    hostname=$(get_registered_machine_name)
     local secret=""
     if [ -f "$ETC_CONFIG_DIR/api-secret.conf" ]; then
         secret=$(cat "$ETC_CONFIG_DIR/api-secret.conf")

@@ -475,6 +475,10 @@ const publicRequestLimiter = rateLimit({
 // Apply auth rate limiter to auth endpoints
 app.use('/trpc/auth.login', authLimiter);
 app.use('/trpc/auth.register', authLimiter);
+app.use('/trpc/auth.googleLogin', authLimiter);
+app.use('/trpc/auth.resetPassword', authLimiter);
+app.use('/trpc/setup.createFirstAdmin', authLimiter);
+app.use('/api/setup/first-admin', authLimiter);
 
 // Apply public request limiter to domain request creation
 app.use('/trpc/requests.create', publicRequestLimiter);
@@ -763,9 +767,11 @@ app.post('/api/machines/register', (req: Request, res: Response): void => {
     }
 
     const { classroom } = classroomLookup;
+    const machineHostname = classroomStorage.buildMachineKey(classroom.id, hostname);
 
     const machine = await classroomStorage.registerMachine({
-      hostname,
+      hostname: machineHostname,
+      reportedHostname: hostname,
       classroomId: classroom.id,
       ...(version ? { version } : {}),
     });
@@ -779,6 +785,8 @@ app.post('/api/machines/register', (req: Request, res: Response): void => {
 
     res.json({
       success: true,
+      machineHostname: machine.hostname,
+      reportedHostname: machine.reportedHostname ?? hostname,
       whitelistUrl,
       classroomName: classroom.name,
       classroomId: classroom.id,

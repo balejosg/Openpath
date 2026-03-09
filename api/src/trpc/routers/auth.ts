@@ -3,6 +3,14 @@ import { router, publicProcedure, protectedProcedure, adminProcedure } from '../
 import { TRPCError } from '@trpc/server';
 import { LoginDTOSchema, CreateUserDTOSchema } from '../../types/index.js';
 import { AuthService } from '../../services/index.js';
+import {
+  readAccessTokenFromRequest,
+  clearSessionCookies,
+  readRefreshTokenFromRequest,
+  setSessionCookies,
+} from '../../lib/session-cookies.js';
+
+const COOKIE_SESSION_MARKER = 'cookie-session';
 
 export const authRouter = router({
   /**
@@ -21,12 +29,19 @@ export const authRouter = router({
    * Log in user and return JWT tokens.
    * Public endpoint.
    */
-  login: publicProcedure.input(LoginDTOSchema).mutation(async ({ input }) => {
+  login: publicProcedure.input(LoginDTOSchema).mutation(async ({ input, ctx }) => {
     const result = await AuthService.login(input.email, input.password);
     if (!result.ok) {
       throw new TRPCError({ code: result.error.code, message: result.error.message });
     }
-    return result.data;
+    const usingCookies = setSessionCookies(ctx.res, result.data);
+    return usingCookies
+      ? {
+          ...result.data,
+          accessToken: COOKIE_SESSION_MARKER,
+          refreshToken: COOKIE_SESSION_MARKER,
+        }
+      : result.data;
   }),
 
   /**
@@ -35,25 +50,44 @@ export const authRouter = router({
    */
   googleLogin: publicProcedure
     .input(z.object({ idToken: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const result = await AuthService.loginWithGoogle(input.idToken);
       if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
       }
-      return result.data;
+      const usingCookies = setSessionCookies(ctx.res, result.data);
+      return usingCookies
+        ? {
+            ...result.data,
+            accessToken: COOKIE_SESSION_MARKER,
+            refreshToken: COOKIE_SESSION_MARKER,
+          }
+        : result.data;
     }),
 
   /**
    * Refresh access token using refresh token.
    */
   refresh: publicProcedure
-    .input(z.object({ refreshToken: z.string() }))
-    .mutation(async ({ input }) => {
-      const result = await AuthService.refresh(input.refreshToken);
+    .input(z.object({ refreshToken: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const refreshToken = input.refreshToken ?? readRefreshTokenFromRequest(ctx.req);
+      if (!refreshToken) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Refresh token required' });
+      }
+
+      const result = await AuthService.refresh(refreshToken);
       if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
       }
-      return result.data;
+      const usingCookies = setSessionCookies(ctx.res, result.data);
+      return usingCookies
+        ? {
+            ...result.data,
+            accessToken: COOKIE_SESSION_MARKER,
+            refreshToken: COOKIE_SESSION_MARKER,
+          }
+        : result.data;
     }),
 
   /**
@@ -62,11 +96,14 @@ export const authRouter = router({
   logout: protectedProcedure
     .input(z.object({ refreshToken: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
-      const accessToken = ctx.req.headers.authorization?.slice(7);
-      const result = await AuthService.logout(accessToken, input.refreshToken);
+      const bearerAccessToken =
+        ctx.req.headers.authorization?.slice(7) ?? readAccessTokenFromRequest(ctx.req) ?? undefined;
+      const refreshToken = input.refreshToken ?? readRefreshTokenFromRequest(ctx.req) ?? undefined;
+      const result = await AuthService.logout(bearerAccessToken, refreshToken);
       if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
       }
+      clearSessionCookies(ctx.res);
       return result.data;
     }),
 

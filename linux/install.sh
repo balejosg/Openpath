@@ -554,6 +554,9 @@ run_classroom_registration() {
             if [ -n "$TOKENIZED_URL" ]; then
                 echo "$TOKENIZED_URL" > "$WHITELIST_URL_CONF"
                 WHITELIST_URL="$TOKENIZED_URL"
+                if [ -n "$REGISTERED_MACHINE_NAME" ]; then
+                    persist_machine_name "$REGISTERED_MACHINE_NAME" || true
+                fi
                 echo "✓ Máquina registrada en aula: $CLASSROOM_NAME"
                 echo "  → Whitelist URL tokenizada guardada"
             else

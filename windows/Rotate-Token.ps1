@@ -68,7 +68,7 @@ if (-not $Secret) {
     exit 1
 }
 
-$hostname = $env:COMPUTERNAME
+$hostname = Get-OpenPathMachineName
 $apiUrl = $config.apiUrl
 
 Write-Host "Rotating download token..." -ForegroundColor Yellow

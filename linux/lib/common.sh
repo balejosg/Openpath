@@ -60,6 +60,7 @@ LOG_FILE="${LOG_FILE:-/var/log/openpath.log}"
 export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
 export HEALTH_API_URL_CONF="$ETC_CONFIG_DIR/health-api-url.conf"
 export HEALTH_API_SECRET_CONF="$ETC_CONFIG_DIR/health-api-secret.conf"
+export MACHINE_NAME_CONF="$ETC_CONFIG_DIR/machine-name.conf"
 export ORIGINAL_DNS_FILE="$ETC_CONFIG_DIR/original-dns.conf"
 
 # State/cache files (in /var/lib/, regenerated) - exported for use by other scripts
@@ -121,6 +122,39 @@ with_openpath_lock() {
     flock -u 201 2>/dev/null || true
     exec 201>&- 2>/dev/null || true
     return "$rc"
+}
+
+get_registered_machine_name() {
+    if [ -n "${OPENPATH_MACHINE_NAME:-}" ]; then
+        printf '%s\n' "$OPENPATH_MACHINE_NAME"
+        return 0
+    fi
+
+    if [ -n "${OPENPATH_MACHINE_ID:-}" ]; then
+        printf '%s\n' "$OPENPATH_MACHINE_ID"
+        return 0
+    fi
+
+    if [ -r "$MACHINE_NAME_CONF" ]; then
+        local saved_name
+        saved_name=$(tr -d '\r\n' < "$MACHINE_NAME_CONF" 2>/dev/null || true)
+        if [ -n "$saved_name" ]; then
+            printf '%s\n' "$saved_name"
+            return 0
+        fi
+    fi
+
+    hostname
+}
+
+persist_machine_name() {
+    local machine_name="$1"
+    [ -z "$machine_name" ] && return 1
+
+    mkdir -p "$ETC_CONFIG_DIR"
+    printf '%s' "$machine_name" > "$MACHINE_NAME_CONF"
+    chown root:root "$MACHINE_NAME_CONF" 2>/dev/null || true
+    chmod 640 "$MACHINE_NAME_CONF" 2>/dev/null || true
 }
 
 # Global variables (initialized at runtime) - exported for use by other scripts
@@ -428,18 +462,19 @@ check_root() {
 }
 
 # Register machine with central API
-# Args: $1=hostname $2=classroom_name $3=version $4=api_url $5=auth_token
-# Sets global: REGISTER_RESPONSE (raw JSON), TOKENIZED_URL (extracted URL or empty)
+# Args: $1=reported_hostname $2=classroom_name $3=version $4=api_url $5=auth_token
+# Sets global: REGISTER_RESPONSE (raw JSON), TOKENIZED_URL (extracted URL or empty),
+#              REGISTERED_MACHINE_NAME (server-issued machine identifier or empty)
 # Returns: 0 on success, 1 on failure
 register_machine() {
-    local hostname="$1"
+    local reported_hostname="$1"
     local classroom_name="$2"
     local version="$3"
     local api_url="$4"
     local auth_token="$5"
 
     local payload
-    payload=$(HN="$hostname" CNAME="$classroom_name" VER="$version" python3 -c '
+    payload=$(HN="$reported_hostname" CNAME="$classroom_name" VER="$version" python3 -c '
 import json, os
 print(json.dumps({
     "hostname": os.environ.get("HN", ""),
@@ -455,10 +490,13 @@ print(json.dumps({
 
     if echo "$REGISTER_RESPONSE" | grep -q '"success":true'; then
         TOKENIZED_URL=$(echo "$REGISTER_RESPONSE" | grep -o '"whitelistUrl":"[^"]*"' | sed 's/"whitelistUrl":"//;s/"$//')
+        REGISTERED_MACHINE_NAME=$(echo "$REGISTER_RESPONSE" | grep -o '"machineHostname":"[^"]*"' | sed 's/"machineHostname":"//;s/"$//')
         return 0
     else
         # shellcheck disable=SC2034  # Used by callers of register_machine
         TOKENIZED_URL=""
+        # shellcheck disable=SC2034  # Used by callers of register_machine
+        REGISTERED_MACHINE_NAME=""
         return 1
     fi
 }
@@ -496,7 +534,7 @@ send_health_report_to_api() {
     [ -f "$HEALTH_API_SECRET_CONF" ] && shared_secret=$(cat "$HEALTH_API_SECRET_CONF" 2>/dev/null)
 
     local hostname
-    hostname=$(hostname)
+    hostname=$(get_registered_machine_name)
 
     local payload
     payload=$(HN="$hostname" ST="$status" DR="$dnsmasq_running" DRE="$dns_resolving" \

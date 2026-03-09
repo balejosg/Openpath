@@ -93,9 +93,16 @@ async function ensureMachineExemptionsSchema(): Promise<void> {
   }
 }
 
+async function ensureMachinesSchema(): Promise<void> {
+  await db.execute(
+    sql.raw('ALTER TABLE "machines" ADD COLUMN IF NOT EXISTS "reported_hostname" varchar(255);')
+  );
+}
+
 export async function ensureTestSchema(): Promise<void> {
   await ensureSchedulesOneOffSchema();
   await ensureMachineExemptionsSchema();
+  await ensureMachinesSchema();
 }
 
 /**

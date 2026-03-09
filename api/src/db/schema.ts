@@ -101,6 +101,7 @@ export const classrooms = pgTable('classrooms', {
 export const machines = pgTable('machines', {
   id: varchar('id', { length: 50 }).primaryKey(),
   hostname: varchar('hostname', { length: 255 }).unique().notNull(),
+  reportedHostname: varchar('reported_hostname', { length: 255 }),
   classroomId: varchar('classroom_id', { length: 50 }).references(() => classrooms.id, {
     onDelete: 'cascade',
   }),

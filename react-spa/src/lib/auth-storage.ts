@@ -59,9 +59,21 @@ export function getUserJson(): string | null {
   return safeGetItem(USER_KEY);
 }
 
-export function setAuthSession(accessToken: string, refreshToken: string, user: unknown): void {
-  safeSetItem(ACCESS_TOKEN_KEY, accessToken);
-  safeSetItem(REFRESH_TOKEN_KEY, refreshToken);
+export function setAuthSession(
+  accessToken: string,
+  refreshToken: string,
+  user: unknown,
+  sessionTransport: 'token' | 'cookie' = 'token'
+): void {
+  if (sessionTransport === 'cookie') {
+    safeSetItem(ACCESS_TOKEN_KEY, COOKIE_SESSION_MARKER);
+    safeRemoveItem(REFRESH_TOKEN_KEY);
+    safeRemoveItem(LEGACY_TOKEN_KEY);
+  } else {
+    safeSetItem(ACCESS_TOKEN_KEY, accessToken);
+    safeSetItem(REFRESH_TOKEN_KEY, refreshToken);
+  }
+
   try {
     safeSetItem(USER_KEY, JSON.stringify(user));
   } catch {

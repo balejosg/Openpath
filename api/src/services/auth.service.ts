@@ -3,6 +3,7 @@
  */
 
 import { OAuth2Client } from 'google-auth-library';
+import jwt from 'jsonwebtoken';
 import * as userStorage from '../lib/user-storage.js';
 import * as roleStorage from '../lib/role-storage.js';
 import * as auth from '../lib/auth.js';
@@ -36,6 +37,134 @@ export interface TokenPair {
   tokenType: 'Bearer';
 }
 
+function parseDurationToSeconds(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return null;
+  }
+
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const milliseconds = Number.parseFloat(trimmed);
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+      return null;
+    }
+    return Math.floor(milliseconds / 1000);
+  }
+
+  const match =
+    /^(\d+(?:\.\d+)?)\s*(ms|msecs?|milliseconds?|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|w|weeks?|y|yrs?|years?)$/i.exec(
+      trimmed
+    );
+  if (!match) {
+    return null;
+  }
+
+  const [, amountText, unitText] = match;
+  if (!amountText || !unitText) {
+    return null;
+  }
+
+  const amount = Number.parseFloat(amountText);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return null;
+  }
+
+  const unit = unitText.toLowerCase();
+  const unitToSeconds: Record<string, number> = {
+    ms: 1 / 1000,
+    msec: 1 / 1000,
+    msecs: 1 / 1000,
+    millisecond: 1 / 1000,
+    milliseconds: 1 / 1000,
+    s: 1,
+    sec: 1,
+    secs: 1,
+    second: 1,
+    seconds: 1,
+    m: 60,
+    min: 60,
+    mins: 60,
+    minute: 60,
+    minutes: 60,
+    h: 60 * 60,
+    hr: 60 * 60,
+    hrs: 60 * 60,
+    hour: 60 * 60,
+    hours: 60 * 60,
+    d: 24 * 60 * 60,
+    day: 24 * 60 * 60,
+    days: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    week: 7 * 24 * 60 * 60,
+    weeks: 7 * 24 * 60 * 60,
+    y: 365.25 * 24 * 60 * 60,
+    yr: 365.25 * 24 * 60 * 60,
+    yrs: 365.25 * 24 * 60 * 60,
+    year: 365.25 * 24 * 60 * 60,
+    years: 365.25 * 24 * 60 * 60,
+  };
+  const secondsPerUnit = unitToSeconds[unit];
+  if (secondsPerUnit === undefined) {
+    return null;
+  }
+
+  return Math.floor(amount * secondsPerUnit);
+}
+
+function getAccessTokenLifetimeSeconds(accessToken: string): number | null {
+  const decoded = jwt.decode(accessToken);
+  if (decoded === null || typeof decoded !== 'object') {
+    return null;
+  }
+
+  const exp = 'exp' in decoded && typeof decoded.exp === 'number' ? decoded.exp : null;
+  const iat = 'iat' in decoded && typeof decoded.iat === 'number' ? decoded.iat : null;
+  if (exp === null || iat === null) {
+    return null;
+  }
+
+  const lifetime = exp - iat;
+  return Number.isFinite(lifetime) && lifetime >= 0 ? lifetime : null;
+}
+
+function currentSessionTransport(): LoginResponse['sessionTransport'] {
+  return process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME ? 'cookie' : 'token';
+}
+
+function buildAuthUser(
+  user: {
+    id: string;
+    email: string;
+    name: string;
+  },
+  roleInfo: RoleInfo[]
+): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    roles: roleInfo,
+  };
+}
+
+function buildLoginResponse(
+  tokens: TokenPair,
+  user: { id: string; email: string; name: string },
+  roleInfo: RoleInfo[]
+): LoginResponse {
+  const expiresIn =
+    getAccessTokenLifetimeSeconds(tokens.accessToken) ??
+    parseDurationToSeconds(tokens.expiresIn) ??
+    86400;
+
+  return {
+    ...tokens,
+    expiresIn,
+    sessionTransport: currentSessionTransport(),
+    user: buildAuthUser(user, roleInfo),
+  };
+}
+
 // =============================================================================
 // Service Implementation
 // =============================================================================
@@ -52,24 +181,7 @@ export async function register(input: CreateUserData): Promise<AuthResult<{ user
       };
     }
 
-    // Check if this is the first user (no admins exist)
-    const isFirstUser = !(await roleStorage.hasAnyAdmins());
-
     const user = await userStorage.createUser(input);
-
-    // Auto-assign admin role to first user
-    if (isFirstUser) {
-      await roleStorage.assignRole({
-        userId: user.id,
-        role: 'admin',
-        groupIds: [],
-        createdBy: user.id,
-      });
-      logger.info('First user auto-assigned admin role via registration', {
-        userId: user.id,
-        email: user.email,
-      });
-    }
 
     const roles = await roleStorage.getUserRoles(user.id);
     const roleInfo: RoleInfo[] = roles
@@ -80,14 +192,7 @@ export async function register(input: CreateUserData): Promise<AuthResult<{ user
       })
       .filter((r): r is RoleInfo => r !== null);
 
-    const authUser: AuthUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: roleInfo,
-    };
-
-    return { ok: true, data: { user: authUser } };
+    return { ok: true, data: { user: buildAuthUser(user, roleInfo) } };
   } catch (error) {
     logger.error('auth.register error', { error: getErrorMessage(error) });
     return {
@@ -120,20 +225,7 @@ export async function login(email: string, password: string): Promise<AuthResult
       .filter((r): r is RoleInfo => r !== null);
 
     const tokens = auth.generateTokens(user, roleInfo);
-
-    return {
-      ok: true,
-      data: {
-        ...tokens,
-        expiresIn: parseInt(tokens.expiresIn) || 86400, // Standardize to number
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          roles: roleInfo,
-        },
-      },
-    };
+    return { ok: true, data: buildLoginResponse(tokens, user, roleInfo) };
   } catch (error) {
     logger.error('auth.login error', { error: getErrorMessage(error) });
     return {
@@ -382,9 +474,6 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
         user = await userStorage.getUserById(user.id);
       } else {
         logger.info('auth.loginWithGoogle: creating new user');
-        // Check if this is the first user (no admins exist)
-        const isFirstUser = !(await roleStorage.hasAnyAdmins());
-
         const newUser = await userStorage.createGoogleUser({
           email: payload.email,
           name: payload.name ?? payload.email,
@@ -395,20 +484,6 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
           userId: user?.id,
           elapsed: Date.now() - startTime,
         });
-
-        // Auto-assign admin role to first user
-        if (isFirstUser && user) {
-          await roleStorage.assignRole({
-            userId: user.id,
-            role: 'admin',
-            groupIds: [],
-            createdBy: user.id,
-          });
-          logger.info('First user auto-assigned admin role via Google OAuth', {
-            userId: user.id,
-            email: user.email,
-          });
-        }
       }
     }
 
@@ -433,22 +508,7 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
       .filter((r): r is RoleInfo => r !== null);
 
     const tokens = auth.generateTokens(user, roleInfo);
-
-    const authUser: AuthUser = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      roles: roleInfo,
-    };
-
-    return {
-      ok: true,
-      data: {
-        ...tokens,
-        expiresIn: parseInt(tokens.expiresIn) || 86400,
-        user: authUser,
-      },
-    };
+    return { ok: true, data: buildLoginResponse(tokens, user, roleInfo) };
   } catch (error) {
     const errorMessage = getErrorMessage(error);
     const elapsed = Date.now() - startTime;

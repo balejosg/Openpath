@@ -5,6 +5,7 @@
  * Classroom Storage - PostgreSQL-based classroom and machine management using Drizzle ORM
  */
 
+import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { eq, sql, count } from 'drizzle-orm';
 import { db, classrooms, machines } from '../db/index.js';
@@ -49,6 +50,20 @@ export interface ClassroomStats {
   classroomsWithActiveGroup: number;
 }
 
+function toMachineDisplayHostname(
+  machine: Pick<DBMachine, 'hostname' | 'reportedHostname'>
+): string {
+  const reportedHostname = machine.reportedHostname?.trim();
+  return reportedHostname ?? machine.hostname;
+}
+
+export function buildMachineKey(classroomId: string, reportedHostname: string): string {
+  const normalizedHostname = reportedHostname.trim().toLowerCase();
+  const safeHostname = sanitizeSlug(normalizedHostname).slice(0, 220) || 'machine';
+  const classroomHash = createHash('sha256').update(classroomId).digest('hex').slice(0, 12);
+  return `${safeHostname}--${classroomHash}`;
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -76,7 +91,7 @@ function toClassroomType(classroom: DBClassroom, machineList: DBMachine[] = []):
     displayName: classroom.displayName,
     machines: machineList.map((m) => ({
       id: m.id,
-      hostname: m.hostname,
+      hostname: toMachineDisplayHostname(m),
       classroomId: m.classroomId,
       version: m.version ?? undefined,
       lastSeen: m.lastSeen?.toISOString() ?? null,
@@ -287,11 +302,13 @@ export async function getMachineByHostname(hostname: string): Promise<DBMachine 
  */
 export async function registerMachine(machineData: {
   hostname: string;
+  reportedHostname?: string;
   classroomId: string;
   version?: string;
 }): Promise<DBMachine> {
-  const { hostname, classroomId, version } = machineData;
+  const { hostname, reportedHostname, classroomId, version } = machineData;
   const normalizedHostname = hostname.toLowerCase();
+  const normalizedReportedHostname = reportedHostname?.trim() ?? normalizedHostname;
 
   // Check if machine already exists
   const existing = await getMachineByHostname(normalizedHostname);
@@ -301,6 +318,7 @@ export async function registerMachine(machineData: {
       .update(machines)
       .set({
         classroomId,
+        reportedHostname: normalizedReportedHostname,
         version: version ?? existing.version,
         lastSeen: new Date(),
       })
@@ -320,6 +338,7 @@ export async function registerMachine(machineData: {
     .values({
       id,
       hostname: normalizedHostname,
+      reportedHostname: normalizedReportedHostname,
       classroomId,
       version: version ?? 'unknown',
     })
@@ -541,10 +560,14 @@ export const classroomStorage: IClassroomStorage = {
   },
   deleteClassroom,
   addMachine: async (classroomId: string, hostname: string) => {
-    const machine = await registerMachine({ hostname, classroomId });
+    const machine = await registerMachine({
+      hostname: buildMachineKey(classroomId, hostname),
+      reportedHostname: hostname,
+      classroomId,
+    });
     return {
       id: machine.id,
-      hostname: machine.hostname,
+      hostname: toMachineDisplayHostname(machine),
       classroomId: machine.classroomId,
       version: machine.version ?? undefined,
       lastSeen: machine.lastSeen?.toISOString() ?? null,
@@ -565,7 +588,7 @@ export const classroomStorage: IClassroomStorage = {
       classroom: toClassroomType(classroom),
       machine: {
         id: machine.id,
-        hostname: machine.hostname,
+        hostname: toMachineDisplayHostname(machine),
         classroomId: machine.classroomId,
         version: machine.version ?? undefined,
         lastSeen: machine.lastSeen?.toISOString() ?? null,

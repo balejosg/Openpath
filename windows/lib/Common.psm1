@@ -118,6 +118,107 @@ function Set-OpenPathConfig {
     }
 }
 
+function ConvertTo-OpenPathMachineName {
+    param(
+        [string]$Value
+    )
+
+    if (-not $Value) {
+        return ''
+    }
+
+    $normalized = $Value.Trim().ToLowerInvariant()
+    $normalized = $normalized -replace '[^a-z0-9-]+', '-'
+    $normalized = $normalized -replace '-+', '-'
+    return $normalized.Trim('-')
+}
+
+function New-OpenPathScopedMachineName {
+    <#
+    .SYNOPSIS
+        Builds a deterministic classroom-scoped machine identifier from the local hostname.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Hostname,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ClassroomId
+    )
+
+    $base = ConvertTo-OpenPathMachineName -Value $Hostname
+    if (-not $base) {
+        $base = 'machine'
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($ClassroomId)
+        $hashBytes = $sha.ComputeHash($bytes)
+        $hash = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant().Substring(0, 8)
+    }
+    finally {
+        $sha.Dispose()
+    }
+
+    $suffix = "-$hash"
+    $maxBaseLength = [Math]::Max(1, 63 - $suffix.Length)
+    if ($base.Length -gt $maxBaseLength) {
+        $base = $base.Substring(0, $maxBaseLength).TrimEnd('-')
+    }
+    if (-not $base) {
+        $base = 'machine'
+    }
+
+    return "$base$suffix"
+}
+
+function Get-OpenPathMachineName {
+    <#
+    .SYNOPSIS
+        Returns the persisted machine identifier, falling back to COMPUTERNAME.
+    #>
+    try {
+        $config = Get-OpenPathConfig
+        if ($config.PSObject.Properties['machineName'] -and $config.machineName) {
+            return [string]$config.machineName
+        }
+    }
+    catch {
+        # Fall back to the system hostname if config is unavailable.
+    }
+
+    return [string]$env:COMPUTERNAME
+}
+
+function Set-OpenPathMachineName {
+    <#
+    .SYNOPSIS
+        Persists the machine identifier into the in-memory config object.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Config,
+
+        [Parameter(Mandatory = $true)]
+        [string]$MachineName
+    )
+
+    $normalized = ConvertTo-OpenPathMachineName -Value $MachineName
+    if (-not $normalized) {
+        throw 'MachineName must include at least one letter or number'
+    }
+
+    if ($Config.PSObject.Properties['machineName']) {
+        $Config.machineName = $normalized
+    }
+    else {
+        $Config | Add-Member -MemberType NoteProperty -Name 'machineName' -Value $normalized -Force
+    }
+
+    return $normalized
+}
+
 function Get-OpenPathFileAgeHours {
     <#
     .SYNOPSIS
@@ -983,7 +1084,7 @@ function Send-OpenPathHealthReport {
 
     $payload = @{
         json = @{
-            hostname = $env:COMPUTERNAME
+            hostname = Get-OpenPathMachineName
             status = $Status
             dnsmasqRunning = [bool]$DnsServiceRunning
             dnsResolving = [bool]$DnsResolving
@@ -1386,6 +1487,7 @@ Export-ModuleMember -Function @(
     'Set-OpenPathConfig',
     'Get-OpenPathFileAgeHours',
     'Get-HostFromUrl',
+    'Get-OpenPathMachineName',
     'Test-OpenPathDomainFormat',
     'Get-OpenPathRuntimeHealth',
     'Get-ValidWhitelistDomainsFromFile',
@@ -1402,6 +1504,8 @@ Export-ModuleMember -Function @(
     'Test-InternetConnection',
     'Send-OpenPathHealthReport',
     'Get-OpenPathMachineTokenFromWhitelistUrl',
+    'New-OpenPathScopedMachineName',
+    'Set-OpenPathMachineName',
     'Compare-OpenPathVersion',
     'Invoke-OpenPathAgentSelfUpdate'
 )

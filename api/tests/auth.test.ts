@@ -27,7 +27,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { getAvailablePort } from './test-utils.js';
+import { getAvailablePort, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
 let PORT: number;
@@ -78,10 +78,11 @@ interface TRPCResponse<T = unknown> {
 
 interface AuthResult {
   success?: boolean;
-  user?: { id: string; email: string; name: string };
+  user?: { id: string; email: string; name: string; roles?: { role: string }[] };
   accessToken?: string;
   refreshToken?: string;
   expiresIn?: number;
+  sessionTransport?: 'token' | 'cookie';
   error?: string;
 }
 
@@ -103,6 +104,8 @@ await describe(
   { timeout: 30000 },
   async () => {
     before(async () => {
+      await resetDb();
+
       PORT = await getAvailablePort();
       API_URL = `http://localhost:${String(PORT)}`;
       process.env.PORT = String(PORT);
@@ -113,9 +116,18 @@ await describe(
       });
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const setupResponse = await trpcMutate('setup.createFirstAdmin', {
+        email: `bootstrap-admin-${String(Date.now())}@example.com`,
+        password: 'SecurePassword123!',
+        name: 'Bootstrap Admin',
+      });
+      assert.strictEqual(setupResponse.status, 200);
     });
 
     after(async () => {
+      await resetDb();
+
       if (server !== undefined) {
         if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {
           server.closeAllConnections();
@@ -149,6 +161,7 @@ await describe(
         if (!data) throw new Error('No data');
         assert.ok(data.user);
         assert.ok(data.user.id);
+        assert.deepStrictEqual(data.user.roles ?? [], []);
       });
 
       await test('should reject registration without email', async () => {
@@ -217,18 +230,15 @@ await describe(
           password: testPassword,
         });
 
-        assert.ok(
-          [200, 401].includes(response.status),
-          `Expected 200 or 401, got ${String(response.status)}`
-        );
-
-        if (response.status === 200) {
-          const { data } = (await parseTRPC(response)) as { data?: AuthResult };
-          if (!data) throw new Error('No data');
-          assert.ok(data.accessToken !== undefined && data.accessToken !== '');
-          assert.ok(data.refreshToken !== undefined && data.refreshToken !== '');
-          assert.ok(data.user !== undefined);
-        }
+        assert.strictEqual(response.status, 200);
+        const { data } = (await parseTRPC(response)) as { data?: AuthResult };
+        if (!data) throw new Error('No data');
+        assert.ok(data.accessToken !== undefined && data.accessToken !== '');
+        assert.ok(data.refreshToken !== undefined && data.refreshToken !== '');
+        assert.strictEqual(typeof data.expiresIn, 'number');
+        assert.ok((data.expiresIn ?? 0) > 0);
+        assert.strictEqual(data.sessionTransport, 'token');
+        assert.ok(data.user !== undefined);
       });
 
       await test('should reject login with wrong password', async () => {
@@ -289,19 +299,11 @@ await describe(
         }
 
         const response = await trpcMutate('auth.refresh', { refreshToken });
-        // Refresh endpoint returns new tokens. If successful, should be 200
-        // If fails, maybe the token was blacklisted or invalid
-        assert.ok(
-          [200, 401].includes(response.status),
-          `Expected 200 or 401, got ${String(response.status)}`
-        );
-
-        if (response.status === 200) {
-          const { data } = (await parseTRPC(response)) as { data?: AuthResult };
-          if (!data) throw new Error('No data');
-          assert.ok(data.accessToken);
-          assert.ok(data.refreshToken);
-        }
+        assert.strictEqual(response.status, 200);
+        const { data } = (await parseTRPC(response)) as { data?: AuthResult };
+        if (!data) throw new Error('No data');
+        assert.ok(data.accessToken);
+        assert.ok(data.refreshToken);
       });
 
       await test('should reject invalid refresh token', async () => {

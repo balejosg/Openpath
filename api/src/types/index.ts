@@ -130,6 +130,7 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  sessionTransport: 'token' | 'cookie';
   user: AuthUser;
 }
 
