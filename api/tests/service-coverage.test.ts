@@ -25,10 +25,12 @@ interface GooglePayload {
 }
 
 function stubGooglePayload(payload: GooglePayload): void {
-  OAuth2Client.prototype.verifyIdToken = async () =>
-    ({
-      getPayload: () => payload,
-    }) as Awaited<ReturnType<OAuth2Client['verifyIdToken']>>;
+  const ticket = {
+    getPayload: () => payload,
+  } as unknown as Awaited<ReturnType<OAuth2Client['verifyIdToken']>>;
+
+  const verifyIdTokenStub: OAuth2Client['verifyIdToken'] = async () => ticket;
+  OAuth2Client.prototype.verifyIdToken = verifyIdTokenStub;
 }
 
 function stubGoogleError(message: string): void {
@@ -41,8 +43,17 @@ async function setUserActive(userId: string, isActive: boolean): Promise<void> {
   await db.update(users).set({ isActive, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
+function setGoogleClientId(value: string): void {
+  Object.defineProperty(config, 'googleClientId', {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+}
+
 afterEach(() => {
-  config.googleClientId = originalGoogleClientId;
+  setGoogleClientId(originalGoogleClientId);
   OAuth2Client.prototype.verifyIdToken = originalVerifyIdToken;
 });
 
@@ -582,11 +593,11 @@ void describe('Coverage-oriented service and storage tests', { concurrency: fals
           'AnotherPass123!'
         );
         assert.equal(result.ok, false);
-        assert.deepStrictEqual(result.error?.code, 'UNAUTHORIZED');
-        assert.match(
-          result.error?.message ?? '',
-          /^Failed query: update "users" set "password_hash"/
-        );
+        if (result.ok) {
+          throw new Error('Expected password change failure');
+        }
+        assert.deepStrictEqual(result.error.code, 'UNAUTHORIZED');
+        assert.match(result.error.message, /^Failed query: update "users" set "password_hash"/);
       } finally {
         await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${triggerName} ON users;`));
         await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${functionName}();`));
@@ -633,7 +644,7 @@ void describe('Coverage-oriented service and storage tests', { concurrency: fals
         error: { code: 'UNAUTHORIZED', message: 'Google OAuth not configured' },
       });
 
-      config.googleClientId = 'test-google-client-id';
+      setGoogleClientId('test-google-client-id');
 
       stubGooglePayload({ sub: 'missing-email-sub' });
       const invalidPayload = await authService.loginWithGoogle('invalid-payload-token');
@@ -718,7 +729,7 @@ void describe('Coverage-oriented service and storage tests', { concurrency: fals
     });
 
     void test('returns unauthorized when Google provisioning cannot reload the created user', async () => {
-      config.googleClientId = 'test-google-client-id';
+      setGoogleClientId('test-google-client-id');
 
       const disappearingGoogleId = 'google-disappearing-sub';
       const triggerName = `google_disappear_${Date.now()}`;
