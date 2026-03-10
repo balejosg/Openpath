@@ -1,7 +1,7 @@
 import { after, afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert';
 
-import { OAuth2Client } from 'google-auth-library';
+import { OAuth2Client, type LoginTicket } from 'google-auth-library';
 import { eq, sql } from 'drizzle-orm';
 
 import * as authLib from '../src/lib/auth.js';
@@ -27,10 +27,10 @@ interface GooglePayload {
 function stubGooglePayload(payload: GooglePayload): void {
   const ticket = {
     getPayload: () => payload,
-  } as unknown as Awaited<ReturnType<OAuth2Client['verifyIdToken']>>;
+  } as unknown as LoginTicket;
 
-  const verifyIdTokenStub: OAuth2Client['verifyIdToken'] = async () => ticket;
-  OAuth2Client.prototype.verifyIdToken = verifyIdTokenStub;
+  OAuth2Client.prototype.verifyIdToken = (async () =>
+    ticket) as unknown as OAuth2Client['verifyIdToken'];
 }
 
 function stubGoogleError(message: string): void {
