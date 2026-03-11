@@ -12,6 +12,7 @@
  */
 
 import { createServer } from 'node:net';
+import jwt from 'jsonwebtoken';
 
 /**
  * Get an available port by letting the OS assign one.
@@ -287,6 +288,28 @@ export async function parseTRPC(response: Response): Promise<{
 export function bearerAuth(token: string | null): Record<string, string> {
   if (token === null || token === '') return {};
   return { Authorization: `Bearer ${token}` };
+}
+
+export function createLegacyAdminAccessToken(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret === undefined || secret === '') {
+    throw new Error('JWT_SECRET must be set before creating test admin tokens');
+  }
+
+  return jwt.sign(
+    {
+      sub: 'legacy_admin',
+      email: 'admin@openpath.dev',
+      name: 'Legacy Admin',
+      roles: [{ role: 'admin', groupIds: [] }],
+      type: 'access',
+    },
+    secret,
+    {
+      issuer: 'openpath-api',
+      expiresIn: '1h',
+    }
+  );
 }
 
 export async function registerAndVerifyUser(

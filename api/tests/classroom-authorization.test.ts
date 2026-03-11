@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   TEST_RUN_ID,
+  createLegacyAdminAccessToken,
   uniqueEmail,
   trpcMutate as _trpcMutate,
   trpcQuery as _trpcQuery,
@@ -23,7 +24,7 @@ import {
 } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
-const ADMIN_TOKEN = 'test-admin-token';
+let ADMIN_TOKEN = '';
 let PORT: number;
 let API_URL: string;
 let server: Server | undefined;
@@ -128,6 +129,8 @@ await describe('Classroom authorization regressions', async () => {
     API_URL = `http://localhost:${String(PORT)}`;
 
     process.env.PORT = String(PORT);
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    ADMIN_TOKEN = createLegacyAdminAccessToken();
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
     testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-classroom-authz-'));
     process.env.DATA_DIR = testDataDir;

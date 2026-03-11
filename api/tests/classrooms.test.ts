@@ -11,12 +11,12 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Server } from 'node:http';
-import { getAvailablePort, resetDb } from './test-utils.js';
+import { createLegacyAdminAccessToken, getAvailablePort, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
 let PORT: number;
 let API_URL: string;
-const ADMIN_TOKEN = 'test-admin-token';
+let ADMIN_TOKEN = '';
 
 let server: Server | undefined;
 let testDataDir: string | null = null;
@@ -88,6 +88,8 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
     PORT = await getAvailablePort();
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    ADMIN_TOKEN = createLegacyAdminAccessToken();
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
 
     // Ensure test isolation (classrooms/machines persisted data)

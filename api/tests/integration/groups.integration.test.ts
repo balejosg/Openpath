@@ -9,6 +9,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
 import {
+  createLegacyAdminAccessToken,
   getAvailablePort,
   trpcQuery,
   trpcMutate,
@@ -22,7 +23,7 @@ import { closeConnection } from '../../src/db/index.js';
 
 let PORT: number;
 let API_URL: string;
-const ADMIN_TOKEN = 'test-admin-token';
+let ADMIN_TOKEN = '';
 
 let server: Server | undefined;
 
@@ -33,6 +34,8 @@ void describe('Groups & Domains Integration', () => {
     PORT = await getAvailablePort();
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    ADMIN_TOKEN = createLegacyAdminAccessToken();
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
 
     const { app } = await import('../../src/server.js');

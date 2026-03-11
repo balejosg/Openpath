@@ -8,16 +8,21 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { getAvailablePort, registerAndVerifyUser, resetDb } from './test-utils.js';
+import {
+  createLegacyAdminAccessToken,
+  getAvailablePort,
+  registerAndVerifyUser,
+  resetDb,
+} from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
 let PORT: number;
 let BASE_URL: string;
 
 process.env.NODE_ENV = 'test';
-process.env.ADMIN_TOKEN = 'integration-test-admin-token';
 process.env.SHARED_SECRET = 'integration-test-shared-secret';
 process.env.JWT_SECRET = 'integration-test-jwt-secret';
+process.env.ADMIN_TOKEN = createLegacyAdminAccessToken();
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 

@@ -44,24 +44,10 @@ export async function createContext({ req, res }: CreateExpressContextOptions): 
   for (const token of candidates) {
     user = await auth.verifyAccessToken(token);
     if (user) break;
-
-    // Fallback to legacy admin token
-    const adminToken = process.env.ADMIN_TOKEN;
-    if (adminToken && adminToken === token) {
-      logger.info('Legacy admin token used for request context');
-      user = auth.createLegacyAdminPayload() as unknown as JWTPayload;
-      break;
-    }
   }
 
   // Sync role/group assignments from DB so group permissions don't depend on stale JWT claims.
-  // Skip legacy admin payload (used by ADMIN_TOKEN tests).
-  if (
-    user &&
-    !(typeof (user as unknown as { isLegacy?: unknown }).isLegacy === 'boolean'
-      ? (user as unknown as { isLegacy?: boolean }).isLegacy
-      : false)
-  ) {
+  if (user) {
     try {
       const dbRoles = await roleStorage.getUserRoles(user.sub);
       const normalizedRoles: JWTPayload['roles'] = [];

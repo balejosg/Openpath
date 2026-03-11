@@ -338,6 +338,59 @@ await describe(
         });
         assert.strictEqual(response.status, 401);
       });
+
+      await test('should allow admin routes with a bearer JWT', async () => {
+        const accessToken = authLib.generateTokens(
+          {
+            id: 'legacy_admin',
+            email: 'admin@openpath.dev',
+            name: 'Legacy Admin',
+            passwordHash: 'placeholder',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true,
+          },
+          [{ role: 'admin', groupIds: [] }]
+        ).accessToken;
+
+        const response = await trpcQuery('users.list', undefined, {
+          Authorization: `Bearer ${accessToken}`,
+        });
+
+        assert.strictEqual(response.status, 200);
+      });
+
+      await test('should allow admin routes with a cookie-backed access token', async () => {
+        const accessToken = authLib.generateTokens(
+          {
+            id: 'legacy_admin',
+            email: 'admin@openpath.dev',
+            name: 'Legacy Admin',
+            passwordHash: 'placeholder',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true,
+          },
+          [{ role: 'admin', groupIds: [] }]
+        ).accessToken;
+
+        const previousCookieName = process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME;
+        process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME = 'op_access';
+
+        try {
+          const response = await trpcQuery('users.list', undefined, {
+            Cookie: `op_access=${encodeURIComponent(accessToken)}`,
+          });
+
+          assert.strictEqual(response.status, 200);
+        } finally {
+          if (previousCookieName === undefined) {
+            delete process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME;
+          } else {
+            process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME = previousCookieName;
+          }
+        }
+      });
     });
 
     // ============================================

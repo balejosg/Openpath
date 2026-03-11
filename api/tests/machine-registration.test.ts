@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   TEST_RUN_ID,
+  createLegacyAdminAccessToken,
   uniqueEmail,
   trpcMutate as _trpcMutate,
   trpcQuery as _trpcQuery,
@@ -24,7 +25,7 @@ import {
 import { closeConnection } from '../src/db/index.js';
 import { buildMachineKey } from '../src/lib/classroom-storage.js';
 
-const ADMIN_TOKEN = 'test-admin-token';
+let ADMIN_TOKEN = '';
 const SHARED_SECRET = 'test-shared-secret';
 
 let PORT: number;
@@ -129,6 +130,8 @@ await describe('Machine registration regressions', async () => {
     API_URL = `http://localhost:${String(PORT)}`;
 
     process.env.PORT = String(PORT);
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    ADMIN_TOKEN = createLegacyAdminAccessToken();
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
     process.env.SHARED_SECRET = SHARED_SECRET;
 

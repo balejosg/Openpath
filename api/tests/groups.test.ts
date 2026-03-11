@@ -12,6 +12,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
 import {
+  createLegacyAdminAccessToken,
   getAvailablePort,
   trpcQuery,
   trpcMutate,
@@ -36,8 +37,7 @@ GLOBAL_TIMEOUT.unref();
 
 let server: Server | undefined;
 
-// Use legacy admin token approach (same as roles.test.ts)
-const ADMIN_TOKEN = 'test-admin-token';
+let ADMIN_TOKEN = '';
 
 // =============================================================================
 // Type Definitions
@@ -101,6 +101,8 @@ await describe('Groups Router (tRPC)', { timeout: 30000 }, async () => {
     PORT = await getAvailablePort();
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    ADMIN_TOKEN = createLegacyAdminAccessToken();
     process.env.ADMIN_TOKEN = ADMIN_TOKEN;
 
     const { app } = await import('../src/server.js');

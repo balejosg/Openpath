@@ -8,7 +8,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { getAvailablePort, resetDb } from './test-utils.js';
+import { createLegacyAdminAccessToken, getAvailablePort, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 
 let PORT: number;
@@ -98,7 +98,8 @@ await describe('Role Management E2E Tests (tRPC)', { timeout: 45000 }, async () 
     PORT = await getAvailablePort();
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
-    process.env.ADMIN_TOKEN = 'test-admin-token';
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.ADMIN_TOKEN = createLegacyAdminAccessToken();
 
     const { app } = await import('../src/server.js');
 
@@ -107,7 +108,7 @@ await describe('Role Management E2E Tests (tRPC)', { timeout: 45000 }, async () 
     });
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    adminToken = 'test-admin-token';
+    adminToken = process.env.ADMIN_TOKEN;
   });
 
   after(async () => {

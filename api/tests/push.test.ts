@@ -113,23 +113,23 @@ async function parseTRPC(
 
 await describe('Push Notifications API Tests (tRPC)', { timeout: 45000 }, async () => {
   before(async () => {
+    process.env.JWT_SECRET = 'test-jwt-secret';
+
     // Dynamic imports to ensure process.env is set before config.js is loaded
     testUtils = await import('./test-utils.js');
-    db = await import('../src/db/index.js');
-    const { app } = await import('../src/server.js');
-
     await testUtils.resetDb();
     PORT = await testUtils.getAvailablePort();
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
-    process.env.ADMIN_TOKEN = 'test-admin-token';
+    db = await import('../src/db/index.js');
+    const { app } = await import('../src/server.js');
 
     server = app.listen(PORT, () => {
       console.log(`Push test server started on port ${String(PORT)}`);
     });
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    adminToken = 'test-admin-token';
+    adminToken = testUtils.createLegacyAdminAccessToken();
   });
 
   after(async () => {

@@ -249,6 +249,26 @@ await describe('Security and Hardening Tests', async () => {
       });
       assert.strictEqual(response.status, 401);
     });
+
+    await it('should reject the legacy ADMIN_TOKEN fallback for private tRPC routes', async (): Promise<void> => {
+      const previousAdminToken = process.env.ADMIN_TOKEN;
+      process.env.ADMIN_TOKEN = 'legacy-admin-token';
+
+      try {
+        const response = await fetch(`${API_URL}/trpc/users.list`, {
+          headers: {
+            Authorization: 'Bearer legacy-admin-token',
+          },
+        });
+        assert.strictEqual(response.status, 401);
+      } finally {
+        if (previousAdminToken === undefined) {
+          delete process.env.ADMIN_TOKEN;
+        } else {
+          process.env.ADMIN_TOKEN = previousAdminToken;
+        }
+      }
+    });
   });
 
   await describe('Input Validation Security', async () => {

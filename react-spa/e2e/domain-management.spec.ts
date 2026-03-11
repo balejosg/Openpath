@@ -219,18 +219,24 @@ test.describe('Domain Request Management', () => {
     }
   });
 
-  test('should show domain details on click @domains', async ({ page }) => {
-    const requestsPage = new DomainRequestsPage(page);
-    await requestsPage.goto();
+  test('should render domain details inline in the request row @domains', async ({ page }) => {
+    const request = await createPendingDomainRequest(page, {
+      reason: 'Request detail coverage',
+      machineHostname: 'inline-detail-host',
+    });
 
-    // Click on first domain row
-    const firstRow = page.locator('[data-testid="request-row"]').first();
+    try {
+      const requestsPage = new DomainRequestsPage(page);
+      await requestsPage.goto();
 
-    if (await firstRow.isVisible()) {
-      await firstRow.click();
-
-      // Should show details panel or modal
-      await expect(page.getByText(/Detalles|Details|Información/i)).toBeVisible({ timeout: 3000 });
+      const row = getRequestRow(page, request.domain);
+      await expect(row).toHaveAttribute('data-status', 'pending');
+      await expect(row).toContainText(request.domain);
+      await expect(row).toContainText('Request detail coverage');
+      await expect(row).toContainText('inline-detail-host');
+      await expect(row).toContainText(/Manual\/API/i);
+    } finally {
+      await deleteDomainRequestViaApi(page, request.id);
     }
   });
 });
