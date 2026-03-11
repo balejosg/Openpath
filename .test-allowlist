@@ -12,9 +12,7 @@
 # Last updated: 2026-02-07
 
 # API - Server/Infrastructure
-api/src/server.ts
 api/src/trpc/trpc.ts
-api/src/trpc/context.ts
 
 # API - Routers (tested via integration tests, not unit tests)
 api/src/trpc/routers/requests.ts
@@ -42,7 +40,6 @@ api/src/services/request.service.ts
 api/src/services/groups.service.ts
 api/src/services/setup.service.ts
 api/src/services/health-report.service.ts
-api/src/services/auth.service.ts
 api/src/services/user.service.ts
 api/src/services/schedule.service.ts
 
@@ -62,9 +59,7 @@ react-spa/src/views/Dashboard.tsx
 react-spa/src/views/DomainRequests.tsx
 react-spa/src/views/Groups.tsx
 react-spa/src/views/Settings.tsx
-react-spa/src/views/Login.tsx
 react-spa/src/views/ResetPassword.tsx
-react-spa/src/views/Register.tsx
 react-spa/src/views/ForgotPassword.tsx
 
 # React SPA - Lib/Hooks

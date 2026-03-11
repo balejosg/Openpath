@@ -17,6 +17,7 @@ import jwt from 'jsonwebtoken';
 process.env.JWT_SECRET = 'test-secret-123';
 process.env.NODE_ENV = 'development'; // Enable rate limiting logic
 process.env.ENABLE_RATE_LIMIT_IN_TEST = 'true'; // Actually enable the middleware
+process.env.TRUST_PROXY = '1';
 
 let PORT: number;
 let API_URL: string;
@@ -354,7 +355,10 @@ await describe('Security and Hardening Tests', async () => {
     await it('rejects domain requests with unrecognized fields', async (): Promise<void> => {
       const { status, body } = await request('/trpc/requests.create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': '198.51.100.25',
+        },
         body: JSON.stringify({
           json: {
             domain: `privacy-test-${String(Date.now())}.com`,
@@ -364,11 +368,6 @@ await describe('Security and Hardening Tests', async () => {
           },
         }),
       });
-
-      if (status === 429) {
-        console.warn('Rate limited in privacy test - skipping 400 check');
-        return;
-      }
 
       assert.strictEqual(status, 400, 'Should reject unrecognized keys in domain request');
       const errorMessage = (body as { error: { message: string } }).error.message;

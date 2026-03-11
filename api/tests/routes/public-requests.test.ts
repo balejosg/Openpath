@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { sql } from 'drizzle-orm';
 
 const { ensureTestSchema, getAvailablePort } = await import('../test-utils.js');
-const { loadConfig } = await import('../../src/config.js');
+const { config, loadConfig } = await import('../../src/config.js');
 const { closeConnection, db } = await import('../../src/db/index.js');
 
 let port: number;
@@ -223,5 +223,96 @@ await describe('public-requests routes', async () => {
 
     assert.strictEqual(payload.success, false);
     assert.match(payload.error ?? '', /domain/i);
+  });
+
+  await test('POST /api/requests/auto can auto-approve immediately when the instance opts in explicitly', async () => {
+    const originalAutoApprove = config.autoApproveMachineRequests;
+    Object.defineProperty(config, 'autoApproveMachineRequests', {
+      value: true,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+
+    try {
+      const suffix = `${Date.now().toString()}-auto-approved`;
+      const groupId = `grp-${suffix}`;
+      const classroomId = `cls-${suffix}`;
+      const machineId = `mach-${suffix}`;
+      const hostname = `host-${suffix}`;
+      const token = `machine-token-${suffix}`;
+      const domain = `approved-${suffix}.example.com`;
+
+      await db.execute(
+        sql.raw(
+          `INSERT INTO whitelist_groups (id, name, display_name, enabled) VALUES ('${groupId}', '${groupId}', '${groupId}', 1)`
+        )
+      );
+      await db.execute(
+        sql.raw(
+          `INSERT INTO classrooms (id, name, display_name, default_group_id, active_group_id) VALUES ('${classroomId}', '${classroomId}', '${classroomId}', '${groupId}', '${groupId}')`
+        )
+      );
+      await db.execute(
+        sql.raw(
+          `INSERT INTO machines (id, hostname, classroom_id, version, download_token_hash) VALUES ('${machineId}', '${hostname}', '${classroomId}', 'test', '${hashMachineToken(token)}')`
+        )
+      );
+
+      const response = await fetch(`${apiUrl}/api/requests/auto`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Connection: 'close',
+        },
+        body: JSON.stringify({
+          domain,
+          hostname,
+          token,
+          origin_page: `${classroomId}.school.local/dashboard`,
+          reason: 'Configured auto-approval',
+        }),
+      });
+
+      assert.strictEqual(response.status, 200);
+      const payload = (await response.json()) as {
+        success: boolean;
+        approved?: boolean;
+        autoApproved?: boolean;
+        status?: string;
+        groupId?: string;
+        source?: string;
+        duplicate?: boolean;
+      };
+
+      assert.strictEqual(payload.success, true);
+      assert.strictEqual(payload.approved, true);
+      assert.strictEqual(payload.autoApproved, true);
+      assert.strictEqual(payload.status, 'approved');
+      assert.strictEqual(payload.groupId, groupId);
+      assert.strictEqual(payload.source, 'auto_extension');
+      assert.strictEqual(payload.duplicate, false);
+
+      const ruleRows = await db.execute(
+        sql.raw(
+          `SELECT source, value FROM whitelist_rules WHERE group_id='${groupId}' AND value='${domain}' LIMIT 1`
+        )
+      );
+      const createdRules = ruleRows.rows as { source: string; value: string }[];
+      assert.strictEqual(createdRules.length, 1);
+      assert.strictEqual(createdRules[0]?.source, 'auto_extension');
+
+      const requestRows = await db.execute(
+        sql.raw(`SELECT id FROM requests WHERE domain='${domain}' AND group_id='${groupId}'`)
+      );
+      assert.strictEqual(requestRows.rows.length, 0);
+    } finally {
+      Object.defineProperty(config, 'autoApproveMachineRequests', {
+        value: originalAutoApprove,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    }
   });
 });

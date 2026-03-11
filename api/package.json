@@ -89,9 +89,10 @@
   },
   "c8": {
     "check-coverage": true,
-    "lines": 65,
-    "functions": 65,
-    "branches": 55,
+    "lines": 80,
+    "functions": 75,
+    "branches": 70,
+    "statements": 80,
     "reporter": [
       "text",
       "lcov"

@@ -8,17 +8,30 @@ function Write-Step {
     Write-Host $Message
 }
 
+function Fail-Step {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [Parameter()][object]$ErrorRecord
+    )
+
+    if ($null -ne $ErrorRecord) {
+        throw "$Message $ErrorRecord"
+    }
+
+    throw $Message
+}
+
 function Ensure-Pester {
     Write-Step "Installing/Importing Pester..."
     try {
         if (-not (Get-Module -ListAvailable -Name Pester)) {
-            Install-Module -Name Pester -Force -SkipPublisherCheck
+            Install-Module -Name Pester -Force -SkipPublisherCheck -ErrorAction Stop
         }
-        Import-Module Pester -PassThru | Out-Null
+        Import-Module Pester -PassThru -ErrorAction Stop | Out-Null
         Write-Host "OK: Pester ready"
     }
     catch {
-        Write-Host "WARN: Failed to install/import Pester: $_"
+        Fail-Step "Failed to install/import Pester." $_
     }
 }
 
@@ -33,27 +46,30 @@ function Ensure-Chocolatey {
 }
 
 function Install-Acrylic {
-    Write-Step "Installing Acrylic DNS Proxy (best-effort)..."
+    Write-Step "Installing Acrylic DNS Proxy..."
     try {
         choco install acrylic-dns-proxy -y --no-progress | Out-Default
         Start-Sleep -Seconds 5
 
         $svc = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
         if ($svc -and $svc.Status -ne 'Running') {
-            Start-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
+            Start-Service -Name 'AcrylicDNSProxySvc' -ErrorAction Stop
             Start-Sleep -Seconds 2
         }
 
         $svc = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
-        if ($svc) {
-            Write-Host "Acrylic service status: $($svc.Status)"
+        if (-not $svc) {
+            Fail-Step "Acrylic service not found after installation."
         }
-        else {
-            Write-Host "WARN: Acrylic service not found"
+
+        if ($svc.Status -ne 'Running') {
+            Fail-Step "Acrylic service is not running after installation. Current status: $($svc.Status)"
         }
+
+        Write-Host "Acrylic service status: $($svc.Status)"
     }
     catch {
-        Write-Host "WARN: Acrylic install failed (continuing): $_"
+        Fail-Step "Acrylic installation failed." $_
     }
 }
 
@@ -116,38 +132,39 @@ function Test-DnsResolution {
         Write-Host "OK: google.com resolves: $($result[0].IPAddress)"
     }
     catch {
-        Write-Host "WARN: DNS resolution failed: $_"
+        Fail-Step "System DNS resolution failed." $_
     }
 
     $acrylicRunning = (Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue).Status -eq 'Running'
-    if ($acrylicRunning) {
-        Write-Host ""
-        Write-Host "Testing Acrylic DNS proxy..."
-        try {
-            $result = Resolve-DnsName -Name 'google.com' -Server '127.0.0.1' -ErrorAction Stop
-            Write-Host "OK: Acrylic proxy working: $($result[0].IPAddress)"
-        }
-        catch {
-            Write-Host "WARN: Acrylic proxy test failed: $_"
-        }
+    if (-not $acrylicRunning) {
+        Fail-Step "Acrylic DNS Proxy service is not running before proxy validation."
+    }
+
+    Write-Host ""
+    Write-Host "Testing Acrylic DNS proxy..."
+    try {
+        $result = Resolve-DnsName -Name 'google.com' -Server '127.0.0.1' -ErrorAction Stop
+        Write-Host "OK: Acrylic proxy working: $($result[0].IPAddress)"
+    }
+    catch {
+        Fail-Step "Acrylic proxy validation failed." $_
     }
 }
 
 function Test-SinkholeBlocking {
-    Write-Step "Testing DNS sinkhole blocking (best-effort)..."
+    Write-Step "Testing DNS sinkhole blocking..."
 
     $acrylicPath = 'C:\Program Files (x86)\Acrylic DNS Proxy'
     $hostsFile = Join-Path $acrylicPath 'AcrylicHosts.txt'
 
     if (-not (Test-Path $hostsFile)) {
-        Write-Host 'WARN: Acrylic hosts file not found, skipping sinkhole test'
-        return
+        Fail-Step "Acrylic hosts file not found; cannot validate sinkhole behavior."
     }
 
     Copy-Item $hostsFile "$hostsFile.bak" -Force
     try {
         Add-Content -Path $hostsFile -Value '0.0.0.0 blocked-test-domain.example.com'
-        Restart-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
+        Restart-Service -Name 'AcrylicDNSProxySvc' -ErrorAction Stop
         Start-Sleep -Seconds 3
 
         try {
@@ -156,7 +173,7 @@ function Test-SinkholeBlocking {
                 Write-Host 'OK: Sinkhole blocking works (0.0.0.0)'
             }
             else {
-                Write-Host "WARN: Domain resolved to $($result.IPAddress) instead of 0.0.0.0"
+                Fail-Step "Sinkhole domain resolved to $($result.IPAddress) instead of 0.0.0.0."
             }
         }
         catch {
@@ -165,7 +182,7 @@ function Test-SinkholeBlocking {
     }
     finally {
         Move-Item "$hostsFile.bak" $hostsFile -Force
-        Restart-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
+        Restart-Service -Name 'AcrylicDNSProxySvc' -ErrorAction Stop
     }
 }
 
@@ -195,7 +212,7 @@ function Test-WhitelistUpdate {
 }
 
 function Test-Firewall {
-    Write-Step "Testing firewall functions (best-effort)..."
+    Write-Step "Testing firewall functions..."
 
     try {
         Import-Module 'C:\OpenPath\lib\Firewall.psm1' -Force
@@ -209,16 +226,19 @@ function Test-Firewall {
             if ($rule) {
                 Write-Host 'OK: Test firewall rule verified'
             }
+            else {
+                Fail-Step "Firewall rule was not present after creation."
+            }
         }
         catch {
-            Write-Host "WARN: Test rule creation failed (may require elevation): $_"
+            Fail-Step "Firewall rule creation failed." $_
         }
         finally {
             Remove-NetFirewallRule -DisplayName 'OpenPath-Test-Rule' -ErrorAction SilentlyContinue
         }
     }
     catch {
-        Write-Host "WARN: Firewall module test failed: $_"
+        Fail-Step "Firewall module validation failed." $_
     }
 }
 
@@ -238,16 +258,16 @@ function Run-PesterE2E {
         Write-Host "Results: $($result.PassedCount) passed, $($result.FailedCount) failed"
 
         if ($result.FailedCount -gt 0) {
-            Write-Host 'WARN: Some Pester tests failed (may be expected in CI environment)'
+            Fail-Step "Pester E2E suite reported $($result.FailedCount) failure(s)."
         }
     }
     catch {
-        Write-Host "WARN: Invoke-Pester failed (continuing): $_"
+        Fail-Step "Invoke-Pester failed." $_
     }
 }
 
 function Verify-ScheduledTasksApi {
-    Write-Step "Testing scheduled tasks API (best-effort)..."
+    Write-Step "Testing scheduled tasks API..."
 
     try {
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-Command 'echo test'"
@@ -260,9 +280,12 @@ function Verify-ScheduledTasksApi {
         if ($task) {
             Write-Host 'OK: Test task verified'
         }
+        else {
+            Fail-Step "Scheduled task was not present after registration."
+        }
     }
     catch {
-        Write-Host "WARN: Scheduled task test failed: $_"
+        Fail-Step "Scheduled task API validation failed." $_
     }
     finally {
         Unregister-ScheduledTask -TaskName 'OpenPath-E2E-Test' -Confirm:$false -ErrorAction SilentlyContinue
