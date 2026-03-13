@@ -10,11 +10,6 @@ on:
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'linux/**'
-      - 'windows/**'
-      - 'tests/**'
-      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
@@ -33,12 +28,64 @@ permissions:
 # ============================================
 
 jobs:
+  detect-relevant-changes:
+    name: Detect Relevant Changes
+    runs-on: ubuntu-latest
+    outputs:
+      linux_relevant: ${{ steps.filter.outputs.linux_relevant }}
+      windows_relevant: ${{ steps.filter.outputs.windows_relevant }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+
+          echo "Changed files:"
+          if [ -n "$changed_files" ]; then
+            echo "$changed_files"
+          else
+            echo "(none)"
+          fi
+
+          linux_relevant=false
+          windows_relevant=false
+
+          if echo "$changed_files" | grep -Eq '^(linux/|tests/|\.github/workflows/ci\.yml$)'; then
+            linux_relevant=true
+          fi
+
+          if echo "$changed_files" | grep -Eq '^(windows/|tests/|\.github/workflows/ci\.yml$)'; then
+            windows_relevant=true
+          fi
+
+          echo "linux_relevant=$linux_relevant" >> "$GITHUB_OUTPUT"
+          echo "windows_relevant=$windows_relevant" >> "$GITHUB_OUTPUT"
+
   # ============================================
   # Job 1: Linux dnsmasq Agent Tests
   # ============================================
   test-linux-dnsmasq:
     name: Linux Agent Tests (BATS)
     runs-on: ubuntu-latest
+    needs: detect-relevant-changes
+    if: needs.detect-relevant-changes.outputs.linux_relevant == 'true'
 
     steps:
       - name: Checkout code
@@ -67,6 +114,8 @@ jobs:
   test-windows:
     name: Windows Agent Tests (Pester)
     runs-on: windows-latest
+    needs: detect-relevant-changes
+    if: needs.detect-relevant-changes.outputs.windows_relevant == 'true'
 
     steps:
       - name: Checkout code
@@ -103,15 +152,29 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [test-linux-dnsmasq, test-windows]
+    needs: [detect-relevant-changes, test-linux-dnsmasq, test-windows]
     if: always()
 
     steps:
       - name: Check all jobs
         run: |
+          echo "Linux relevant: ${{ needs.detect-relevant-changes.outputs.linux_relevant }}"
+          echo "Windows relevant: ${{ needs.detect-relevant-changes.outputs.windows_relevant }}"
+
           if [[ "${{ needs.test-linux-dnsmasq.result }}" == "failure" ]] || \
-             [[ "${{ needs.test-windows.result }}" == "failure" ]]; then
+             [[ "${{ needs.test-linux-dnsmasq.result }}" == "cancelled" ]] || \
+             [[ "${{ needs.test-windows.result }}" == "failure" ]] || \
+             [[ "${{ needs.test-windows.result }}" == "cancelled" ]]; then
             echo "CI Failed"
             exit 1
           fi
+
+          if [[ "${{ needs.test-linux-dnsmasq.result }}" == "skipped" ]]; then
+            echo "Linux Agent Tests skipped: no relevant changes"
+          fi
+
+          if [[ "${{ needs.test-windows.result }}" == "skipped" ]]; then
+            echo "Windows Agent Tests skipped: no relevant changes"
+          fi
+
           echo "All CI checks passed"
