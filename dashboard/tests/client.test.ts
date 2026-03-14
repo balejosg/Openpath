@@ -1,10 +1,27 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-type FetchCall = {
+import type { ApiClient, LoginResult } from '../src/api-client.js';
+
+interface FetchCall {
   pathname: string;
   authorization: string | null;
-};
+}
+
+interface ApiClientModule {
+  createApiClient(token: string): ApiClient;
+  login(username: string, password: string): Promise<LoginResult>;
+  refreshToken(refreshTokenValue: string): Promise<LoginResult>;
+  logout(token: string, refreshTokenValue: string): Promise<boolean>;
+}
+
+interface TrpcModule {
+  API_URL: string;
+  getTRPCErrorCode(error: unknown): string | undefined;
+  getTRPCErrorMessage(error: unknown): string;
+  getTRPCErrorStatus(error: unknown): number;
+}
 
 const originalFetch = globalThis.fetch;
 
@@ -34,7 +51,7 @@ function trpcResponse(data: unknown): Response {
 beforeEach(() => {
   fetchCalls = [];
   process.env.API_URL = 'http://dashboard.test';
-  globalThis.fetch = (async (input, init) => {
+  globalThis.fetch = ((input, init) => {
     const url = getRequestUrl(input);
     fetchCalls.push({
       pathname: url.pathname,
@@ -43,59 +60,79 @@ beforeEach(() => {
 
     switch (url.pathname) {
       case '/trpc/auth.login':
-        return trpcResponse({
-          accessToken: 'access-token',
-          refreshToken: 'refresh-token',
-          user: { id: 'user-1', email: 'teacher@dashboard.local', name: 'Teacher Dashboard' },
-        });
+        return Promise.resolve(
+          trpcResponse({
+            accessToken: 'access-token',
+            refreshToken: 'refresh-token',
+            user: { id: 'user-1', email: 'teacher@dashboard.local', name: 'Teacher Dashboard' },
+          })
+        );
       case '/trpc/auth.refresh':
-        return trpcResponse({ accessToken: 'new-access-token', refreshToken: 'new-refresh-token' });
+        return Promise.resolve(
+          trpcResponse({ accessToken: 'new-access-token', refreshToken: 'new-refresh-token' })
+        );
       case '/trpc/auth.logout':
-        return trpcResponse({ success: true });
+        return Promise.resolve(trpcResponse({ success: true }));
       case '/trpc/groups.list':
-        return trpcResponse([
-          {
-            id: 'group-1',
-            name: 'teachers',
-            displayName: 'Teachers',
-            enabled: true,
-            whitelistCount: 2,
-            blockedSubdomainCount: 1,
-            blockedPathCount: 0,
-          },
-        ]);
+        return Promise.resolve(
+          trpcResponse([
+            {
+              id: 'group-1',
+              name: 'teachers',
+              displayName: 'Teachers',
+              enabled: true,
+              whitelistCount: 2,
+              blockedSubdomainCount: 1,
+              blockedPathCount: 0,
+            },
+          ])
+        );
       case '/trpc/groups.getById':
-        return trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Teachers' });
+        return Promise.resolve(
+          trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Teachers' })
+        );
       case '/trpc/groups.getByName':
-        return trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Teachers' });
+        return Promise.resolve(
+          trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Teachers' })
+        );
       case '/trpc/groups.create':
-        return trpcResponse({ id: 'group-2', name: 'new-group' });
+        return Promise.resolve(trpcResponse({ id: 'group-2', name: 'new-group' }));
       case '/trpc/groups.update':
-        return trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Updated Teachers' });
+        return Promise.resolve(
+          trpcResponse({ id: 'group-1', name: 'teachers', displayName: 'Updated Teachers' })
+        );
       case '/trpc/groups.delete':
-        return trpcResponse({ deleted: true });
+        return Promise.resolve(trpcResponse({ deleted: true }));
       case '/trpc/groups.listRules':
-        return trpcResponse([
-          { id: 'rule-1', groupId: 'group-1', type: 'whitelist', value: 'example.com' },
-        ]);
+        return Promise.resolve(
+          trpcResponse([
+            { id: 'rule-1', groupId: 'group-1', type: 'whitelist', value: 'example.com' },
+          ])
+        );
       case '/trpc/groups.createRule':
-        return trpcResponse({ id: 'rule-2' });
+        return Promise.resolve(trpcResponse({ id: 'rule-2' }));
       case '/trpc/groups.deleteRule':
-        return trpcResponse({ deleted: true });
+        return Promise.resolve(trpcResponse({ deleted: true }));
       case '/trpc/groups.bulkCreateRules':
-        return trpcResponse({ count: 2 });
+        return Promise.resolve(trpcResponse({ count: 2 }));
       case '/trpc/groups.stats':
-        return trpcResponse({ groupCount: 3, whitelistCount: 10, blockedCount: 4 });
+        return Promise.resolve(
+          trpcResponse({ groupCount: 3, whitelistCount: 10, blockedCount: 4 })
+        );
       case '/trpc/groups.systemStatus':
-        return trpcResponse({ enabled: true, totalGroups: 3, activeGroups: 2, pausedGroups: 1 });
+        return Promise.resolve(
+          trpcResponse({ enabled: true, totalGroups: 3, activeGroups: 2, pausedGroups: 1 })
+        );
       case '/trpc/groups.toggleSystem':
-        return trpcResponse({ enabled: false, totalGroups: 3, activeGroups: 0, pausedGroups: 3 });
+        return Promise.resolve(
+          trpcResponse({ enabled: false, totalGroups: 3, activeGroups: 0, pausedGroups: 3 })
+        );
       case '/trpc/groups.export':
-        return trpcResponse({ name: 'teachers', content: 'example.com' });
+        return Promise.resolve(trpcResponse({ name: 'teachers', content: 'example.com' }));
       case '/trpc/groups.exportAll':
-        return trpcResponse([{ name: 'teachers', content: 'example.com' }]);
+        return Promise.resolve(trpcResponse([{ name: 'teachers', content: 'example.com' }]));
       default:
-        throw new Error(`Unexpected tRPC request: ${url.pathname}`);
+        return Promise.reject(new Error(`Unexpected tRPC request: ${url.pathname}`));
     }
   }) as typeof fetch;
 });
@@ -105,12 +142,12 @@ afterEach(() => {
   delete process.env.API_URL;
 });
 
-describe('dashboard tRPC client wrappers', async () => {
-  await it('wraps authenticated group operations', async () => {
-    const tag = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const { createApiClient } = await import(`../src/api-client.ts?${tag}`);
+void describe('dashboard tRPC client wrappers', () => {
+  void it('wraps authenticated group operations', async () => {
+    const tag = randomUUID();
+    const clientModule = (await import(`../src/api-client.ts?${tag}`)) as ApiClientModule;
 
-    const client = createApiClient('Bearer-Token');
+    const client = clientModule.createApiClient('Bearer-Token');
 
     assert.deepStrictEqual(await client.getAllGroups(), [
       {
@@ -183,10 +220,10 @@ describe('dashboard tRPC client wrappers', async () => {
     assert.ok(fetchCalls.every((call) => call.authorization === 'Bearer Bearer-Token'));
   });
 
-  await it('wraps public authentication operations and helpers', async () => {
-    const tag = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const clientModule = await import(`../src/api-client.ts?${tag}`);
-    const trpcModule = await import(`../src/trpc.ts?${tag}`);
+  void it('wraps public authentication operations and helpers', async () => {
+    const tag = randomUUID();
+    const clientModule = (await import(`../src/api-client.ts?${tag}`)) as ApiClientModule;
+    const trpcModule = (await import(`../src/trpc.ts?${tag}`)) as TrpcModule;
 
     assert.deepStrictEqual(await clientModule.login('teacher', 'Password123!'), {
       success: true,
