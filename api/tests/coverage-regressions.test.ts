@@ -239,7 +239,7 @@ await describe('coverage regressions', async () => {
     assert.strictEqual(await roleStorage.canApproveForGroup(firstUser.id, groupId), true);
     assert.deepStrictEqual(await roleStorage.getApprovalGroups(firstUser.id), [groupId]);
     const expandedRole = await roleStorage.addGroupsToRole(firstRole.id, ['group-b']);
-    assert.deepStrictEqual(expandedRole?.groupIds.sort(), [groupId, 'group-b']);
+    assert.deepStrictEqual([...(expandedRole?.groupIds ?? [])].sort(), [groupId, 'group-b']);
     const trimmedRole = await roleStorage.removeGroupsFromRole(firstRole.id, [groupId]);
     assert.deepStrictEqual(trimmedRole?.groupIds, ['group-b']);
     assert.strictEqual((await roleStorage.getRolesByUser(firstUser.id)).length, 1);
@@ -298,7 +298,7 @@ await describe('coverage regressions', async () => {
       return {
         rows: [{ ...legacyRow, id: 'req_legacy_2', domain: 'created.example.com' }],
       } as never;
-    }) as typeof dbModule.db.execute;
+    }) as unknown as typeof dbModule.db.execute;
 
     try {
       const tag = `legacy-storage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
