@@ -1,5 +1,7 @@
 set -e
 
+bash scripts/require-main-branch.sh pre-commit OpenPath
+
 # Pre-commit hook: Full verification before every commit
 # This enforces the mandatory test policy.
 

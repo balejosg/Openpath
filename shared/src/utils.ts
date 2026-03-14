@@ -62,13 +62,13 @@ export function safeJsonParse<T>(
 /**
  * Validate API response with Zod schema
  */
-type JsonResponseLike = {
+interface JsonResponseLike {
   json(): Promise<unknown>;
-};
+}
 
 export async function parseApiResponse<T>(
   response: JsonResponseLike,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T>
 ): Promise<T> {
   const json: unknown = await response.json();
   return schema.parse(json);

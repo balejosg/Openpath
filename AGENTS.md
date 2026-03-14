@@ -62,6 +62,18 @@ Un agente hizo commit con `--no-verify`, causando:
 
 **NO HAY EXCUSAS. NO HAY ATAJOS. ARREGLA EL PROBLEMA.**
 
+## ⛔ Trunk-Based Workflow (CRITICAL)
+
+**LLM work in OpenPath is trunk-based: `main` is the only allowed working branch.**
+
+- ❌ Do not create feature branches, integration branches, or PR branches
+- ❌ Do not commit from detached HEAD
+- ❌ Do not push to any remote branch other than `main`
+- ✅ If you need a parallel clean checkout, use a detached worktree based on `main`
+- ✅ If you find the repo on a non-`main` branch, preserve any needed work with a stash/patch, switch back to `main`, and continue there
+
+**Technical enforcement:** `.husky/pre-commit` and `.husky/pre-push` call `scripts/require-main-branch.sh`.
+
 ## Quick Context (Architecture Cheatsheet)
 
 - `linux/`: Bash endpoint agent (dnsmasq/iptables, systemd)
@@ -302,9 +314,10 @@ git commit -m "your message"
 
 ## Git Hooks (Enforced)
 
+- **branch gate**: `scripts/require-main-branch.sh` blocks commits/pushes outside `main`
 - **pre-commit**: `.husky/pre-commit` runs `npm run verify:full` (full verification suite)
 - **commit-msg**: `.husky/commit-msg` runs `commitlint` (conventional commits format)
-- pre-push: No additional checks (already verified at commit time)
+- **pre-push**: `.husky/pre-push` re-checks trunk policy before pushing
 
 **NEVER use `--no-verify`.** If the hook fails, fix the issue.
 

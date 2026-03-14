@@ -1,4 +1,5 @@
-# Pre-push hook: No additional verification needed
-# All checks already done in pre-commit
+set -e
 
-echo "Pre-push: verification already done in pre-commit"
+bash scripts/require-main-branch.sh pre-push OpenPath
+
+echo "Pre-push: trunk policy verified; verification already done in pre-commit"

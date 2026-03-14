@@ -56,6 +56,8 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
+bash scripts/require-main-branch.sh safe-commit OpenPath
+
 # Check if there are staged changes
 if git diff --cached --quiet; then
     echo -e "${YELLOW}WARNING: No staged changes. Stage files first with 'git add'${NC}"
