@@ -20,6 +20,8 @@ import {
   uniqueEmail,
 } from './test-utils.js';
 
+type RawStorageModule = typeof import('../src/lib/storage.js');
+
 let server: Server | undefined;
 let baseUrl = '';
 
@@ -34,7 +36,9 @@ before(async () => {
 
   const { app } = await import('../src/server.js');
   await new Promise<void>((resolve) => {
-    server = app.listen(port, () => resolve());
+    server = app.listen(port, () => {
+      resolve();
+    });
   });
 });
 
@@ -163,11 +167,8 @@ await describe('coverage regressions', async () => {
     const createdRule = await groupsStorage.createRule(groupId, 'whitelist', 'example.com');
     assert.strictEqual(createdRule.success, true);
     assert.ok(createdRule.id);
-    assert.strictEqual(
-      (await groupsStorage.getRuleById(createdRule.id as string))?.value,
-      'example.com'
-    );
-    assert.strictEqual(await groupsStorage.deleteRule(createdRule.id as string), true);
+    assert.strictEqual((await groupsStorage.getRuleById(createdRule.id))?.value, 'example.com');
+    assert.strictEqual(await groupsStorage.deleteRule(createdRule.id), true);
 
     await groupsStorage.bulkCreateRules(groupId, 'whitelist', ['a.example.com', 'b.example.com']);
     const rules = await groupsStorage.getRulesByGroup(groupId, 'whitelist');
@@ -287,22 +288,22 @@ await describe('coverage regressions', async () => {
     };
 
     let executeIndex = 0;
-    dbModule.db.execute = (async () => {
+    dbModule.db.execute = (() => {
       executeIndex += 1;
       if (executeIndex === 1) {
-        return { rows: [{ has_source: false }] } as never;
+        return Promise.resolve({ rows: [{ has_source: false }] } as never);
       }
       if (executeIndex <= 4) {
-        return { rows: [legacyRow] } as never;
+        return Promise.resolve({ rows: [legacyRow] } as never);
       }
-      return {
+      return Promise.resolve({
         rows: [{ ...legacyRow, id: 'req_legacy_2', domain: 'created.example.com' }],
-      } as never;
+      } as never);
     }) as unknown as typeof dbModule.db.execute;
 
     try {
-      const tag = `legacy-storage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const rawStorage = await import(`../src/lib/storage.ts?${tag}`);
+      const tag = `legacy-storage-${String(Date.now())}-${Math.random().toString(16).slice(2)}`;
+      const rawStorage = (await import(`../src/lib/storage.ts?${tag}`)) as RawStorageModule;
 
       assert.strictEqual((await rawStorage.getAllRequests()).length, 1);
       assert.strictEqual((await rawStorage.getRequestsByGroup('default')).length, 1);
