@@ -3,16 +3,33 @@
 [![CI](https://github.com/balejosg/openpath/actions/workflows/ci.yml/badge.svg)](https://github.com/balejosg/openpath/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/balejosg/openpath/branch/main/graph/badge.svg)](https://codecov.io/gh/balejosg/openpath)
 
-**Strict Internet Access Control. Zero Administration Headaches.**
+**Strict Internet Access Control for Focused Learning and Shared Environments.**
 
-OpenPath is a robust, "default-deny" internet access control system designed for classrooms, laboratories, and corporate environments. It blocks everything by default, allowing only explicitly approved domains.
+OpenPath is a robust, "default-deny" internet access control system designed for classrooms,
+laboratories, libraries, and other shared-device environments. It blocks everything by default,
+allowing only explicitly approved domains so teams can create calmer, more intentional digital spaces.
 
-Unlike traditional firewalls that require manual rule updates and complex VPNs, OpenPath decentralizes enforcement to the endpoints while centralizing control in a modern web dashboard.
+Unlike traditional firewalls that require manual rule updates and complex VPNs, OpenPath
+decentralizes enforcement to the endpoints while centralizing control in a modern web dashboard.
+
+## Why intentional access matters
+
+In shared learning and task-focused environments, default-open internet access creates constant
+exception handling, policy drift, and unnecessary distraction. OpenPath gives operators a practical
+way to keep managed devices aligned with the job they are meant to do: learning, research,
+assessment, or focused work.
+
+OpenPath is not HTTPS interception or surveillance software. It governs name resolution and browser
+policies so teams can set clear boundaries with a simple, explainable architecture.
+
+OpenPath is also open source under the AGPL, which gives operators and contributors a more transparent
+foundation for environments where trust and explainability matter.
 
 ## Why OpenPath?
 
-- **🚫 Default Deny Security**: If it's not whitelisted, it doesn't exist. Eliminate distractions and security risks at the DNS level.
-- **🧠 GitOps Logic**: Your whitelist is just a text file in a GitHub repository. Every change is a commit. You get version history, audit logs, and instant rollbacks for free.
+- **🚫 Calm by Default**: If it's not whitelisted, it doesn't exist. Keep shared devices focused on approved resources instead of open-ended browsing.
+- **🔎 Open-Source Transparency**: OpenPath is AGPL-licensed, inspectable, and built for teams that want a more transparent foundation for internet access control.
+- **🧠 GitOps Logic**: Your whitelist is just a text file in a GitHub repository. Every change is a commit, with version history, audit logs, and instant rollbacks built in.
 - **⚡ Self-Service Workflow**: Users hitting a block page can request access instantly. Admins approve requests in a dashboard, and the system handles the rest.
 - **🛡️ Resilient Architecture**: Endpoints download and cache rules locally. If your central server or internet connection goes down, the filtering rules remain active.
 - **🔋 Batteries Included**: Comes with DNS sinkholing (dnsmasq), firewall rules (iptables), and browser policies (Firefox/Chrome) out of the box.
@@ -26,6 +43,13 @@ Unlike traditional firewalls that require manual rule updates and complex VPNs, 
 3. **The Decision**: Admin reviews the request in the Dashboard and clicks "Approve".
 4. **The Magic**: The system commits the change to the GitHub repository.
 5. **The Sync**: All connected endpoints pull the new whitelist within minutes.
+
+## Common Use Cases
+
+- **Classrooms**: Keep lesson devices limited to approved educational resources.
+- **Labs and Libraries**: Prevent drift on shared machines without building a custom firewall stack.
+- **Assessments and Focus Sessions**: Provide a default-deny environment that is easy to explain and audit.
+- **Shared-Device Operations**: Apply explicit allowlists wherever open internet access creates noise, risk, or unnecessary support work.
 
 ## Installation
 
