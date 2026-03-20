@@ -120,6 +120,28 @@ function Restore-OpenPathCheckpoint {
     }
 }
 
+function Write-UpdateCatchLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [ValidateSet('INFO', 'WARN', 'ERROR')]
+        [string]$Level = 'INFO'
+    )
+
+    if (Get-Command -Name 'Write-OpenPathLog' -ErrorAction SilentlyContinue) {
+        Write-OpenPathLog -Message $Message -Level $Level
+        return
+    }
+
+    $fallbackEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Level] [Update-OpenPath.ps1] [PID:$PID] $Message"
+    switch ($Level) {
+        'ERROR' { Write-Error $fallbackEntry -ErrorAction Continue }
+        'WARN' { Write-Warning $fallbackEntry }
+        default { Write-Information $fallbackEntry -InformationAction Continue }
+    }
+}
+
 try {
     $mutex = [System.Threading.Mutex]::new($false, $script:UpdateMutexName)
     try {
@@ -308,7 +330,7 @@ try {
     }
 }
 catch {
-    Write-OpenPathLog "Update failed: $_" -Level ERROR
+    Write-UpdateCatchLog "Update failed: $_" -Level ERROR
 
     $checkpointRollbackEnabled = $true
     if ($config -and $config.PSObject.Properties['enableCheckpointRollback']) {
@@ -318,7 +340,7 @@ catch {
     $rollbackMethod = 'none'
     $rollbackSucceeded = $false
     if ($checkpointRollbackEnabled -and $config) {
-        Write-OpenPathLog 'Attempting checkpoint rollback...' -Level WARN
+        Write-UpdateCatchLog 'Attempting checkpoint rollback...' -Level WARN
         $rollbackSucceeded = Restore-OpenPathCheckpoint -Config $config
         if ($rollbackSucceeded) {
             $rollbackMethod = 'checkpoint'
@@ -327,7 +349,7 @@ catch {
 
     # Fallback rollback: restore previous whitelist and restart Acrylic
     if (-not $rollbackSucceeded -and (Test-Path $backupPath)) {
-        Write-OpenPathLog 'Falling back to backup whitelist rollback...' -Level WARN
+        Write-UpdateCatchLog 'Falling back to backup whitelist rollback...' -Level WARN
         try {
             Copy-Item $backupPath $whitelistPath -Force
             $backupContent = Get-ValidWhitelistDomainsFromFile -Path $whitelistPath
@@ -342,10 +364,10 @@ catch {
             Set-LocalDNS -ErrorAction SilentlyContinue
             $rollbackSucceeded = $true
             $rollbackMethod = 'backup'
-            Write-OpenPathLog 'Backup rollback completed successfully' -Level WARN
+            Write-UpdateCatchLog 'Backup rollback completed successfully' -Level WARN
         }
         catch {
-            Write-OpenPathLog "Backup rollback also failed: $_" -Level ERROR
+            Write-UpdateCatchLog "Backup rollback also failed: $_" -Level ERROR
         }
     }
 

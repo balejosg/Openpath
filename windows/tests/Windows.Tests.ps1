@@ -1055,9 +1055,11 @@ Describe "Update Script" {
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Restore-OpenPathCheckpoint',
+                'function Write-UpdateCatchLog',
                 'Attempting checkpoint rollback',
                 'Falling back to backup whitelist rollback',
-                'Copy-Item $backupPath $whitelistPath -Force'
+                'Copy-Item $backupPath $whitelistPath -Force',
+                'Write-UpdateCatchLog "Update failed: $_" -Level ERROR'
             )
         }
     }
