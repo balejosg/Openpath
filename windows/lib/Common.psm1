@@ -916,6 +916,28 @@ function Get-PrimaryDNS {
     return "8.8.8.8"
 }
 
+function Ensure-OpenPathHttpAssembly {
+    if ('System.Net.Http.HttpClientHandler' -as [type]) {
+        return
+    }
+
+    try {
+        Add-Type -AssemblyName 'System.Net.Http' -ErrorAction Stop
+    }
+    catch {
+        try {
+            [System.Reflection.Assembly]::Load('System.Net.Http') | Out-Null
+        }
+        catch {
+            throw "Failed to load System.Net.Http assembly: $_"
+        }
+    }
+
+    if (-not ('System.Net.Http.HttpClientHandler' -as [type])) {
+        throw 'System.Net.Http assembly loaded, but HttpClientHandler is still unavailable'
+    }
+}
+
 function Invoke-OpenPathHttpGetText {
     <#
     .SYNOPSIS
@@ -940,6 +962,8 @@ function Invoke-OpenPathHttpGetText {
     $response = $null
 
     try {
+        Ensure-OpenPathHttpAssembly
+
         $handler = [System.Net.Http.HttpClientHandler]::new()
         if ($handler.PSObject.Properties['AutomaticDecompression']) {
             $handler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate

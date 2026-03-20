@@ -53,3 +53,11 @@ load 'test_helper'
     run grep -nF 'Update-OpenPath.ps1 failed to import required common commands' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
     [ "$status" -eq 0 ]
 }
+
+@test "windows common module loads System.Net.Http before standalone downloads" {
+    run grep -nF "function Ensure-OpenPathHttpAssembly" "$PROJECT_DIR/windows/lib/Common.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Add-Type -AssemblyName 'System.Net.Http' -ErrorAction Stop" "$PROJECT_DIR/windows/lib/Common.psm1"
+    [ "$status" -eq 0 ]
+}

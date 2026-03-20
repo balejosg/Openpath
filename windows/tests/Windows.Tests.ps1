@@ -142,6 +142,15 @@ Describe "Common Module" {
         }
     }
 
+    Context "HTTP compatibility" {
+        It "Loads System.Net.Http types for standalone whitelist downloads" {
+            InModuleScope Common {
+                { Ensure-OpenPathHttpAssembly } | Should -Not -Throw
+                ('System.Net.Http.HttpClientHandler' -as [type]) | Should -Not -BeNullOrEmpty
+            }
+        }
+    }
+
     Context "Get-OpenPathRuntimeHealth" {
         It "Returns runtime health object with expected boolean properties" {
             $health = Get-OpenPathRuntimeHealth
