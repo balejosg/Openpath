@@ -581,6 +581,20 @@ Describe "DNS Module" {
             )
         }
     }
+
+    Context "Acrylic installation fallback" {
+        It "Falls back to Chocolatey when the direct Acrylic download fails" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Direct Acrylic install failed',
+                'Get-Command choco',
+                'upgrade acrylic-dns-proxy -y --no-progress',
+                'Acrylic DNS Proxy installed successfully via Chocolatey'
+            )
+        }
+    }
 }
 
 Describe "Firewall Module" {
@@ -1255,7 +1269,7 @@ Describe "Installer" {
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'Registro no completado; se omite primera actualización',
+                'Registro no completado; se omite primera actualizacion',
                 '$classroomModeRequested -and $machineRegistered -ne "REGISTERED"'
             )
         }
@@ -1284,11 +1298,12 @@ Describe "Installer" {
     }
 
     Context "Primary DNS detection" {
-        It "Uses the Common helper instead of indexing directly into adapter DNS arrays" {
+        It "Uses an installer helper instead of indexing directly into adapter DNS arrays" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
             $content = Get-Content $scriptPath -Raw
 
-            $content.Contains('$primaryDNS = Get-PrimaryDNS') | Should -BeTrue
+            $content.Contains('function Get-InstallerPrimaryDNS') | Should -BeTrue
+            $content.Contains('$primaryDNS = Get-InstallerPrimaryDNS') | Should -BeTrue
             $content.Contains('Select-Object -First 1).ServerAddresses[0]') | Should -BeFalse
         }
     }

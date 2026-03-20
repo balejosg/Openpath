@@ -117,7 +117,28 @@ function Install-AcrylicDNS {
         return $true
     }
     catch {
-        Write-OpenPathLog "Failed to install Acrylic: $_" -Level ERROR
+        $directInstallError = $_
+        Write-OpenPathLog "Direct Acrylic install failed: $directInstallError" -Level WARN
+
+        $choco = Get-Command choco -ErrorAction SilentlyContinue
+        if ($choco) {
+            Write-OpenPathLog "Falling back to Chocolatey package acrylic-dns-proxy..."
+            & $choco.Source upgrade acrylic-dns-proxy -y --no-progress
+            $chocoExitCode = $LASTEXITCODE
+            $validExitCodes = @(0, 1605, 1614, 1641, 3010)
+
+            if ($validExitCodes -contains $chocoExitCode) {
+                Start-Sleep -Seconds 2
+                if (Test-AcrylicInstalled) {
+                    Write-OpenPathLog "Acrylic DNS Proxy installed successfully via Chocolatey"
+                    return $true
+                }
+            }
+
+            Write-OpenPathLog "Chocolatey fallback failed with exit code $chocoExitCode" -Level ERROR
+        }
+
+        Write-OpenPathLog "Failed to install Acrylic: $directInstallError" -Level ERROR
         return $false
     }
     finally {
