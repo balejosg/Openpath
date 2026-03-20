@@ -577,6 +577,22 @@ Describe "DNS Module" {
             $result = Update-AcrylicHost -WhitelistedDomains @("example.com", "test.com") -BlockedSubdomains @()
             $result | Should -BeTrue
         }
+
+        It "Uses Acrylic FW/NX rule syntax compatible with the official hosts format" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'NX *',
+                'FW >raw.githubusercontent.com',
+                'FW >github.com',
+                'NX >$subdomain',
+                'FW >$domain'
+            )
+
+            $content | Should -Not -Match 'FORWARD >'
+            $content | Should -Not -Match 'NX >\*'
+        }
     }
 
     Context "Max domains limit" {

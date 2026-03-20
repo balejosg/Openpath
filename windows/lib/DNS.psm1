@@ -210,7 +210,7 @@ function Update-AcrylicHost {
 # DEFAULT BLOCK (NXDOMAIN for everything)
 # This MUST come first!
 # ========================================
-NX >*
+NX *
 
 # ========================================
 # ESSENTIAL DOMAINS (always allowed)
@@ -218,25 +218,25 @@ NX >*
 # ========================================
 
 # Whitelist source
-FORWARD >raw.githubusercontent.com $upstream
-FORWARD >github.com $upstream
-FORWARD >githubusercontent.com $upstream
+FW >raw.githubusercontent.com
+FW >github.com
+FW >githubusercontent.com
 
 # Captive portal detection
-FORWARD >detectportal.firefox.com $upstream
-FORWARD >connectivity-check.ubuntu.com $upstream
-FORWARD >captive.apple.com $upstream
-FORWARD >www.msftconnecttest.com $upstream
-FORWARD >msftconnecttest.com $upstream
-FORWARD >clients3.google.com $upstream
+FW >detectportal.firefox.com
+FW >connectivity-check.ubuntu.com
+FW >captive.apple.com
+FW >www.msftconnecttest.com
+FW >msftconnecttest.com
+FW >clients3.google.com
 
 # Windows Update (optional, comment out if not needed)
-FORWARD >windowsupdate.microsoft.com $upstream
-FORWARD >update.microsoft.com $upstream
+FW >windowsupdate.microsoft.com
+FW >update.microsoft.com
 
 # NTP
-FORWARD >time.windows.com $upstream
-FORWARD >time.google.com $upstream
+FW >time.windows.com
+FW >time.google.com
 
 
 "@
@@ -261,7 +261,7 @@ FORWARD >time.google.com $upstream
         $domain = $domain.Trim()
         if ($domain) {
             # Use > for domain and all subdomains
-            $content += "FORWARD >$domain $upstream`n"
+            $content += "FW >$domain`n"
         }
     }
     

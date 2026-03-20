@@ -62,6 +62,23 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows acrylic hosts generation uses official FW/NX syntax" {
+    run grep -nF 'NX *' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'FW >raw.githubusercontent.com' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'FW >$domain' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'FORWARD >' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -ne 0 ]
+
+    run grep -nF 'NX >*' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -ne 0 ]
+}
+
 @test "windows pester e2e receives whitelist domains from the harness and keeps file fallback" {
     run grep -nF 'OPENPATH_E2E_EXPECTED_WHITELIST_DOMAINS' "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
     [ "$status" -eq 0 ]
