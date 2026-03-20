@@ -72,10 +72,16 @@ load 'test_helper'
     run grep -nF "Get-ValidWhitelistDomainsFromFile -Path \$whitelistPath" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF "function Resolve-SystemDnsWithRetry" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    run grep -nF "function Resolve-OpenPathDnsWithRetry" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$result = Resolve-SystemDnsWithRetry -Domain $domains[0]' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    run grep -nF '$result = Resolve-OpenPathDnsWithRetry -Domain $domains[0]' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "At least one adapter points DNS to 127.0.0.1" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "function Test-InstalledDnsProxyResolution" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
     [ "$status" -eq 0 ]
 
     run grep -n 'Can resolve google.com via system DNS' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"

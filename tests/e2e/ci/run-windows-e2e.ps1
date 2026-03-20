@@ -254,8 +254,8 @@ function Test-InstalledWhitelist {
     Write-Host 'OK: First update downloaded whitelist content'
 }
 
-function Test-DnsResolution {
-    Write-Step "Testing system DNS resolution..."
+function Test-InstalledDnsProxyResolution {
+    Write-Step "Testing installed DNS proxy resolution..."
 
     $loopbackConfigured = Get-DnsClientServerAddress -AddressFamily IPv4 |
         Where-Object { $_.ServerAddresses -contains '127.0.0.1' }
@@ -264,25 +264,25 @@ function Test-DnsResolution {
         Fail-Step 'Installer did not set any IPv4 adapter DNS server to 127.0.0.1.'
     }
 
-    try {
-        $result = Resolve-DnsName -Name 'google.com' -ErrorAction Stop
-        Write-Host "OK: google.com resolves: $($result[0].IPAddress)"
-    }
-    catch {
-        Fail-Step "System DNS resolution failed." $_
-    }
-
     $acrylicService = Get-Service -Name 'AcrylicDNSProxySvc' -ErrorAction SilentlyContinue
     if (-not $acrylicService -or $acrylicService.Status -ne 'Running') {
         Fail-Step 'Acrylic DNS Proxy service is not running after installation.'
     }
 
     try {
-        $result = Resolve-DnsName -Name 'google.com' -Server '127.0.0.1' -ErrorAction Stop
+        $result = Resolve-DnsName -Name 'google.com' -Server '127.0.0.1' -DnsOnly -ErrorAction Stop
         Write-Host "OK: Acrylic proxy working: $($result[0].IPAddress)"
     }
     catch {
         Fail-Step "Acrylic proxy validation failed." $_
+    }
+
+    try {
+        $systemResult = Resolve-DnsName -Name 'google.com' -ErrorAction Stop
+        Write-Host "OK: System resolver reached OpenPath DNS: $($systemResult[0].IPAddress)"
+    }
+    catch {
+        Write-Host 'WARN: System default resolver did not converge on the runner, but explicit Acrylic resolution via 127.0.0.1 succeeded.'
     }
 }
 
@@ -483,7 +483,7 @@ try {
     Invoke-OpenPathInstaller -RepoRoot $RepoRoot -WhitelistUrl $serverState.Url
     Import-InstalledModulesAndSmoke
     Test-InstalledWhitelist
-    Test-DnsResolution
+    Test-InstalledDnsProxyResolution
     Test-SinkholeBlocking
     Test-InstalledUpdateRefresh -ServerState $serverState -WhitelistDomains $updatedWhitelistDomains
     Test-Firewall

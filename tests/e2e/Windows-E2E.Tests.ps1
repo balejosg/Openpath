@@ -49,7 +49,14 @@ BeforeAll {
         return @(Get-ValidWhitelistDomainsFromFile -Path $whitelistPath)
     }
 
-    function Resolve-SystemDnsWithRetry {
+    function Get-LoopbackDnsAdapters {
+        return @(
+            Get-DnsClientServerAddress -AddressFamily IPv4 |
+                Where-Object { $_.ServerAddresses -contains '127.0.0.1' }
+        )
+    }
+
+    function Resolve-OpenPathDnsWithRetry {
         param(
             [Parameter(Mandatory = $true)][string]$Domain,
             [int]$MaxAttempts = 12,
@@ -57,7 +64,7 @@ BeforeAll {
         )
 
         for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-            $result = Resolve-DnsName -Name $Domain -ErrorAction SilentlyContinue
+            $result = Resolve-DnsName -Name $Domain -Server '127.0.0.1' -DnsOnly -ErrorAction SilentlyContinue
             if ($result) {
                 return $result
             }
@@ -140,11 +147,11 @@ Describe "OpenPath E2E Tests" {
             $domains.Count | Should -BeGreaterThan 0
         }
 
-        It "Can resolve an installed whitelisted domain via system DNS" {
+        It "OpenPath DNS proxy resolves an installed whitelisted domain" {
             $domains = Get-InstalledWhitelistDomains
             $domains.Count | Should -BeGreaterThan 0
 
-            $result = Resolve-SystemDnsWithRetry -Domain $domains[0]
+            $result = Resolve-OpenPathDnsWithRetry -Domain $domains[0]
             $result | Should -Not -BeNullOrEmpty
         }
     }
@@ -208,9 +215,8 @@ Describe "OpenPath E2E Tests" {
                 Should -Not -Throw
         }
         
-        It "At least one adapter has DNS configured" {
-            $adapters = Get-DnsClientServerAddress -AddressFamily IPv4 | 
-                Where-Object { $_.ServerAddresses.Count -gt 0 }
+        It "At least one adapter points DNS to 127.0.0.1" {
+            $adapters = Get-LoopbackDnsAdapters
             $adapters.Count | Should -BeGreaterThan 0
         }
     }
