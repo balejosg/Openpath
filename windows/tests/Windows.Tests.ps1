@@ -593,6 +593,19 @@ Describe "DNS Module" {
             $content | Should -Not -Match 'FORWARD >'
             $content | Should -Not -Match 'NX >\*'
         }
+
+        It "Retries Acrylic DNS resolution before reporting failure" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Resolve-OpenPathDnsWithRetry',
+                '[int]$MaxAttempts = 12',
+                'Start-Sleep -Milliseconds $DelayMilliseconds',
+                'Resolve-OpenPathDnsWithRetry',
+                'Write-OpenPathLog "DNS resolution failed'
+            )
+        }
     }
 
     Context "Max domains limit" {

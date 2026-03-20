@@ -79,6 +79,17 @@ load 'test_helper'
     [ "$status" -ne 0 ]
 }
 
+@test "windows dns validation retries acrylic readiness before failing" {
+    run grep -nF 'function Resolve-OpenPathDnsWithRetry' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Start-Sleep -Milliseconds $DelayMilliseconds' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Resolve-OpenPathDnsWithRetry -Domain 'google.com' -MaxAttempts 20 -DelayMilliseconds 1500" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows pester e2e receives whitelist domains from the harness and keeps file fallback" {
     run grep -nF 'OPENPATH_E2E_EXPECTED_WHITELIST_DOMAINS' "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
     [ "$status" -eq 0 ]

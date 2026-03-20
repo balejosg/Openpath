@@ -254,6 +254,30 @@ function Test-InstalledWhitelist {
     Write-Host 'OK: First update downloaded whitelist content'
 }
 
+function Write-AcrylicDiagnostics {
+    $acrylicPath = Get-AcrylicPath
+    if (-not $acrylicPath) {
+        Write-Host 'WARN: Acrylic path unavailable for diagnostics.'
+        return
+    }
+
+    $diagnosticFiles = @(
+        Join-Path $acrylicPath 'AcrylicConfiguration.ini',
+        Join-Path $acrylicPath 'AcrylicHosts.txt'
+    )
+
+    foreach ($path in $diagnosticFiles) {
+        if (-not (Test-Path $path)) {
+            Write-Host "WARN: Diagnostic file missing: $path"
+            continue
+        }
+
+        Write-Host ""
+        Write-Host "---- $path ----"
+        Get-Content $path -TotalCount 120 | ForEach-Object { Write-Host $_ }
+    }
+}
+
 function Test-InstalledDnsProxyResolution {
     Write-Step "Testing installed DNS proxy resolution..."
 
@@ -269,12 +293,21 @@ function Test-InstalledDnsProxyResolution {
         Fail-Step 'Acrylic DNS Proxy service is not running after installation.'
     }
 
-    try {
-        $result = Resolve-DnsName -Name 'google.com' -Server '127.0.0.1' -DnsOnly -ErrorAction Stop
-        Write-Host "OK: Acrylic proxy working: $($result[0].IPAddress)"
+    $result = Resolve-OpenPathDnsWithRetry -Domain 'google.com' -MaxAttempts 20 -DelayMilliseconds 1500
+    if (-not $result) {
+        Write-AcrylicDiagnostics
+        Fail-Step 'Acrylic proxy validation failed.'
     }
-    catch {
-        Fail-Step "Acrylic proxy validation failed." $_
+
+    $resolvedIp = $result |
+        Where-Object { $_.PSObject.Properties['IPAddress'] -and $_.IPAddress } |
+        Select-Object -First 1 -ExpandProperty IPAddress
+
+    if ($resolvedIp) {
+        Write-Host "OK: Acrylic proxy working: $resolvedIp"
+    }
+    else {
+        Write-Host 'OK: Acrylic proxy returned a DNS response.'
     }
 
     try {

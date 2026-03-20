@@ -523,6 +523,55 @@ function Stop-AcrylicService {
     }
 }
 
+function Resolve-OpenPathDnsWithRetry {
+    <#
+    .SYNOPSIS
+        Resolves a DNS name through the local Acrylic proxy with retry support
+    .PARAMETER Domain
+        Domain to resolve
+    .PARAMETER Server
+        DNS server to query
+    .PARAMETER MaxAttempts
+        Maximum number of attempts before giving up
+    .PARAMETER DelayMilliseconds
+        Delay between attempts in milliseconds
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Domain,
+
+        [string]$Server = "127.0.0.1",
+
+        [int]$MaxAttempts = 12,
+
+        [int]$DelayMilliseconds = 1000
+    )
+
+    $lastError = $null
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            $result = Resolve-DnsName -Name $Domain -Server $Server -DnsOnly -ErrorAction Stop
+            if ($result) {
+                return $result
+            }
+        }
+        catch {
+            $lastError = $_
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+
+    if ($lastError) {
+        Write-OpenPathLog "DNS resolution failed for $Domain via $Server after $MaxAttempts attempts: $lastError" -Level WARN
+    }
+
+    return $null
+}
+
 function Test-DNSResolution {
     <#
     .SYNOPSIS
@@ -531,16 +580,19 @@ function Test-DNSResolution {
         Domain to test (should be whitelisted)
     #>
     param(
-        [string]$Domain = "google.com"
+        [string]$Domain = "google.com",
+
+        [int]$MaxAttempts = 12,
+
+        [int]$DelayMilliseconds = 1000
     )
-    
-    try {
-        $result = Resolve-DnsName -Name $Domain -Server 127.0.0.1 -DnsOnly -ErrorAction Stop
-        return ($null -ne $result)
-    }
-    catch {
-        return $false
-    }
+
+    $result = Resolve-OpenPathDnsWithRetry `
+        -Domain $Domain `
+        -MaxAttempts $MaxAttempts `
+        -DelayMilliseconds $DelayMilliseconds
+
+    return ($null -ne $result)
 }
 
 function Test-DNSSinkhole {
@@ -577,6 +629,7 @@ Export-ModuleMember -Function @(
     'Restart-AcrylicService',
     'Start-AcrylicService',
     'Stop-AcrylicService',
+    'Resolve-OpenPathDnsWithRetry',
     'Test-DNSResolution',
     'Test-DNSSinkhole'
 )
