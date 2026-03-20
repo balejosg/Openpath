@@ -32,27 +32,11 @@ BeforeAll {
             return @()
         }
 
-        $domains = [System.Collections.Generic.List[string]]::new()
-        $inWhitelistSection = $false
-
-        foreach ($line in Get-Content $whitelistPath) {
-            $trimmed = $line.Trim()
-
-            if ([string]::IsNullOrWhiteSpace($trimmed)) {
-                continue
-            }
-
-            if ($trimmed.StartsWith('##')) {
-                $inWhitelistSection = ($trimmed -eq '## WHITELIST')
-                continue
-            }
-
-            if ($inWhitelistSection -and -not $trimmed.StartsWith('#')) {
-                $domains.Add($trimmed)
-            }
+        if (-not (Get-Command 'Get-ValidWhitelistDomainsFromFile' -ErrorAction SilentlyContinue)) {
+            return @()
         }
 
-        return $domains.ToArray()
+        return @(Get-ValidWhitelistDomainsFromFile -Path $whitelistPath)
     }
 
     function Resolve-SystemDnsWithRetry {
