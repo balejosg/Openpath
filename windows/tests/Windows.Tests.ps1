@@ -412,6 +412,33 @@ Describe "Common Module - Mocked Tests" {
             $dns | Should -Be "8.8.8.8"
         }
 
+        It "De-prioritizes platform-managed resolvers when a public fallback also works" {
+            Mock Get-DnsClientServerAddress {
+                @([PSCustomObject]@{ ServerAddresses = @("168.63.129.16") })
+            } -ModuleName Common
+            Mock Get-NetRoute { @() } -ModuleName Common
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '168.63.129.16' }
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '8.8.8.8' }
+
+            $dns = Get-PrimaryDNS
+            $dns | Should -Be "8.8.8.8"
+        }
+
+        It "Still uses a platform-managed resolver when fallbacks are unreachable" {
+            Mock Get-DnsClientServerAddress {
+                @([PSCustomObject]@{ ServerAddresses = @("168.63.129.16") })
+            } -ModuleName Common
+            Mock Get-NetRoute { @() } -ModuleName Common
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '168.63.129.16' }
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common -ParameterFilter { $Server -eq '8.8.8.8' }
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common -ParameterFilter { $Server -eq '1.1.1.1' }
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common -ParameterFilter { $Server -eq '9.9.9.9' }
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common -ParameterFilter { $Server -eq '8.8.4.4' }
+
+            $dns = Get-PrimaryDNS
+            $dns | Should -Be "168.63.129.16"
+        }
+
         It "Falls back to 8.8.8.8 as ultimate default" {
             Mock Get-DnsClientServerAddress { @() } -ModuleName Common
             Mock Get-NetRoute { @() } -ModuleName Common

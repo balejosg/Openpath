@@ -303,6 +303,17 @@ function Test-InstallerDirectDnsServer {
     }
 }
 
+function Test-InstallerDisfavoredDnsServer {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Server
+    )
+
+    return $Server -in @(
+        '168.63.129.16'
+    )
+}
+
 function Get-InstallerPrimaryDNS {
     $preferredCandidates = @(
         Get-DnsClientServerAddress -AddressFamily IPv4 |
@@ -324,9 +335,15 @@ function Get-InstallerPrimaryDNS {
     }
 
     $preferredCandidates = @($preferredCandidates | Select-Object -Unique)
+    $disfavoredCandidates = @(
+        $preferredCandidates | Where-Object { Test-InstallerDisfavoredDnsServer -Server $_ }
+    )
+    $preferredCandidates = @(
+        $preferredCandidates | Where-Object { -not (Test-InstallerDisfavoredDnsServer -Server $_) }
+    )
     $fallbackCandidates = @('8.8.8.8', '1.1.1.1', '9.9.9.9', '8.8.4.4')
 
-    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates))) {
+    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates) + @($disfavoredCandidates))) {
         if (Test-InstallerDirectDnsServer -Server $candidate) {
             return $candidate
         }
@@ -334,6 +351,10 @@ function Get-InstallerPrimaryDNS {
 
     if ($preferredCandidates.Count -gt 0) {
         return $preferredCandidates[0]
+    }
+
+    if ($disfavoredCandidates.Count -gt 0) {
+        return $disfavoredCandidates[0]
     }
 
     return '8.8.8.8'

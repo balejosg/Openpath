@@ -924,6 +924,23 @@ function Test-DirectDnsServer {
     }
 }
 
+function Test-DisfavoredDnsServer {
+    <#
+    .SYNOPSIS
+        Flags platform-managed resolvers that should be tried after public fallbacks
+    .PARAMETER Server
+        IPv4 DNS server candidate
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Server
+    )
+
+    return $Server -in @(
+        '168.63.129.16'
+    )
+}
+
 function Get-PrimaryDNS {
     <#
     .SYNOPSIS
@@ -951,9 +968,15 @@ function Get-PrimaryDNS {
     }
 
     $preferredCandidates = @($preferredCandidates | Select-Object -Unique)
+    $disfavoredCandidates = @(
+        $preferredCandidates | Where-Object { Test-DisfavoredDnsServer -Server $_ }
+    )
+    $preferredCandidates = @(
+        $preferredCandidates | Where-Object { -not (Test-DisfavoredDnsServer -Server $_) }
+    )
     $fallbackCandidates = @('8.8.8.8', '1.1.1.1', '9.9.9.9', '8.8.4.4')
 
-    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates))) {
+    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates) + @($disfavoredCandidates))) {
         if (Test-DirectDnsServer -Server $candidate) {
             return $candidate
         }
@@ -961,6 +984,10 @@ function Get-PrimaryDNS {
 
     if ($preferredCandidates.Count -gt 0) {
         return $preferredCandidates[0]
+    }
+
+    if ($disfavoredCandidates.Count -gt 0) {
+        return $disfavoredCandidates[0]
     }
 
     return '8.8.8.8'
