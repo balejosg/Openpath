@@ -61,3 +61,17 @@ load 'test_helper'
     run grep -nF "Add-Type -AssemblyName 'System.Net.Http' -ErrorAction Stop" "$PROJECT_DIR/windows/lib/Common.psm1"
     [ "$status" -eq 0 ]
 }
+
+@test "windows pester e2e waits on installed whitelist domains instead of hardcoded public DNS" {
+    run grep -nF "function Get-InstalledWhitelistDomains" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "function Resolve-SystemDnsWithRetry" "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$result = Resolve-SystemDnsWithRetry -Domain $domains[0]' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'Can resolve google.com via system DNS' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
+    [ "$status" -ne 0 ]
+}

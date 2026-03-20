@@ -25,6 +25,54 @@ BeforeAll {
             Import-Module $module -Force -ErrorAction SilentlyContinue
         }
     }
+
+    function Get-InstalledWhitelistDomains {
+        $whitelistPath = Join-Path $OpenPathRoot 'data\whitelist.txt'
+        if (-not (Test-Path $whitelistPath)) {
+            return @()
+        }
+
+        $domains = [System.Collections.Generic.List[string]]::new()
+        $inWhitelistSection = $false
+
+        foreach ($line in Get-Content $whitelistPath) {
+            $trimmed = $line.Trim()
+
+            if ([string]::IsNullOrWhiteSpace($trimmed)) {
+                continue
+            }
+
+            if ($trimmed.StartsWith('##')) {
+                $inWhitelistSection = ($trimmed -eq '## WHITELIST')
+                continue
+            }
+
+            if ($inWhitelistSection -and -not $trimmed.StartsWith('#')) {
+                $domains.Add($trimmed)
+            }
+        }
+
+        return $domains.ToArray()
+    }
+
+    function Resolve-SystemDnsWithRetry {
+        param(
+            [Parameter(Mandatory = $true)][string]$Domain,
+            [int]$MaxAttempts = 12,
+            [int]$DelayMilliseconds = 1000
+        )
+
+        for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            $result = Resolve-DnsName -Name $Domain -ErrorAction SilentlyContinue
+            if ($result) {
+                return $result
+            }
+
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+
+        return $null
+    }
 }
 
 Describe "OpenPath E2E Tests" {
@@ -92,14 +140,17 @@ Describe "OpenPath E2E Tests" {
     }
     
     Context "DNS Resolution (System)" {
-        
-        It "Can resolve google.com via system DNS" {
-            $result = Resolve-DnsName -Name "google.com" -ErrorAction SilentlyContinue
-            $result | Should -Not -BeNullOrEmpty
+
+        It "Whitelist file exposes domains for DNS validation" {
+            $domains = Get-InstalledWhitelistDomains
+            $domains.Count | Should -BeGreaterThan 0
         }
-        
-        It "Can resolve github.com via system DNS" {
-            $result = Resolve-DnsName -Name "github.com" -ErrorAction SilentlyContinue
+
+        It "Can resolve an installed whitelisted domain via system DNS" {
+            $domains = Get-InstalledWhitelistDomains
+            $domains.Count | Should -BeGreaterThan 0
+
+            $result = Resolve-SystemDnsWithRetry -Domain $domains[0]
             $result | Should -Not -BeNullOrEmpty
         }
     }
