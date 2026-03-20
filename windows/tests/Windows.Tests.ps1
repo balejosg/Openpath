@@ -383,6 +383,7 @@ Describe "Common Module - Mocked Tests" {
             Mock Get-DnsClientServerAddress {
                 @([PSCustomObject]@{ ServerAddresses = @("192.168.1.1") })
             } -ModuleName Common
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '192.168.1.1' }
 
             $dns = Get-PrimaryDNS
             $dns | Should -Be "192.168.1.1"
@@ -393,14 +394,28 @@ Describe "Common Module - Mocked Tests" {
             Mock Get-NetRoute {
                 @([PSCustomObject]@{ NextHop = "10.0.0.1" })
             } -ModuleName Common
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '10.0.0.1' }
 
             $dns = Get-PrimaryDNS
             $dns | Should -Be "10.0.0.1"
         }
 
+        It "Falls back to a public resolver when adapter DNS cannot answer direct queries" {
+            Mock Get-DnsClientServerAddress {
+                @([PSCustomObject]@{ ServerAddresses = @("168.63.129.16") })
+            } -ModuleName Common
+            Mock Get-NetRoute { @() } -ModuleName Common
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common -ParameterFilter { $Server -eq '168.63.129.16' }
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '142.250.184.14' }) } -ModuleName Common -ParameterFilter { $Server -eq '8.8.8.8' }
+
+            $dns = Get-PrimaryDNS
+            $dns | Should -Be "8.8.8.8"
+        }
+
         It "Falls back to 8.8.8.8 as ultimate default" {
             Mock Get-DnsClientServerAddress { @() } -ModuleName Common
             Mock Get-NetRoute { @() } -ModuleName Common
+            Mock Resolve-DnsName { throw 'unreachable' } -ModuleName Common
 
             $dns = Get-PrimaryDNS
             $dns | Should -Be "8.8.8.8"
@@ -738,6 +753,7 @@ Describe "Firewall Module" {
         It "Does not create DoH 443 rules when DoH IP blocking is disabled" {
             Mock Get-OpenPathConfig {
                 [PSCustomObject]@{
+                    enableKnownDnsIpBlocking = $true
                     enableDohIpBlocking = $false
                     dohResolverIps = @('4.4.4.4', '5.5.5.5')
                 }
@@ -747,6 +763,53 @@ Describe "Firewall Module" {
             $result | Should -BeTrue
 
             ($script:createdFirewallRules | Where-Object { $_.DisplayName -like '*Block-DoH*' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
+        }
+
+        It "Creates targeted DNS/53 bypass blocks instead of a global port 53 block" {
+            Mock Get-OpenPathConfig {
+                [PSCustomObject]@{
+                    enableKnownDnsIpBlocking = $true
+                    enableDohIpBlocking = $true
+                    dohResolverIps = @('4.4.4.4', '5.5.5.5')
+                }
+            } -ModuleName Firewall
+
+            $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
+            $result | Should -BeTrue
+
+            ($script:createdFirewallRules | Where-Object {
+                    $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '53' -and $_.Protocol -eq 'TCP'
+                }).Count | Should -Be 1
+
+            ($script:createdFirewallRules | Where-Object {
+                    $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '53' -and $_.Protocol -eq 'UDP'
+                }).Count | Should -Be 1
+
+            ($script:createdFirewallRules | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-UDP' }).Count | Should -Be 0
+            ($script:createdFirewallRules | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-TCP' }).Count | Should -Be 0
+        }
+
+        It "Creates TCP and UDP allow rules for Acrylic upstream DNS" {
+            Initialize-FirewallRuleCaptureMocks
+            Mock Test-Path { $true } -ModuleName Firewall -ParameterFilter { $Path -like '*AcrylicService.exe' }
+            Mock Get-OpenPathConfig {
+                [PSCustomObject]@{
+                    enableKnownDnsIpBlocking = $true
+                    enableDohIpBlocking = $true
+                    dohResolverIps = @('4.4.4.4')
+                }
+            } -ModuleName Firewall
+
+            $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
+            $result | Should -BeTrue
+
+            ($script:createdFirewallRules | Where-Object {
+                    $_.DisplayName -eq 'OpenPath-DNS-Allow-Upstream-UDP' -and $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '53'
+                }).Count | Should -Be 1
+
+            ($script:createdFirewallRules | Where-Object {
+                    $_.DisplayName -eq 'OpenPath-DNS-Allow-Upstream-TCP' -and $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '53'
+                }).Count | Should -Be 1
         }
     }
 

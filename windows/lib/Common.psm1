@@ -891,6 +891,39 @@ function Restore-OpenPathIntegrity {
     }
 }
 
+function Test-DirectDnsServer {
+    <#
+    .SYNOPSIS
+        Checks whether a DNS server can answer direct recursive queries
+    .PARAMETER Server
+        IPv4 DNS server to probe
+    .PARAMETER ProbeDomain
+        Public domain used for the probe
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Server,
+
+        [string]$ProbeDomain = 'google.com'
+    )
+
+    if (-not $Server -or $Server -in @('127.0.0.1', '0.0.0.0')) {
+        return $false
+    }
+
+    if ($Server -notmatch '^\d{1,3}(?:\.\d{1,3}){3}$') {
+        return $false
+    }
+
+    try {
+        $result = Resolve-DnsName -Name $ProbeDomain -Server $Server -DnsOnly -ErrorAction Stop
+        return ($null -ne $result)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-PrimaryDNS {
     <#
     .SYNOPSIS
@@ -898,22 +931,39 @@ function Get-PrimaryDNS {
     .OUTPUTS
         String with the primary DNS IP address
     #>
-    $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | 
-        Where-Object { $_.ServerAddresses -and $_.ServerAddresses[0] -ne "127.0.0.1" } |
-        Select-Object -First 1
-    
-    if ($dns -and $dns.ServerAddresses) {
-        return $dns.ServerAddresses[0]
+    $preferredCandidates = @(
+        Get-DnsClientServerAddress -AddressFamily IPv4 |
+            ForEach-Object { @($_.ServerAddresses) } |
+            Where-Object {
+                $_ -and
+                $_ -notin @('127.0.0.1', '0.0.0.0') -and
+                $_ -match '^\d{1,3}(?:\.\d{1,3}){3}$'
+            }
+    )
+
+    $gateway = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1).NextHop
+    if (
+        $gateway -and
+        $gateway -notin @('127.0.0.1', '0.0.0.0') -and
+        $gateway -match '^\d{1,3}(?:\.\d{1,3}){3}$'
+    ) {
+        $preferredCandidates += $gateway
     }
-    
-    # Fallback to gateway
-    $gateway = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop
-    if ($gateway) {
-        return $gateway
+
+    $preferredCandidates = @($preferredCandidates | Select-Object -Unique)
+    $fallbackCandidates = @('8.8.8.8', '1.1.1.1', '9.9.9.9', '8.8.4.4')
+
+    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates))) {
+        if (Test-DirectDnsServer -Server $candidate) {
+            return $candidate
+        }
     }
-    
-    # Ultimate fallback
-    return "8.8.8.8"
+
+    if ($preferredCandidates.Count -gt 0) {
+        return $preferredCandidates[0]
+    }
+
+    return '8.8.8.8'
 }
 
 function Ensure-OpenPathHttpAssembly {

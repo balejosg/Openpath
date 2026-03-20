@@ -93,6 +93,20 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows firewall does not install a global DNS port 53 block that overrides Acrylic" {
+    run grep -nF 'OpenPath-DNS-Block-DNS-UDP' "$PROJECT_DIR/windows/lib/Firewall.psm1"
+    [ "$status" -ne 0 ]
+
+    run grep -nF 'OpenPath-DNS-Block-DNS-TCP' "$PROJECT_DIR/windows/lib/Firewall.psm1"
+    [ "$status" -ne 0 ]
+
+    run grep -nF 'DisplayName "$script:RulePrefix-Allow-$($target.Name)-$protocol"' "$PROJECT_DIR/windows/lib/Firewall.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Block-Known-DNS-' "$PROJECT_DIR/windows/lib/Firewall.psm1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows pester e2e receives whitelist domains from the harness and keeps file fallback" {
     run grep -nF 'OPENPATH_E2E_EXPECTED_WHITELIST_DOMAINS' "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
     [ "$status" -eq 0 ]

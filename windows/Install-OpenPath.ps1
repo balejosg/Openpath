@@ -279,20 +279,7 @@ Import-Module "$OpenPathRoot\lib\Common.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Firewall.psm1" -Force
 
 function Get-InstallerPrimaryDNS {
-    $dns = Get-DnsClientServerAddress -AddressFamily IPv4 |
-        Where-Object { $_.ServerAddresses -and $_.ServerAddresses[0] -ne "127.0.0.1" } |
-        Select-Object -First 1
-
-    if ($dns -and $dns.ServerAddresses) {
-        return $dns.ServerAddresses[0]
-    }
-
-    $gateway = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop
-    if ($gateway) {
-        return $gateway
-    }
-
-    return "8.8.8.8"
+    return Get-PrimaryDNS
 }
 
 # Step 3: Create configuration
@@ -332,6 +319,7 @@ $config = @{
     enableStaleFailsafe = $true
     staleWhitelistMaxAgeHours = 24
     enableIntegrityChecks = $true
+    enableKnownDnsIpBlocking = $true
     enableDohIpBlocking = $true
     dohResolverIps = @(Get-DefaultDohResolverIps)
     vpnBlockRules = @(Get-DefaultVpnBlockRules)

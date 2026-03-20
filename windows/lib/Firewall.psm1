@@ -77,77 +77,8 @@ function Set-OpenPathFirewall {
     Remove-OpenPathFirewall
 
     try {
-        # 1. Allow loopback DNS (for applications -> Acrylic)
-        New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Loopback-UDP" `
-            -Direction Outbound `
-            -Protocol UDP `
-            -RemoteAddress 127.0.0.1 `
-            -RemotePort 53 `
-            -Action Allow `
-            -Profile Any `
-            -Description "Allow DNS to local Acrylic DNS Proxy" | Out-Null
-        
-        New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Loopback-TCP" `
-            -Direction Outbound `
-            -Protocol TCP `
-            -RemoteAddress 127.0.0.1 `
-            -RemotePort 53 `
-            -Action Allow `
-            -Profile Any `
-            -Description "Allow DNS to local Acrylic DNS Proxy (TCP)" | Out-Null
-        
-        # 2. Allow Acrylic to reach upstream DNS
-        $acrylicExe = "$AcrylicPath\AcrylicService.exe"
-        if (Test-Path $acrylicExe) {
-            New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Upstream-UDP" `
-                -Direction Outbound `
-                -Protocol UDP `
-                -RemoteAddress $UpstreamDNS `
-                -RemotePort 53 `
-                -Action Allow `
-                -Program $acrylicExe `
-                -Profile Any `
-                -Description "Allow Acrylic to reach upstream DNS" | Out-Null
-            
-            # Also allow secondary DNS
-            New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Secondary-UDP" `
-                -Direction Outbound `
-                -Protocol UDP `
-                -RemoteAddress "8.8.4.4" `
-                -RemotePort 53 `
-                -Action Allow `
-                -Program $acrylicExe `
-                -Profile Any `
-                -Description "Allow Acrylic to reach secondary DNS" | Out-Null
-        }
-        
-        # 3. Block all other DNS (UDP and TCP port 53)
-        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DNS-UDP" `
-            -Direction Outbound `
-            -Protocol UDP `
-            -RemotePort 53 `
-            -Action Block `
-            -Profile Any `
-            -Description "Block external DNS to prevent bypass" | Out-Null
-        
-        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DNS-TCP" `
-            -Direction Outbound `
-            -Protocol TCP `
-            -RemotePort 53 `
-            -Action Block `
-            -Profile Any `
-            -Description "Block external DNS (TCP) to prevent bypass" | Out-Null
-        
-        # 4. Block DNS-over-TLS (port 853)
-        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoT" `
-            -Direction Outbound `
-            -Protocol TCP `
-            -RemotePort 853 `
-            -Action Block `
-            -Profile Any `
-            -Description "Block DNS-over-TLS to prevent bypass" | Out-Null
-
-        # 4b. Block known DNS-over-HTTPS resolver IPs on 443
+        $secondaryDns = '8.8.4.4'
+        $enableKnownDnsIpBlocking = $true
         $enableDohIpBlocking = $true
         $dohResolvers = Get-DefaultDohResolverIps
         $vpnPorts = Get-DefaultVpnBlockRules
@@ -155,6 +86,10 @@ function Set-OpenPathFirewall {
 
         try {
             $config = Get-OpenPathConfig
+            if ($config.PSObject.Properties['enableKnownDnsIpBlocking']) {
+                $enableKnownDnsIpBlocking = [bool]$config.enableKnownDnsIpBlocking
+            }
+
             if ($config.PSObject.Properties['enableDohIpBlocking']) {
                 $enableDohIpBlocking = [bool]$config.enableDohIpBlocking
             }
@@ -243,6 +178,95 @@ function Set-OpenPathFirewall {
             # Keep defaults if config cannot be read
         }
 
+        # 1. Allow loopback DNS (for applications -> Acrylic)
+        New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Loopback-UDP" `
+            -Direction Outbound `
+            -Protocol UDP `
+            -RemoteAddress 127.0.0.1 `
+            -RemotePort 53 `
+            -Action Allow `
+            -Profile Any `
+            -Description "Allow DNS to local Acrylic DNS Proxy" | Out-Null
+
+        New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-Loopback-TCP" `
+            -Direction Outbound `
+            -Protocol TCP `
+            -RemoteAddress 127.0.0.1 `
+            -RemotePort 53 `
+            -Action Allow `
+            -Profile Any `
+            -Description "Allow DNS to local Acrylic DNS Proxy (TCP)" | Out-Null
+
+        # 2. Allow Acrylic to reach upstream DNS
+        $acrylicExe = "$AcrylicPath\AcrylicService.exe"
+        if (Test-Path $acrylicExe) {
+            $allowTargets = @(
+                [PSCustomObject]@{ Name = 'Upstream'; Address = $UpstreamDNS },
+                [PSCustomObject]@{ Name = 'Secondary'; Address = $secondaryDns }
+            )
+
+            foreach ($target in $allowTargets) {
+                if (-not $target.Address -or $target.Address -notmatch '^\d{1,3}(?:\.\d{1,3}){3}$') {
+                    continue
+                }
+
+                foreach ($protocol in @('UDP', 'TCP')) {
+                    New-NetFirewallRule -DisplayName "$script:RulePrefix-Allow-$($target.Name)-$protocol" `
+                        -Direction Outbound `
+                        -Protocol $protocol `
+                        -RemoteAddress $target.Address `
+                        -RemotePort 53 `
+                        -Action Allow `
+                        -Program $acrylicExe `
+                        -Profile Any `
+                        -Description "Allow Acrylic to reach $($target.Name.ToLowerInvariant()) DNS over $protocol" | Out-Null
+                }
+            }
+        }
+
+        # 3. Block known public DNS resolvers on port 53 while leaving Acrylic upstream reachable
+        if ($enableKnownDnsIpBlocking) {
+            $dns53RuleCount = 0
+            foreach ($resolverIp in ($dohResolvers | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ } | Sort-Object -Unique)) {
+                if ($resolverIp -notmatch '^\d{1,3}(?:\.\d{1,3}){3}$') {
+                    Write-OpenPathLog "Skipping invalid DNS resolver IP: $resolverIp" -Level WARN
+                    continue
+                }
+
+                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) {
+                    continue
+                }
+
+                $resolverId = $resolverIp -replace '[^0-9A-Za-z]', '-'
+                foreach ($protocol in @('TCP', 'UDP')) {
+                    New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-Known-DNS-$resolverId-$protocol-53" `
+                        -Direction Outbound `
+                        -Protocol $protocol `
+                        -RemoteAddress $resolverIp `
+                        -RemotePort 53 `
+                        -Action Block `
+                        -Profile Any `
+                        -Description "Block direct DNS bypass to resolver $resolverIp over $protocol/53" | Out-Null
+                    $dns53RuleCount++
+                }
+            }
+
+            Write-OpenPathLog "Added $dns53RuleCount direct DNS bypass block rules"
+        }
+        else {
+            Write-OpenPathLog "Known DNS IP blocking disabled by configuration" -Level WARN
+        }
+
+        # 4. Block DNS-over-TLS (port 853)
+        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoT" `
+            -Direction Outbound `
+            -Protocol TCP `
+            -RemotePort 853 `
+            -Action Block `
+            -Profile Any `
+            -Description "Block DNS-over-TLS to prevent bypass" | Out-Null
+
+        # 4b. Block known DNS-over-HTTPS resolver IPs on 443
         if ($enableDohIpBlocking) {
             $dohRuleCount = 0
             foreach ($resolverIp in ($dohResolvers | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ } | Sort-Object -Unique)) {
@@ -251,7 +275,7 @@ function Set-OpenPathFirewall {
                     continue
                 }
 
-                if ($resolverIp -eq $UpstreamDNS) {
+                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) {
                     continue
                 }
 
