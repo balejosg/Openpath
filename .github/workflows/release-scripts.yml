@@ -9,6 +9,7 @@ on:
       - 'linux/uninstall.sh'
       - 'linux/lib/**'
       - 'linux/scripts/**'
+      - 'tests/e2e/**'
       - 'windows/**'
       - '.github/workflows/release-scripts.yml'
   workflow_dispatch:
