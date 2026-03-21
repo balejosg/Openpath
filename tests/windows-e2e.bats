@@ -54,6 +54,17 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows cli re-imports Common globally before self-update commands" {
+    run grep -nF 'Import-Module "$openPathRoot\lib\Common.psm1" -Force -Global' "$PROJECT_DIR/windows/OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'OpenPath.ps1 failed to import required common commands' "$PROJECT_DIR/windows/OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'Invoke-OpenPathAgentSelfUpdate'" "$PROJECT_DIR/windows/OpenPath.ps1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows common module loads System.Net.Http before standalone downloads" {
     run grep -nF "function Ensure-OpenPathHttpAssembly" "$PROJECT_DIR/windows/lib/Common.psm1"
     [ "$status" -eq 0 ]

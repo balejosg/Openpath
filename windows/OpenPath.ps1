@@ -202,10 +202,26 @@ function Show-OpenPathStatus {
 try {
     $openPathRoot = Resolve-OpenPathRoot
 
-    Import-Module "$openPathRoot\lib\Common.psm1" -Force
+    # Import dependent modules first, then re-import Common globally so its
+    # exported helpers remain visible across standalone CLI command execution.
     Import-Module "$openPathRoot\lib\DNS.psm1" -Force
     Import-Module "$openPathRoot\lib\Firewall.psm1" -Force
     Import-Module "$openPathRoot\lib\Services.psm1" -Force
+    Import-Module "$openPathRoot\lib\Common.psm1" -Force -Global
+
+    $requiredCommonCommands = @(
+        'Get-OpenPathConfig',
+        'Get-OpenPathMachineTokenFromWhitelistUrl',
+        'Invoke-OpenPathAgentSelfUpdate'
+    )
+    $missingCommonCommands = @(
+        $requiredCommonCommands | Where-Object {
+            -not (Get-Command -Name $_ -ErrorAction SilentlyContinue)
+        }
+    )
+    if ($missingCommonCommands.Count -gt 0) {
+        throw "OpenPath.ps1 failed to import required common commands: $($missingCommonCommands -join ', ')"
+    }
 
     $scriptsPath = "$openPathRoot\scripts"
     $commandName = $Command.ToLowerInvariant()
