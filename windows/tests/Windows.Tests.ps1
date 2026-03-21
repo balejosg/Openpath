@@ -631,12 +631,14 @@ Describe "DNS Module" {
                 '"FW >$normalizedDomain"',
                 'FW $domain',
                 'NX >$subdomain',
+                '$((Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com'') -join "`n")',
                 'Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com''',
                 'Get-AcrylicForwardRules -Domain $domain'
             )
 
             $content | Should -Not -Match 'FORWARD >'
             $content | Should -Not -Match 'NX >\*'
+            $content | Should -Not -Match 'Get-AcrylicForwardRules -Domain [^\)]* -join'
         }
 
         It "Retries Acrylic DNS resolution before reporting failure" {

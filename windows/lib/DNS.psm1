@@ -238,25 +238,25 @@ NX *
 # ========================================
 
 # Whitelist source
-$(Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'github.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'githubusercontent.com' -join "`n")
+$((Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'github.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'githubusercontent.com') -join "`n")
 
 # Captive portal detection
-$(Get-AcrylicForwardRules -Domain 'detectportal.firefox.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'connectivity-check.ubuntu.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'captive.apple.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'www.msftconnecttest.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'msftconnecttest.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'clients3.google.com' -join "`n")
+$((Get-AcrylicForwardRules -Domain 'detectportal.firefox.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'connectivity-check.ubuntu.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'captive.apple.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'www.msftconnecttest.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'msftconnecttest.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'clients3.google.com') -join "`n")
 
 # Windows Update (optional, comment out if not needed)
-$(Get-AcrylicForwardRules -Domain 'windowsupdate.microsoft.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'update.microsoft.com' -join "`n")
+$((Get-AcrylicForwardRules -Domain 'windowsupdate.microsoft.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'update.microsoft.com') -join "`n")
 
 # NTP
-$(Get-AcrylicForwardRules -Domain 'time.windows.com' -join "`n")
-$(Get-AcrylicForwardRules -Domain 'time.google.com' -join "`n")
+$((Get-AcrylicForwardRules -Domain 'time.windows.com') -join "`n")
+$((Get-AcrylicForwardRules -Domain 'time.google.com') -join "`n")
 
 
 "@

@@ -78,8 +78,14 @@ load 'test_helper'
     run grep -nF "Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com'" "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
+    run grep -nF "\$((Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com') -join \"\`n\")" "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
     run grep -nF 'Get-AcrylicForwardRules -Domain $domain' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
+
+    run grep -nE 'Get-AcrylicForwardRules -Domain [^)]* -join' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -ne 0 ]
 
     run grep -nF 'NX >*' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -ne 0 ]
