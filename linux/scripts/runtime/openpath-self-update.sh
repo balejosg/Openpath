@@ -46,7 +46,7 @@ fi
 # =============================================================================
 
 GITHUB_REPO="${OPENPATH_GITHUB_REPO:-balejosg/openpath}"
-GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+GITHUB_API="${OPENPATH_SELF_UPDATE_API:-https://api.github.com/repos/${GITHUB_REPO}/releases/latest}"
 DOWNLOAD_DIR="/tmp/openpath-update"
 BACKUP_DIR="/tmp/openpath-update-backup"
 CURRENT_VERSION="${VERSION:-0.0.0}"
@@ -174,6 +174,27 @@ restore_config() {
     done
 }
 
+stop_active_services_for_update() {
+    log "Stopping active services before update..."
+
+    systemctl stop openpath-sse-listener.service 2>/dev/null || true
+    systemctl stop captive-portal-detector.service 2>/dev/null || true
+    systemctl stop openpath-dnsmasq.timer 2>/dev/null || true
+    systemctl stop dnsmasq-watchdog.timer 2>/dev/null || true
+    systemctl stop dnsmasq 2>/dev/null || true
+
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -x dnsmasq 2>/dev/null || true
+    fi
+
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k 53/udp 2>/dev/null || true
+        fuser -k 53/tcp 2>/dev/null || true
+    fi
+
+    sleep 1
+}
+
 # Download and install the update
 install_update() {
     local deb_url="$1"
@@ -199,6 +220,7 @@ install_update() {
 
     # Backup configuration
     backup_config
+    stop_active_services_for_update
 
     # Install the package
     log "Installing OpenPath v${new_version}..."
@@ -206,7 +228,15 @@ install_update() {
         log "✓ Package installed successfully"
     else
         log_warn "dpkg reported issues, running apt-get -f install..."
-        apt-get -f install -y 2>&1 || true
+        if ! apt-get -f install -y 2>&1; then
+            log_error "Package repair failed after dpkg -i"
+            return 1
+        fi
+    fi
+
+    if ! dpkg -s openpath-dnsmasq 2>/dev/null | grep -q '^Status: install ok installed'; then
+        log_error "Updated package is not fully installed"
+        return 1
     fi
 
     # Restore preserved configuration

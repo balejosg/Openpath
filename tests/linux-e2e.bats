@@ -1,0 +1,42 @@
+#!/usr/bin/env bats
+################################################################################
+# linux-e2e.bats - Guardrails for Linux E2E lifecycle coverage
+################################################################################
+
+load 'test_helper'
+
+@test "linux self-update script supports overriding release metadata for test harnesses" {
+    run grep -nF 'OPENPATH_SELF_UPDATE_API' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux packaged updates keep the installed uninstaller available" {
+    run grep -nF 'cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update does not ignore package repair failures" {
+    run grep -nF 'apt-get -f install -y 2>&1 || true' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -ne 0 ]
+}
+
+@test "linux debian postinst treats firefox extension installation as best effort" {
+    run grep -nF 'install_firefox_extension /usr/share/openpath/firefox-extension || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux uninstall restores resolv.conf with a copy fallback when symlink replacement is blocked" {
+    run grep -nF 'cp /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf' "$PROJECT_DIR/linux/uninstall.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux lifecycle e2e covers agent self-update and uninstall verification" {
+    run grep -nF "Testing agent self-update mechanism (openpath-self-update.sh)..." "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Verifying Linux uninstall removes installed state..." "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "/usr/local/lib/openpath/uninstall.sh --auto-yes" "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
+    [ "$status" -eq 0 ]
+}

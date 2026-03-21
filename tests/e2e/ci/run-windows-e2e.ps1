@@ -50,7 +50,8 @@ function Set-TestWhitelistContent {
     param(
         [Parameter(Mandatory = $true)][string]$RootPath,
         [Parameter(Mandatory = $true)][string[]]$WhitelistDomains,
-        [string[]]$BlockedSubdomains = @()
+        [string[]]$BlockedSubdomains = @(),
+        [string]$RelativePath = 'whitelist.txt'
     )
 
     $lines = @(
@@ -60,7 +61,11 @@ function Set-TestWhitelistContent {
         '## BLOCKED-SUBDOMAINS'
     ) + $BlockedSubdomains
 
-    $targetPath = Join-Path $RootPath 'whitelist.txt'
+    $targetPath = Join-Path $RootPath $RelativePath
+    $targetDirectory = Split-Path $targetPath -Parent
+    if (-not (Test-Path $targetDirectory)) {
+        New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+    }
     $lines | Set-Content -Path $targetPath -Encoding UTF8
 }
 
@@ -69,14 +74,17 @@ function Start-TestWhitelistServer {
 
     $rootPath = Join-Path $env:TEMP ("openpath-whitelist-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $rootPath -Force | Out-Null
+    $machineToken = 'test-machine-token'
+    $whitelistRelativePath = Join-Path 'w' $machineToken 'whitelist.txt'
 
     Set-TestWhitelistContent -RootPath $rootPath `
+        -RelativePath $whitelistRelativePath `
         -WhitelistDomains @('google.com', 'github.com', 'microsoft.com') `
         -BlockedSubdomains @('ads.example.com', 'tracking.example.com')
 
     $port = Get-FreeTcpPort
-    $job = Start-Job -ArgumentList $port, $rootPath -ScriptBlock {
-        param($Port, $ContentRoot)
+    $job = Start-Job -ArgumentList $port, $rootPath, $machineToken, $whitelistRelativePath.Replace('\', '/') -ScriptBlock {
+        param($Port, $ContentRoot, $MachineToken, $WhitelistPath)
 
         $listener = [System.Net.HttpListener]::new()
         $listener.Prefixes.Add("http://127.0.0.1:$Port/")
@@ -94,11 +102,38 @@ function Start-TestWhitelistServer {
                 try {
                     $relativePath = $context.Request.Url.AbsolutePath.TrimStart('/')
                     if ([string]::IsNullOrWhiteSpace($relativePath)) {
-                        $relativePath = 'whitelist.txt'
+                        $relativePath = $WhitelistPath
                     }
 
-                    $candidatePath = [System.IO.Path]::GetFullPath((Join-Path $ContentRoot $relativePath))
+                    $candidatePath = $null
                     $normalizedRoot = [System.IO.Path]::GetFullPath($ContentRoot)
+                    $requiresAuth = $relativePath.StartsWith('api/agent/windows/', [System.StringComparison]::OrdinalIgnoreCase)
+
+                    if ($requiresAuth) {
+                        $authorization = $context.Request.Headers['Authorization']
+                        if ($authorization -ne "Bearer $MachineToken") {
+                            $context.Response.StatusCode = 401
+                            $context.Response.OutputStream.Close()
+                            $context.Response.Close()
+                            continue
+                        }
+                    }
+
+                    if ($relativePath -eq 'api/agent/windows/file') {
+                        $requestedPath = $context.Request.QueryString['path']
+                        if ([string]::IsNullOrWhiteSpace($requestedPath) -or $requestedPath.Contains('..')) {
+                            $context.Response.StatusCode = 400
+                            $context.Response.OutputStream.Close()
+                            $context.Response.Close()
+                            continue
+                        }
+
+                        $relativeUpdatePath = $requestedPath -replace '/', [System.IO.Path]::DirectorySeparatorChar
+                        $candidatePath = [System.IO.Path]::GetFullPath((Join-Path (Join-Path $ContentRoot 'update-files') $relativeUpdatePath))
+                    }
+                    else {
+                        $candidatePath = [System.IO.Path]::GetFullPath((Join-Path $ContentRoot $relativePath))
+                    }
 
                     if (-not $candidatePath.StartsWith($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path $candidatePath)) {
                         $context.Response.StatusCode = 404
@@ -106,7 +141,15 @@ function Start-TestWhitelistServer {
                     else {
                         $bytes = [System.IO.File]::ReadAllBytes($candidatePath)
                         $context.Response.StatusCode = 200
-                        $context.Response.ContentType = 'text/plain; charset=utf-8'
+                        if ($candidatePath.EndsWith('.json', [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $context.Response.ContentType = 'application/json; charset=utf-8'
+                        }
+                        elseif ($candidatePath.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $context.Response.ContentType = 'text/plain; charset=utf-8'
+                        }
+                        else {
+                            $context.Response.ContentType = 'application/octet-stream'
+                        }
                         $context.Response.ContentLength64 = $bytes.Length
                         $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
                     }
@@ -128,7 +171,8 @@ function Start-TestWhitelistServer {
         }
     }
 
-    $url = "http://127.0.0.1:$port/whitelist.txt"
+    $url = "http://127.0.0.1:$port/$($whitelistRelativePath.Replace('\', '/'))"
+    $apiUrl = "http://127.0.0.1:$port"
 
     for ($attempt = 1; $attempt -le 20; $attempt++) {
         if ($job.State -eq 'Failed') {
@@ -140,9 +184,12 @@ function Start-TestWhitelistServer {
             Invoke-WebRequest -Uri $url -TimeoutSec 2 | Out-Null
             Write-Host "OK: Local whitelist server ready at $url"
             return [PSCustomObject]@{
-                Job      = $job
-                RootPath = $rootPath
-                Url      = $url
+                Job                   = $job
+                RootPath              = $rootPath
+                Url                   = $url
+                ApiUrl                = $apiUrl
+                MachineToken          = $machineToken
+                WhitelistRelativePath = $whitelistRelativePath.Replace('\', '/')
             }
         }
         catch {
@@ -175,7 +222,8 @@ function Stop-TestWhitelistServer {
 function Invoke-OpenPathInstaller {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,
-        [Parameter(Mandatory = $true)][string]$WhitelistUrl
+        [Parameter(Mandatory = $true)][string]$WhitelistUrl,
+        [Parameter(Mandatory = $true)][string]$ApiUrl
     )
 
     Write-Step "Running Windows installer..."
@@ -186,6 +234,7 @@ function Invoke-OpenPathInstaller {
         '-ExecutionPolicy', 'Bypass',
         '-File', $installerPath,
         '-WhitelistUrl', $WhitelistUrl,
+        '-ApiUrl', $ApiUrl,
         '-Unattended'
     )
 
@@ -471,6 +520,7 @@ function Test-InstalledUpdateRefresh {
     Write-Step "Testing installed update script against the local server..."
 
     Set-TestWhitelistContent -RootPath $ServerState.RootPath `
+        -RelativePath $ServerState.WhitelistRelativePath `
         -WhitelistDomains $WhitelistDomains `
         -BlockedSubdomains @('ads.example.com')
 
@@ -485,6 +535,74 @@ function Test-InstalledUpdateRefresh {
     }
 
     Write-Host 'OK: Installed update script refreshed whitelist data'
+}
+
+function Set-TestAgentUpdateContent {
+    param(
+        [Parameter(Mandatory = $true)][string]$RootPath,
+        [Parameter(Mandatory = $true)][string]$TargetVersion
+    )
+
+    $manifestPath = Join-Path $RootPath 'api\agent\windows\latest.json'
+    $updateFilesRoot = Join-Path $RootPath 'update-files'
+    $openPathSource = 'C:\OpenPath\OpenPath.ps1'
+
+    if (-not (Test-Path $openPathSource)) {
+        Fail-Step "Installed OpenPath.ps1 is missing at $openPathSource."
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path $manifestPath -Parent) -Force | Out-Null
+    New-Item -ItemType Directory -Path $updateFilesRoot -Force | Out-Null
+
+    $targetFilePath = Join-Path $updateFilesRoot 'OpenPath.ps1'
+    $targetContent = Get-Content $openPathSource -Raw
+    $targetContent = $targetContent.TrimEnd() + "`r`n# lifecycle-self-update-marker $TargetVersion`r`n"
+    $targetContent | Set-Content -Path $targetFilePath -Encoding UTF8
+
+    $hash = (Get-FileHash -Path $targetFilePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $manifest = @{
+        version = $TargetVersion
+        files = @(
+            @{
+                path = 'OpenPath.ps1'
+                sha256 = $hash
+            }
+        )
+    }
+
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestPath -Encoding UTF8
+}
+
+function Test-InstalledAgentSelfUpdate {
+    param(
+        [Parameter(Mandatory = $true)][object]$ServerState
+    )
+
+    Write-Step "Testing installed agent self-update against the local server..."
+
+    $targetVersion = '9.9.9'
+    Set-TestAgentUpdateContent -RootPath $ServerState.RootPath -TargetVersion $targetVersion
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\OpenPath\OpenPath.ps1' self-update
+    if ($LASTEXITCODE -ne 0) {
+        Fail-Step "OpenPath.ps1 self-update exited with code $LASTEXITCODE."
+    }
+
+    $config = Get-Content 'C:\OpenPath\data\config.json' -Raw | ConvertFrom-Json
+    if ($config.version -ne $targetVersion) {
+        Fail-Step "Agent self-update persisted version '$($config.version)' instead of '$targetVersion'."
+    }
+
+    if (-not $config.PSObject.Properties['lastAgentUpdateAt'] -or -not $config.lastAgentUpdateAt) {
+        Fail-Step 'Agent self-update did not record lastAgentUpdateAt in config.json.'
+    }
+
+    $openPathContent = Get-Content 'C:\OpenPath\OpenPath.ps1' -Raw
+    if ($openPathContent -notmatch 'lifecycle-self-update-marker 9\.9\.9') {
+        Fail-Step 'Agent self-update did not replace OpenPath.ps1 with the staged update payload.'
+    }
+
+    Write-Host 'OK: Installed agent self-update applied the staged update payload'
 }
 
 function Test-Firewall {
@@ -537,6 +655,45 @@ function Verify-InstalledScheduledTasks {
     }
 
     Write-Host 'OK: Installer registered all expected scheduled tasks'
+}
+
+function Verify-WindowsUninstall {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot
+    )
+
+    Write-Step "Verifying Windows uninstallation removes installed state..."
+
+    $expectedTasks = @(
+        'OpenPath-Update',
+        'OpenPath-Watchdog',
+        'OpenPath-Startup',
+        'OpenPath-SSE',
+        'OpenPath-AgentUpdate'
+    )
+
+    $uninstallPath = Join-Path $RepoRoot 'windows\Uninstall-OpenPath.ps1'
+    if (-not (Test-Path $uninstallPath)) {
+        Fail-Step "Uninstall-OpenPath.ps1 is missing at $uninstallPath."
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstallPath
+    if ($LASTEXITCODE -ne 0) {
+        Fail-Step "Uninstall-OpenPath.ps1 exited with code $LASTEXITCODE."
+    }
+
+    if (Test-Path 'C:\OpenPath') {
+        Fail-Step 'OpenPath install root still exists after uninstall.'
+    }
+
+    foreach ($taskName in $expectedTasks) {
+        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($task) {
+            Fail-Step "Expected scheduled task '$taskName' still exists after uninstall."
+        }
+    }
+
+    Write-Host 'OK: Windows uninstaller removed the installed state'
 }
 
 function Run-PesterE2E {
@@ -621,15 +778,17 @@ try {
 
     Ensure-Pester
     $serverState = Start-TestWhitelistServer
-    Invoke-OpenPathInstaller -RepoRoot $RepoRoot -WhitelistUrl $serverState.Url
+    Invoke-OpenPathInstaller -RepoRoot $RepoRoot -WhitelistUrl $serverState.Url -ApiUrl $serverState.ApiUrl
     Import-InstalledModulesAndSmoke
     Test-InstalledWhitelist
     Test-InstalledDnsProxyResolution
     Test-SinkholeBlocking
     Test-InstalledUpdateRefresh -ServerState $serverState -WhitelistDomains $updatedWhitelistDomains
+    Test-InstalledAgentSelfUpdate -ServerState $serverState
     Test-Firewall
     Verify-InstalledScheduledTasks
     Run-PesterE2E -RepoRoot $RepoRoot -ExpectedWhitelistDomains $updatedWhitelistDomains
+    Verify-WindowsUninstall -RepoRoot $RepoRoot
 
     Write-Host ""
     Write-Host 'Windows E2E complete'

@@ -213,3 +213,17 @@ load 'test_helper'
     run grep -n 'Can resolve google.com via system DNS' "$PROJECT_DIR/tests/e2e/Windows-E2E.Tests.ps1"
     [ "$status" -ne 0 ]
 }
+
+@test "windows lifecycle e2e covers agent self-update and uninstall verification" {
+    run grep -nF "Testing installed agent self-update against the local server..." "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "OpenPath.ps1' self-update" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Verifying Windows uninstallation removes installed state..." "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Expected scheduled task '\$taskName' still exists after uninstall." "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+}

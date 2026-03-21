@@ -168,6 +168,107 @@ EOF
     echo "Whitelist update test completed"
 }
 
+run_agent_self_update_test() {
+    echo ""
+    echo "Testing agent self-update mechanism (openpath-self-update.sh)..."
+
+    docker exec "$CONTAINER_NAME" bash -lc '
+        set -euo pipefail
+
+        workdir="/tmp/openpath-agent-self-update"
+        release_dir="$workdir/release"
+        build_log="$workdir/build.log"
+        server_log="$workdir/http.log"
+        current_conf="$(cat /etc/openpath/whitelist-url.conf)"
+        current_version="$(cat /openpath/VERSION 2>/dev/null || echo 4.1.0)"
+
+        target_version="$(CURRENT_VERSION="$current_version" python3 - <<'"'"'PY'"'"'
+import os
+import re
+
+raw = os.environ.get("CURRENT_VERSION", "4.1.0")
+parts = [int(p) for p in re.findall(r"\d+", raw)[:3]]
+while len(parts) < 3:
+    parts.append(0)
+parts[0] += 1
+print(f"{parts[0]}.{parts[1]}.{parts[2]}")
+PY
+)"
+
+        rm -rf "$workdir"
+        mkdir -p "$release_dir"
+
+        cd /openpath
+        ./linux/scripts/build/build-deb.sh "$target_version" 1 >"$build_log" 2>&1
+
+        deb_name="openpath-dnsmasq_${target_version}-1_amd64.deb"
+        cp "build/$deb_name" "$release_dir/$deb_name"
+
+        cat > "$release_dir/latest.json" <<EOF
+{
+  "tag_name": "v${target_version}",
+  "assets": [
+    {
+      "browser_download_url": "http://127.0.0.1:18080/$deb_name"
+    }
+  ]
+}
+EOF
+
+        python3 -m http.server 18080 --bind 127.0.0.1 --directory "$release_dir" >"$server_log" 2>&1 &
+        server_pid=$!
+        trap "kill \$server_pid >/dev/null 2>&1 || true" EXIT
+        sleep 1
+
+        OPENPATH_SELF_UPDATE_API="http://127.0.0.1:18080/latest.json" /usr/local/bin/openpath-self-update.sh
+
+        if ! dpkg -s openpath-dnsmasq 2>/dev/null | grep -q "Version: ${target_version}-1"; then
+            echo "Self-update did not install package version ${target_version}-1"
+            exit 1
+        fi
+
+        if [ "$(cat /etc/openpath/whitelist-url.conf)" != "$current_conf" ]; then
+            echo "Self-update did not preserve whitelist-url.conf"
+            exit 1
+        fi
+
+        if [ ! -x /usr/local/bin/openpath-self-update.sh ]; then
+            echo "Self-update removed the installed self-update command"
+            exit 1
+        fi
+    '
+
+    echo "Agent self-update test completed"
+}
+
+verify_linux_uninstall() {
+    echo ""
+    echo "Verifying Linux uninstall removes installed state..."
+
+    docker exec "$CONTAINER_NAME" bash -lc '
+        set -euo pipefail
+
+        /usr/local/lib/openpath/uninstall.sh --auto-yes
+
+        if [ -e /etc/dnsmasq.d/openpath.conf ]; then
+            echo "/etc/dnsmasq.d/openpath.conf still exists after uninstall"
+            exit 1
+        fi
+
+        if [ -e /usr/local/bin/openpath-update.sh ]; then
+            echo "/usr/local/bin/openpath-update.sh still exists after uninstall"
+            exit 1
+        fi
+
+        if [ -d /usr/local/lib/openpath ]; then
+            echo "/usr/local/lib/openpath still exists after uninstall"
+            exit 1
+        fi
+    '
+
+    echo "Linux uninstall test completed"
+}
+
 main() {
     echo "Building systemd-enabled E2E test Docker image (minimal context)..."
 
@@ -212,6 +313,8 @@ main() {
     fi
 
     run_whitelist_update_test
+    run_agent_self_update_test
+    verify_linux_uninstall
 
     echo ""
     echo "Linux E2E tests passed"

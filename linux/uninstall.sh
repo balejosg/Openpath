@@ -147,7 +147,10 @@ rm -f /etc/resolv.conf 2>/dev/null || true
 if systemctl is-active --quiet systemd-resolved; then
     # systemd-resolved funciona: usar su stub
     echo "  Usando systemd-resolved stub..."
-    ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+    if ! ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null; then
+        echo "  ⚠ No se pudo recrear el symlink de /etc/resolv.conf; copiando stub..."
+        cp /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+    fi
 elif [ -f /var/lib/openpath/resolv.conf.symlink.backup ]; then
     # Intentar restaurar backup de symlink
     target=$(cat /var/lib/openpath/resolv.conf.symlink.backup)
