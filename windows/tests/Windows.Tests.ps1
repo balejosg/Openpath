@@ -629,10 +629,10 @@ Describe "DNS Module" {
                 'NX *',
                 '"FW $normalizedDomain"',
                 '"FW >$normalizedDomain"',
-                'FW $domain',
                 'NX >$subdomain',
                 '$((Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com'') -join "`n")',
                 'Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com''',
+                '$rules = @(Get-AcrylicForwardRules -Domain $domain)',
                 'Get-AcrylicForwardRules -Domain $domain'
             )
 
