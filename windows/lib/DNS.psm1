@@ -201,6 +201,23 @@ function Update-AcrylicHost {
     }
 
     Write-OpenPathLog "Generating AcrylicHosts.txt with $($WhitelistedDomains.Count) domains..."
+
+    function Get-AcrylicForwardRules {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Domain
+        )
+
+        $normalizedDomain = $Domain.Trim()
+        if (-not $normalizedDomain) {
+            return @()
+        }
+
+        return @(
+            "FW $normalizedDomain",
+            "FW >$normalizedDomain"
+        )
+    }
     
     $content = @"
 # ========================================
@@ -221,25 +238,25 @@ NX *
 # ========================================
 
 # Whitelist source
-FW >raw.githubusercontent.com
-FW >github.com
-FW >githubusercontent.com
+$(Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'github.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'githubusercontent.com' -join "`n")
 
 # Captive portal detection
-FW >detectportal.firefox.com
-FW >connectivity-check.ubuntu.com
-FW >captive.apple.com
-FW >www.msftconnecttest.com
-FW >msftconnecttest.com
-FW >clients3.google.com
+$(Get-AcrylicForwardRules -Domain 'detectportal.firefox.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'connectivity-check.ubuntu.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'captive.apple.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'www.msftconnecttest.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'msftconnecttest.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'clients3.google.com' -join "`n")
 
 # Windows Update (optional, comment out if not needed)
-FW >windowsupdate.microsoft.com
-FW >update.microsoft.com
+$(Get-AcrylicForwardRules -Domain 'windowsupdate.microsoft.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'update.microsoft.com' -join "`n")
 
 # NTP
-FW >time.windows.com
-FW >time.google.com
+$(Get-AcrylicForwardRules -Domain 'time.windows.com' -join "`n")
+$(Get-AcrylicForwardRules -Domain 'time.google.com' -join "`n")
 
 
 "@
@@ -261,10 +278,9 @@ FW >time.google.com
     $content += "# ========================================`n"
     
     foreach ($domain in $WhitelistedDomains) {
-        $domain = $domain.Trim()
-        if ($domain) {
-            # Use > for domain and all subdomains
-            $content += "FW >$domain`n"
+        $rules = @(Get-AcrylicForwardRules -Domain $domain)
+        if ($rules.Count -gt 0) {
+            $content += ($rules -join "`n") + "`n"
         }
     }
     

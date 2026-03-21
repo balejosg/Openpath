@@ -625,11 +625,14 @@ Describe "DNS Module" {
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
+                'function Get-AcrylicForwardRules',
                 'NX *',
-                'FW >raw.githubusercontent.com',
-                'FW >github.com',
+                '"FW $normalizedDomain"',
+                '"FW >$normalizedDomain"',
+                'FW $domain',
                 'NX >$subdomain',
-                'FW >$domain'
+                'Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com''',
+                'Get-AcrylicForwardRules -Domain $domain'
             )
 
             $content | Should -Not -Match 'FORWARD >'
