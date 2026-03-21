@@ -614,37 +614,105 @@ Describe "DNS Module" {
         }
     }
 
+    Context "Get-OpenPathDnsSettings" {
+        It "Returns safe defaults when OpenPath config is unavailable" {
+            Mock Get-OpenPathConfig { throw 'config unavailable' } -ModuleName DNS
+
+            InModuleScope DNS {
+                $settings = Get-OpenPathDnsSettings
+
+                $settings.PrimaryDNS | Should -Be '8.8.8.8'
+                $settings.SecondaryDNS | Should -Be '8.8.4.4'
+                $settings.MaxDomains | Should -Be 500
+            }
+        }
+
+        It "Honors DNS-related overrides from OpenPath config" {
+            Mock Get-OpenPathConfig {
+                [PSCustomObject]@{
+                    primaryDNS = '1.1.1.1'
+                    secondaryDNS = '1.0.0.1'
+                    maxDomains = 42
+                }
+            } -ModuleName DNS
+
+            InModuleScope DNS {
+                $settings = Get-OpenPathDnsSettings
+
+                $settings.PrimaryDNS | Should -Be '1.1.1.1'
+                $settings.SecondaryDNS | Should -Be '1.0.0.1'
+                $settings.MaxDomains | Should -Be 42
+            }
+        }
+    }
+
     Context "Update-AcrylicHost" {
         It "Generates valid hosts content" -Skip:(-not ((Test-FunctionExists 'Test-AcrylicInstalled') -and (Test-FunctionExists 'Update-AcrylicHost') -and (Test-AcrylicInstalled))) {
             $result = Update-AcrylicHost -WhitelistedDomains @("example.com", "test.com") -BlockedSubdomains @()
             $result | Should -BeTrue
         }
 
-        It "Uses Acrylic FW/NX rule syntax compatible with the official hosts format" {
+        It "Builds Acrylic hosts content from a generated definition in official FW/NX order" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('example.com', 'test.com') `
+                    -BlockedSubdomains @('ads.example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+
+                Assert-ContentContainsAll -Content $content -Needles @(
+                    '# ESSENTIAL DOMAINS (always allowed)',
+                    '# Whitelist source',
+                    'FW raw.githubusercontent.com',
+                    'FW >raw.githubusercontent.com',
+                    '# BLOCKED SUBDOMAINS (1)',
+                    'NX >ads.example.com',
+                    '# WHITELISTED DOMAINS (2)',
+                    'FW example.com',
+                    'FW >example.com',
+                    'FW test.com',
+                    'FW >test.com',
+                    '# DEFAULT BLOCK (NXDOMAIN for everything else)',
+                    '# This MUST come last after FW rules.',
+                    '# Upstream DNS: 1.1.1.1',
+                    'NX *'
+                )
+
+                $content | Should -Not -Match 'FORWARD >'
+                $content | Should -Not -Match 'NX >\*'
+
+                $whitelistSectionIndex = $content.IndexOf('# WHITELISTED DOMAINS')
+                $nxRuleIndex = $content.IndexOf('NX *')
+                $whitelistSectionIndex | Should -BeGreaterThan -1
+                $nxRuleIndex | Should -BeGreaterThan $whitelistSectionIndex
+
+                @($definition.EffectiveWhitelistedDomains).Count | Should -Be 2
+                $definition.WasTruncated | Should -BeFalse
+            }
+        }
+
+        It "Keeps Acrylic hosts modeling and rendering split into helpers" {
             $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'function Get-AcrylicForwardRules',
+                'function Get-OpenPathDnsSettings',
                 'NX *',
+                'function Get-AcrylicForwardRules',
+                'function New-AcrylicHostsDefinition',
+                'function ConvertTo-AcrylicHostsContent',
+                '$definition = New-AcrylicHostsDefinition',
+                '$content = ConvertTo-AcrylicHostsContent -Definition $definition',
                 '"FW $normalizedDomain"',
-                '"FW >$normalizedDomain"',
-                'NX >$subdomain',
-                '$((Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com'') -join "`n")',
-                'Get-AcrylicForwardRules -Domain ''raw.githubusercontent.com''',
-                '$rules = @(Get-AcrylicForwardRules -Domain $domain)',
-                'Get-AcrylicForwardRules -Domain $domain'
+                '"FW >$normalizedDomain"'
             )
 
-            $content | Should -Not -Match 'FORWARD >'
-            $content | Should -Not -Match 'NX >\*'
-            $content | Should -Not -Match 'Get-AcrylicForwardRules -Domain [^\)]* -join'
-
-            $whitelistSectionIndex = $content.IndexOf('# WHITELISTED DOMAINS')
-            $nxRuleIndex = $content.IndexOf('NX *')
-            $whitelistSectionIndex | Should -BeGreaterThan -1
-            $nxRuleIndex | Should -BeGreaterThan $whitelistSectionIndex
-            $content | Should -Match 'This MUST come last after FW rules\.'
+            $content | Should -Not -Match '\$content = @"'
         }
 
         It "Retries Acrylic DNS resolution before reporting failure" {
@@ -673,14 +741,21 @@ Describe "DNS Module" {
     }
 
     Context "Max domains limit" {
-        It "Update-AcrylicHost code enforces a max domains limit" -Skip:(-not (Test-FunctionExists 'Update-AcrylicHost')) {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
-            $content = Get-Content $modulePath -Raw
+        It "Truncates generated whitelist domains to the configured limit" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('one.example.com', 'two.example.com', 'three.example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '8.8.8.8'
+                        SecondaryDNS = '8.8.4.4'
+                        MaxDomains = 2
+                    })
 
-            Assert-ContentContainsAll -Content $content -Needles @(
-                'maxDomains',
-                'Truncating whitelist'
-            )
+                $definition.WasTruncated | Should -BeTrue
+                $definition.OriginalWhitelistedDomainCount | Should -Be 3
+                @($definition.EffectiveWhitelistedDomains).Count | Should -Be 2
+                @($definition.EffectiveWhitelistedDomains) | Should -Be @('one.example.com', 'two.example.com')
+            }
         }
     }
 

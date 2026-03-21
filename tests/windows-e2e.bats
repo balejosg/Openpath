@@ -62,11 +62,29 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
-@test "windows acrylic hosts generation uses official FW/NX syntax" {
+@test "windows acrylic hosts generation stays split into settings, model, and render helpers" {
     run grep -nF 'NX *' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
+    run grep -nF 'function Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
     run grep -nF 'function Get-AcrylicForwardRules' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'function New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'function ConvertTo-AcrylicHostsContent' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$dnsSettings = Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$definition = New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$content = ConvertTo-AcrylicHostsContent -Definition $definition' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
     run grep -nF '"FW $normalizedDomain"' "$PROJECT_DIR/windows/lib/DNS.psm1"
@@ -75,27 +93,13 @@ load 'test_helper'
     run grep -nF '"FW >$normalizedDomain"' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF "Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com'" "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$settings.PrimaryDNS = [string]$config.primaryDNS' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF "\$((Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com') -join \"\`n\")" "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$settings.MaxDomains = [int]$config.maxDomains' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Get-AcrylicForwardRules -Domain $domain' "$PROJECT_DIR/windows/lib/DNS.psm1"
-    [ "$status" -eq 0 ]
-
-    run sh -c '
-        dns_file="$1"
-        whitelist_line=$(grep -nF "# WHITELISTED DOMAINS" "$dns_file" | head -1 | cut -d: -f1)
-        nx_line=$(grep -nF "NX *" "$dns_file" | head -1 | cut -d: -f1)
-        test -n "$whitelist_line" && test -n "$nx_line" && [ "$nx_line" -gt "$whitelist_line" ]
-    ' _ "$PROJECT_DIR/windows/lib/DNS.psm1"
-    [ "$status" -eq 0 ]
-
-    run grep -nF 'This MUST come last after FW rules.' "$PROJECT_DIR/windows/lib/DNS.psm1"
-    [ "$status" -eq 0 ]
-
-    run grep -nE 'Get-AcrylicForwardRules -Domain [^)]* -join' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$content = @"' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -ne 0 ]
 
     run grep -nF 'NX >*' "$PROJECT_DIR/windows/lib/DNS.psm1"

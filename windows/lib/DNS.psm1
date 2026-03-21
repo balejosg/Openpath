@@ -152,6 +152,224 @@ function Install-AcrylicDNS {
     }
 }
 
+function Get-OpenPathDnsSettings {
+    <#
+    .SYNOPSIS
+        Resolves DNS-related OpenPath settings with safe defaults
+    #>
+    [CmdletBinding()]
+    param()
+
+    $settings = [ordered]@{
+        PrimaryDNS = "8.8.8.8"
+        SecondaryDNS = "8.8.4.4"
+        MaxDomains = 500
+    }
+
+    try {
+        $config = Get-OpenPathConfig
+
+        if ($config.PSObject.Properties['primaryDNS'] -and $config.primaryDNS) {
+            $settings.PrimaryDNS = [string]$config.primaryDNS
+        }
+
+        if ($config.PSObject.Properties['secondaryDNS'] -and $config.secondaryDNS) {
+            $settings.SecondaryDNS = [string]$config.secondaryDNS
+        }
+
+        if ($config.PSObject.Properties['maxDomains'] -and ($config.maxDomains -as [int]) -gt 0) {
+            $settings.MaxDomains = [int]$config.maxDomains
+        }
+    }
+    catch {
+        Write-Debug "OpenPath DNS settings unavailable, using defaults: $_"
+    }
+
+    return [PSCustomObject]$settings
+}
+
+function Get-AcrylicForwardRules {
+    <#
+    .SYNOPSIS
+        Expands a domain into Acrylic FW rules for the root and subdomains
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Domain
+    )
+
+    $normalizedDomain = $Domain.Trim()
+    if (-not $normalizedDomain) {
+        return @()
+    }
+
+    return @(
+        "FW $normalizedDomain",
+        "FW >$normalizedDomain"
+    )
+}
+
+function New-AcrylicHostsSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Title,
+
+        [string]$Description = "",
+
+        [string[]]$Lines = @()
+    )
+
+    return [PSCustomObject]@{
+        Title = $Title
+        Description = $Description
+        Lines = @($Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+}
+
+function New-AcrylicHostsDefinition {
+    <#
+    .SYNOPSIS
+        Builds the declarative model used to render AcrylicHosts.txt
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$WhitelistedDomains,
+
+        [string[]]$BlockedSubdomains = @(),
+
+        [pscustomobject]$DnsSettings = (Get-OpenPathDnsSettings)
+    )
+
+    $effectiveWhitelistedDomains = @($WhitelistedDomains)
+    $originalWhitelistedDomainCount = $effectiveWhitelistedDomains.Count
+    $wasTruncated = $false
+
+    if ($effectiveWhitelistedDomains.Count -gt $DnsSettings.MaxDomains) {
+        $effectiveWhitelistedDomains = @($effectiveWhitelistedDomains | Select-Object -First $DnsSettings.MaxDomains)
+        $wasTruncated = $true
+    }
+
+    $essentialLines = @(
+        '# Whitelist source'
+    )
+    foreach ($domain in @('raw.githubusercontent.com', 'github.com', 'githubusercontent.com')) {
+        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+    }
+
+    $essentialLines += @(
+        '',
+        '# Captive portal detection'
+    )
+    foreach ($domain in @('detectportal.firefox.com', 'connectivity-check.ubuntu.com', 'captive.apple.com', 'www.msftconnecttest.com', 'msftconnecttest.com', 'clients3.google.com')) {
+        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+    }
+
+    $essentialLines += @(
+        '',
+        '# Windows Update (optional, comment out if not needed)'
+    )
+    foreach ($domain in @('windowsupdate.microsoft.com', 'update.microsoft.com')) {
+        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+    }
+
+    $essentialLines += @(
+        '',
+        '# NTP'
+    )
+    foreach ($domain in @('time.windows.com', 'time.google.com')) {
+        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+    }
+
+    $blockedLines = @(
+        foreach ($subdomain in $BlockedSubdomains) {
+            $normalizedSubdomain = ([string]$subdomain).Trim()
+            if ($normalizedSubdomain) {
+                "NX >$normalizedSubdomain"
+            }
+        }
+    )
+
+    $whitelistLines = @(
+        foreach ($domain in $effectiveWhitelistedDomains) {
+            @(Get-AcrylicForwardRules -Domain $domain)
+        }
+    )
+
+    $sections = @(
+        (New-AcrylicHostsSection `
+            -Title 'ESSENTIAL DOMAINS (always allowed)' `
+            -Description 'Required for system operation' `
+            -Lines $essentialLines)
+    )
+
+    if ($blockedLines.Count -gt 0) {
+        $sections += New-AcrylicHostsSection `
+            -Title "BLOCKED SUBDOMAINS ($($blockedLines.Count))" `
+            -Lines $blockedLines
+    }
+
+    $sections += New-AcrylicHostsSection `
+        -Title "WHITELISTED DOMAINS ($($effectiveWhitelistedDomains.Count))" `
+        -Lines @($whitelistLines)
+
+    $sections += New-AcrylicHostsSection `
+        -Title 'DEFAULT BLOCK (NXDOMAIN for everything else)' `
+        -Description 'This MUST come last after FW rules.' `
+        -Lines @('NX *')
+
+    return [PSCustomObject]@{
+        UpstreamDNS = $DnsSettings.PrimaryDNS
+        Sections = $sections
+        WasTruncated = $wasTruncated
+        OriginalWhitelistedDomainCount = $originalWhitelistedDomainCount
+        EffectiveWhitelistedDomains = $effectiveWhitelistedDomains
+        BlockedSubdomains = @($BlockedSubdomains)
+    }
+}
+
+function ConvertTo-AcrylicHostsContent {
+    <#
+    .SYNOPSIS
+        Renders a declarative Acrylic hosts definition to file content
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Definition
+    )
+
+    $lines = @(
+        '# ========================================',
+        '# OpenPath DNS - Generated by openpath-windows',
+        "# Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+        "# Upstream DNS: $($Definition.UpstreamDNS)",
+        '# ========================================',
+        ''
+    )
+
+    foreach ($section in @($Definition.Sections)) {
+        $lines += '# ========================================'
+        $lines += "# $($section.Title)"
+        if ($section.Description) {
+            $lines += "# $($section.Description)"
+        }
+        $lines += '# ========================================'
+        $lines += ''
+
+        $sectionLines = @($section.Lines)
+        if ($sectionLines.Count -gt 0) {
+            $lines += $sectionLines
+        }
+
+        $lines += ''
+    }
+
+    return (($lines -join "`n").TrimEnd() + "`n")
+}
+
 function Update-AcrylicHost {
     <#
     .SYNOPSIS
@@ -181,110 +399,19 @@ function Update-AcrylicHost {
 
     $hostsPath = "$acrylicPath\AcrylicHosts.txt"
 
-    try {
-        $config = Get-OpenPathConfig
-        $upstream = $config.primaryDNS
-    }
-    catch {
-        $upstream = "8.8.8.8"
-    }
+    $dnsSettings = Get-OpenPathDnsSettings
+    $definition = New-AcrylicHostsDefinition `
+        -WhitelistedDomains $WhitelistedDomains `
+        -BlockedSubdomains $BlockedSubdomains `
+        -DnsSettings $dnsSettings
 
-    # Enforce max domains limit to protect Acrylic from excessive memory usage
-    $maxDomains = 500
-    try {
-        if ($config.PSObject.Properties['maxDomains']) { $maxDomains = $config.maxDomains }
-    } catch { <# use default #> }
-
-    if ($WhitelistedDomains.Count -gt $maxDomains) {
-        Write-OpenPathLog "Truncating whitelist from $($WhitelistedDomains.Count) to $maxDomains domains" -Level WARN
-        $WhitelistedDomains = $WhitelistedDomains | Select-Object -First $maxDomains
+    if ($definition.WasTruncated) {
+        Write-OpenPathLog "Truncating whitelist from $($definition.OriginalWhitelistedDomainCount) to $($dnsSettings.MaxDomains) domains" -Level WARN
     }
 
-    Write-OpenPathLog "Generating AcrylicHosts.txt with $($WhitelistedDomains.Count) domains..."
+    Write-OpenPathLog "Generating AcrylicHosts.txt with $(@($definition.EffectiveWhitelistedDomains).Count) domains..."
 
-    function Get-AcrylicForwardRules {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Domain
-        )
-
-        $normalizedDomain = $Domain.Trim()
-        if (-not $normalizedDomain) {
-            return @()
-        }
-
-        return @(
-            "FW $normalizedDomain",
-            "FW >$normalizedDomain"
-        )
-    }
-    
-    $content = @"
-# ========================================
-# OpenPath DNS - Generated by openpath-windows
-# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-# Upstream DNS: $upstream
-# ========================================
-
-# ========================================
-# ESSENTIAL DOMAINS (always allowed)
-# Required for system operation
-# ========================================
-
-# Whitelist source
-$((Get-AcrylicForwardRules -Domain 'raw.githubusercontent.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'github.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'githubusercontent.com') -join "`n")
-
-# Captive portal detection
-$((Get-AcrylicForwardRules -Domain 'detectportal.firefox.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'connectivity-check.ubuntu.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'captive.apple.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'www.msftconnecttest.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'msftconnecttest.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'clients3.google.com') -join "`n")
-
-# Windows Update (optional, comment out if not needed)
-$((Get-AcrylicForwardRules -Domain 'windowsupdate.microsoft.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'update.microsoft.com') -join "`n")
-
-# NTP
-$((Get-AcrylicForwardRules -Domain 'time.windows.com') -join "`n")
-$((Get-AcrylicForwardRules -Domain 'time.google.com') -join "`n")
-
-
-"@
-
-    # Add blocked subdomains (explicit NXDOMAIN)
-    if ($BlockedSubdomains.Count -gt 0) {
-        $content += "# ========================================`n"
-        $content += "# BLOCKED SUBDOMAINS ($($BlockedSubdomains.Count))`n"
-        $content += "# ========================================`n"
-        foreach ($subdomain in $BlockedSubdomains) {
-            $content += "NX >$subdomain`n"
-        }
-        $content += "`n"
-    }
-    
-    # Add whitelisted domains
-    $content += "# ========================================`n"
-    $content += "# WHITELISTED DOMAINS ($($WhitelistedDomains.Count))`n"
-    $content += "# ========================================`n"
-    
-    foreach ($domain in $WhitelistedDomains) {
-        $rules = @(Get-AcrylicForwardRules -Domain $domain)
-        if ($rules.Count -gt 0) {
-            $content += ($rules -join "`n") + "`n"
-        }
-    }
-
-    # Keep the catch-all NXDOMAIN rule after all FW exceptions so Acrylic
-    # forwards whitelisted domains during real end-to-end installs.
-    $content += "`n# ========================================`n"
-    $content += "# DEFAULT BLOCK (NXDOMAIN for everything else)`n"
-    $content += "# This MUST come last after FW rules.`n"
-    $content += "# ========================================`n"
-    $content += "NX *`n"
+    $content = ConvertTo-AcrylicHostsContent -Definition $definition
     
     # Write to file
     $content | Set-Content $hostsPath -Encoding UTF8 -Force
@@ -312,13 +439,7 @@ function Set-AcrylicConfiguration {
 
     $configPath = "$acrylicPath\AcrylicConfiguration.ini"
 
-    try {
-        $config = Get-OpenPathConfig
-        $upstream = $config.primaryDNS
-    }
-    catch {
-        $upstream = "8.8.8.8"
-    }
+    $dnsSettings = Get-OpenPathDnsSettings
 
     Write-OpenPathLog "Configuring Acrylic..."
     
@@ -332,8 +453,8 @@ function Set-AcrylicConfiguration {
     
     # Key settings to ensure
     $settings = @{
-        "PrimaryServerAddress" = $upstream
-        "SecondaryServerAddress" = "8.8.4.4"
+        "PrimaryServerAddress" = $dnsSettings.PrimaryDNS
+        "SecondaryServerAddress" = $dnsSettings.SecondaryDNS
         "LocalIPv4BindingAddress" = "127.0.0.1"
         "LocalIPv4BindingPort" = "53"
         "IgnoreNegativeResponsesFromPrimaryServer" = "Yes"
