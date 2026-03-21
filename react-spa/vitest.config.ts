@@ -12,7 +12,14 @@ export default mergeConfig(
       coverage: {
         provider: 'v8',
         reporter: ['text', 'json', 'html'],
-        exclude: ['node_modules/**', 'src/test/**', '**/*.d.ts', '**/*.config.*', '**/types/**'],
+        exclude: [
+          'node_modules/**',
+          'e2e/**',
+          'src/test/**',
+          '**/*.d.ts',
+          '**/*.config.*',
+          '**/types/**',
+        ],
         thresholds: {
           lines: 80,
           functions: 75,

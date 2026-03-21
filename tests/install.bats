@@ -113,3 +113,17 @@ load 'test_helper'
         echo "$control_pkgs" | grep -qx "$pkg"
     done <<< "$install_pkgs"
 }
+
+@test "install.sh hardens apt operations against stale package indexes" {
+    run grep -n "apt_update_with_retry()" "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n "rm -rf /var/lib/apt/lists/\\*" "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n -- "-o Acquire::Retries=3 update -qq" "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n "apt_install_with_retry()" "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+}

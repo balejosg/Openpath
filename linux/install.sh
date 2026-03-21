@@ -247,6 +247,55 @@ run_pre_install_validation() {
     fi
 }
 
+reset_apt_package_indexes() {
+    apt-get clean >/dev/null 2>&1 || true
+    rm -rf /var/lib/apt/lists/*
+    mkdir -p /var/lib/apt/lists/partial
+}
+
+apt_update_with_retry() {
+    local attempt
+    local max_attempts=3
+
+    for attempt in $(seq 1 "$max_attempts"); do
+        reset_apt_package_indexes
+
+        if apt-get -o Acquire::Retries=3 update -qq; then
+            return 0
+        fi
+
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "  ! apt-get update falló (intento ${attempt}/${max_attempts}); reintentando..."
+            sleep "$attempt"
+        fi
+    done
+
+    echo "  ✗ apt-get update falló tras ${max_attempts} intentos"
+    return 1
+}
+
+apt_install_with_retry() {
+    local package_group="$1"
+    shift
+
+    local attempt
+    local max_attempts=3
+
+    for attempt in $(seq 1 "$max_attempts"); do
+        if "$@" >/dev/null; then
+            return 0
+        fi
+
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "  ! Instalación de ${package_group} falló (intento ${attempt}/${max_attempts}); refrescando índices..."
+            apt_update_with_retry
+        fi
+    done
+
+    echo "  ✗ Instalación de ${package_group} falló tras ${max_attempts} intentos"
+    return 1
+}
+
 step_install_libraries() {
     echo "[1/13] Instalando librerías..."
     mkdir -p "$INSTALL_DIR/lib"
@@ -272,12 +321,14 @@ step_install_dependencies() {
     echo ""
     echo "[2/13] Instalando dependencias..."
 
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    apt_update_with_retry
+    DEBIAN_FRONTEND=noninteractive apt_install_with_retry "dependencias base" \
+        apt-get -o Acquire::Retries=3 install -y \
         iptables iptables-persistent ipset curl iproute2 \
-        libcap2-bin dnsutils conntrack python3 >/dev/null
+        libcap2-bin dnsutils conntrack python3
 
-    RUNLEVEL=1 apt-get install -y dnsmasq >/dev/null
+    RUNLEVEL=1 apt_install_with_retry "dnsmasq" \
+        apt-get -o Acquire::Retries=3 install -y dnsmasq
 
     if [ -d /etc/default ]; then
         grep -q "IGNORE_RESOLVCONF" /etc/default/dnsmasq 2>/dev/null || \

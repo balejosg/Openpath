@@ -5,6 +5,7 @@
  */
 
 import { Page, BrowserContext } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 // ============================================================================
 // Test Data Factories
@@ -26,15 +27,19 @@ export interface TestDomain {
   reason: string;
 }
 
+function createUniqueFixtureSuffix(): string {
+  return `${String(Date.now())}-${randomUUID().slice(0, 8)}`;
+}
+
 /**
  * Creates a unique test user with timestamp-based email
  */
 export function createTestUser(overrides: Partial<TestUser> = {}): TestUser {
-  const timestamp = Date.now();
+  const uniqueSuffix = createUniqueFixtureSuffix();
   return {
-    email: `test-${timestamp}@e2e-openpath.local`,
+    email: `test-${uniqueSuffix}@e2e-openpath.local`,
     password: 'SecurePassword123!',
-    name: `E2E User ${timestamp}`,
+    name: `E2E User ${uniqueSuffix}`,
     ...overrides,
   };
 }
@@ -43,9 +48,9 @@ export function createTestUser(overrides: Partial<TestUser> = {}): TestUser {
  * Creates a unique test group
  */
 export function createTestGroup(overrides: Partial<TestGroup> = {}): TestGroup {
-  const timestamp = Date.now();
+  const uniqueSuffix = createUniqueFixtureSuffix();
   return {
-    name: `Test Group ${timestamp}`,
+    name: `Test Group ${uniqueSuffix}`,
     description: `E2E test group created at ${new Date().toISOString()}`,
     ...overrides,
   };
@@ -55,9 +60,9 @@ export function createTestGroup(overrides: Partial<TestGroup> = {}): TestGroup {
  * Creates a test domain request
  */
 export function createTestDomain(overrides: Partial<TestDomain> = {}): TestDomain {
-  const timestamp = Date.now();
+  const uniqueSuffix = createUniqueFixtureSuffix();
   return {
-    domain: `test-${timestamp}.example.com`,
+    domain: `test-${uniqueSuffix}.example.com`,
     reason: 'Needed for E2E testing purposes',
     ...overrides,
   };
