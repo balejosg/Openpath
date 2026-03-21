@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Plus, Trash2, Search, Laptop, AlertCircle, Loader2, Copy, Check } from 'lucide-react';
 import type { Classroom } from '../types';
 import type { AllowedGroupOption } from '../hooks/useAllowedGroups';
@@ -322,7 +322,15 @@ const EnrollClassroomModal: React.FC<EnrollClassroomModalProps> = ({
   );
 };
 
-const Classrooms = () => {
+interface ClassroomsProps {
+  initialSelectedClassroomId?: string | null;
+  onInitialSelectedClassroomIdConsumed?: () => void;
+}
+
+const Classrooms: React.FC<ClassroomsProps> = ({
+  initialSelectedClassroomId = null,
+  onInitialSelectedClassroomIdConsumed,
+}) => {
   const {
     admin,
     allowedGroups,
@@ -341,7 +349,15 @@ const Classrooms = () => {
     selectedClassroomId,
     setSearchQuery,
     setSelectedClassroomId,
-  } = useClassroomsViewModel();
+  } = useClassroomsViewModel({
+    initialSelectedClassroomId,
+  });
+
+  useEffect(() => {
+    if (initialSelectedClassroomId !== null) {
+      onInitialSelectedClassroomIdConsumed?.();
+    }
+  }, [initialSelectedClassroomId, onInitialSelectedClassroomIdConsumed]);
 
   const {
     activeGroupOverwriteConfirm,

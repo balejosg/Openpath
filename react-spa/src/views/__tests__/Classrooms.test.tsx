@@ -12,8 +12,8 @@ const hookOverrides = vi.hoisted(() => ({
 
 let queryClient: ReturnType<typeof renderWithQueryClient>['queryClient'] | null = null;
 
-function renderClassrooms() {
-  const rendered = renderWithQueryClient(<Classrooms />);
+function renderClassrooms(props?: React.ComponentProps<typeof Classrooms>) {
+  const rendered = renderWithQueryClient(<Classrooms {...props} />);
   queryClient = rendered.queryClient;
   return rendered;
 }
@@ -542,6 +542,29 @@ describe('Classrooms', () => {
     expect(screen.getByText('No se encontraron aulas')).toBeInTheDocument();
     expect(screen.queryByText('Configuración y estado del aula')).not.toBeInTheDocument();
     expect(screen.getByText('Sin aulas')).toBeInTheDocument();
+  });
+
+  it('forwards the requested initial classroom selection and clears it after mount', async () => {
+    const controls = installHookOverrides();
+    const defaultViewModel = hookOverrides.useClassroomsViewModel as (
+      ...args: unknown[]
+    ) => unknown;
+    const viewModelSpy = vi.fn((...args: unknown[]) => defaultViewModel(...args));
+    hookOverrides.useClassroomsViewModel = viewModelSpy;
+    const onInitialSelectedClassroomIdConsumed = vi.fn();
+
+    renderClassrooms({
+      initialSelectedClassroomId: 'classroom-2',
+      onInitialSelectedClassroomIdConsumed,
+    });
+
+    await screen.findByText('Configuración y estado del aula');
+
+    expect(viewModelSpy).toHaveBeenCalledWith({
+      initialSelectedClassroomId: 'classroom-2',
+    });
+    expect(onInitialSelectedClassroomIdConsumed).toHaveBeenCalledTimes(1);
+    expect(controls.setSelectedClassroomId).not.toHaveBeenCalled();
   });
 
   it('keeps the classrooms split view constrained so the detail pane can stay visible', async () => {

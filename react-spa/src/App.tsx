@@ -13,7 +13,6 @@ import ResetPassword from './views/ResetPassword';
 import Settings from './views/Settings';
 import DomainRequests from './views/DomainRequests';
 import RulesManager from './views/RulesManager';
-import { setPendingSelectedClassroomId } from './hooks/useClassroomsViewModel';
 import { isAuthenticated, onAuthChange, isAdmin } from './lib/auth';
 
 type AuthView = 'login' | 'register' | 'forgot-password' | 'reset-password';
@@ -113,6 +112,7 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState(() => getTabFromPathname(initialPathname));
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingSelectedClassroomId, setPendingSelectedClassroomId] = useState<string | null>(null);
   const isAuthRef = useRef(isAuth);
 
   useEffect(() => {
@@ -205,6 +205,16 @@ const App: React.FC = () => {
     setActiveTab('classrooms');
   };
 
+  const handlePendingSelectedClassroomIdConsumed = () => {
+    setPendingSelectedClassroomId(null);
+  };
+
+  const handleSidebarTabChange = (tab: string) => {
+    setPendingSelectedClassroomId(null);
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
+
   const admin = isAdmin();
 
   const renderContent = () => {
@@ -219,7 +229,12 @@ const App: React.FC = () => {
           <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
         );
       case 'classrooms':
-        return <Classrooms />;
+        return (
+          <Classrooms
+            initialSelectedClassroomId={pendingSelectedClassroomId}
+            onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
+          />
+        );
       case 'groups':
         return <Groups onNavigateToRules={handleNavigateToRules} />;
       case 'rules':
@@ -313,15 +328,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setPendingSelectedClassroomId(null);
-          setActiveTab(tab);
-          setSidebarOpen(false);
-        }}
-        isOpen={sidebarOpen}
-      />
+      <Sidebar activeTab={activeTab} setActiveTab={handleSidebarTabChange} isOpen={sidebarOpen} />
 
       {/* Overlay */}
       {sidebarOpen && (
