@@ -46,7 +46,7 @@ const ClassroomListPane: React.FC<ClassroomListPaneProps> = ({
   onRetry,
 }) => {
   return (
-    <div className="w-full md:w-1/3 flex flex-col gap-4">
+    <div className="w-full shrink-0 md:max-w-md flex flex-col gap-4">
       <div className="flex justify-between items-center px-1">
         <h2 className="text-lg font-bold text-slate-800">Aulas</h2>
         {admin && (
@@ -429,7 +429,7 @@ const Classrooms = () => {
       />
 
       {/* Detail Column */}
-      <div className="flex-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+      <div className="min-w-0 flex-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
         <ClassroomDetailPane
           admin={admin}
           allowedGroups={allowedGroups}
