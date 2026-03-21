@@ -102,6 +102,23 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows e2e dumps Acrylic hit logs and per-record diagnostics on failure" {
+    run grep -nF "function Set-AcrylicDiagnosticLogging" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'C:\OpenPath\data\logs\acrylic-hit.log'" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'HitLogFileWhat' = 'XHCFRU'" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "@('A', 'AAAA', 'HTTPS')" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "AcrylicService.exe version" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows installer keeps Acrylic on the modern portable release track" {
     run grep -nF '$installerVersion = "2.2.1"' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]

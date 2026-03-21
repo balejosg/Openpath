@@ -230,6 +230,44 @@ function Import-InstalledModulesAndSmoke {
     Write-Host 'OK: Installed modules import successfully'
 }
 
+function Set-AcrylicDiagnosticLogging {
+    $acrylicPath = Get-AcrylicPath
+    if (-not $acrylicPath) {
+        Write-Host 'WARN: Acrylic path unavailable; cannot enable hit logging.'
+        return
+    }
+
+    $configPath = Join-Path $acrylicPath 'AcrylicConfiguration.ini'
+    if (-not (Test-Path $configPath)) {
+        Write-Host "WARN: Acrylic configuration missing at $configPath"
+        return
+    }
+
+    $logPath = 'C:\OpenPath\data\logs\acrylic-hit.log'
+    $iniContent = Get-Content $configPath -Raw
+    $settings = @{
+        'HitLogFileName' = $logPath
+        'HitLogFileWhat' = 'XHCFRU'
+        'HitLogMaxPendingHits' = '1'
+    }
+
+    foreach ($key in $settings.Keys) {
+        $pattern = "(?m)^$key=.*$"
+        $replacement = "$key=$($settings[$key])"
+        if ($iniContent -match $pattern) {
+            $iniContent = $iniContent -replace $pattern, $replacement
+        }
+        else {
+            $iniContent += "`n$replacement"
+        }
+    }
+
+    $iniContent | Set-Content -Path $configPath -Encoding UTF8
+    Restart-Service -Name 'AcrylicDNSProxySvc' -ErrorAction Stop
+    Start-Sleep -Seconds 2
+    Write-Host "OK: Acrylic hit logging enabled at $logPath"
+}
+
 function Test-InstalledWhitelist {
     Write-Step "Testing installed whitelist state..."
 
@@ -263,7 +301,8 @@ function Write-AcrylicDiagnostics {
 
     $diagnosticFiles = @(
         (Join-Path $acrylicPath 'AcrylicConfiguration.ini'),
-        (Join-Path $acrylicPath 'AcrylicHosts.txt')
+        (Join-Path $acrylicPath 'AcrylicHosts.txt'),
+        'C:\OpenPath\data\logs\acrylic-hit.log'
     )
 
     foreach ($path in $diagnosticFiles) {
@@ -282,6 +321,7 @@ function Write-AcrylicDiagnostics {
         $primaryServer = Select-String -Path $configPath -Pattern '^PrimaryServerAddress=' | Select-Object -First 1
         $secondaryServer = Select-String -Path $configPath -Pattern '^SecondaryServerAddress=' | Select-Object -First 1
 
+        $servers = @('127.0.0.1')
         foreach ($serverLine in @($primaryServer, $secondaryServer)) {
             if (-not $serverLine) {
                 continue
@@ -292,20 +332,53 @@ function Write-AcrylicDiagnostics {
                 continue
             }
 
-            try {
-                $upstreamResult = Resolve-DnsName -Name 'google.com' -Server $server -DnsOnly -ErrorAction Stop
-                $upstreamIp = $upstreamResult |
-                    Where-Object { $_.PSObject.Properties['IPAddress'] -and $_.IPAddress } |
-                    Select-Object -First 1 -ExpandProperty IPAddress
-                if ($upstreamIp) {
-                    Write-Host "OK: Direct upstream resolution via $server returned $upstreamIp"
+            $servers += $server
+        }
+
+        $servers = @($servers | Select-Object -Unique)
+        $recordTypes = @('A', 'AAAA', 'HTTPS')
+
+        foreach ($server in $servers) {
+            foreach ($recordType in $recordTypes) {
+                try {
+                    $result = Resolve-DnsName -Name 'google.com' -Server $server -Type $recordType -DnsOnly -ErrorAction Stop
+                    $resolvedValue = $result |
+                        Where-Object {
+                            ($_.PSObject.Properties['IPAddress'] -and $_.IPAddress) -or
+                            ($_.PSObject.Properties['NameHost'] -and $_.NameHost) -or
+                            ($_.PSObject.Properties['Strings'] -and $_.Strings)
+                        } |
+                        Select-Object -First 1
+
+                    if ($resolvedValue) {
+                        if ($resolvedValue.PSObject.Properties['IPAddress'] -and $resolvedValue.IPAddress) {
+                            Write-Host "OK: $server $recordType -> $($resolvedValue.IPAddress)"
+                        }
+                        elseif ($resolvedValue.PSObject.Properties['NameHost'] -and $resolvedValue.NameHost) {
+                            Write-Host "OK: $server $recordType -> $($resolvedValue.NameHost)"
+                        }
+                        elseif ($resolvedValue.PSObject.Properties['Strings'] -and $resolvedValue.Strings) {
+                            Write-Host "OK: $server $recordType -> $($resolvedValue.Strings -join ', ')"
+                        }
+                        else {
+                            Write-Host "OK: $server $recordType returned a DNS answer"
+                        }
+                    }
+                    else {
+                        Write-Host "OK: $server $recordType returned a DNS answer"
+                    }
                 }
-                else {
-                    Write-Host "OK: Direct upstream resolution via $server returned a DNS answer"
+                catch {
+                    Write-Host "WARN: $server $recordType failed: $_"
                 }
             }
-            catch {
-                Write-Host "WARN: Direct upstream resolution via $server failed: $_"
+        }
+
+        $serviceExecutable = Join-Path $acrylicPath 'AcrylicService.exe'
+        if (Test-Path $serviceExecutable) {
+            $fileVersion = (Get-Item $serviceExecutable).VersionInfo.FileVersion
+            if ($fileVersion) {
+                Write-Host "OK: AcrylicService.exe version $fileVersion"
             }
         }
     }
@@ -325,6 +398,8 @@ function Test-InstalledDnsProxyResolution {
     if (-not $acrylicService -or $acrylicService.Status -ne 'Running') {
         Fail-Step 'Acrylic DNS Proxy service is not running after installation.'
     }
+
+    Set-AcrylicDiagnosticLogging
 
     $result = Resolve-OpenPathDnsWithRetry -Domain 'google.com' -MaxAttempts 20 -DelayMilliseconds 1500
     if (-not $result) {
