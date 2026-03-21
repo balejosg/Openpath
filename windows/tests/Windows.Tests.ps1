@@ -665,7 +665,7 @@ Describe "DNS Module" {
 
                 $content = ConvertTo-AcrylicHostsContent -Definition $definition
 
-                Assert-ContentContainsAll -Content $content -Needles @(
+                $expectedNeedles = @(
                     '# ESSENTIAL DOMAINS (always allowed)',
                     '# Whitelist source',
                     'FW raw.githubusercontent.com',
@@ -682,6 +682,10 @@ Describe "DNS Module" {
                     '# Upstream DNS: 1.1.1.1',
                     'NX *'
                 )
+
+                foreach ($needle in $expectedNeedles) {
+                    $content.Contains($needle) | Should -BeTrue -Because "Expected generated hosts content to include '$needle'"
+                }
 
                 $content | Should -Not -Match 'FORWARD >'
                 $content | Should -Not -Match 'NX >\*'
