@@ -1198,9 +1198,10 @@ function Get-OpenPathFromUrl {
         return $result
     }
 
-    # Validate that the downloaded content looks like a real whitelist
+    # Validate that the downloaded content looks like a real whitelist.
+    # A valid policy may legitimately contain a single allowed domain.
     $validDomains = $result.Whitelist | Where-Object { Test-OpenPathDomainFormat -Domain $_ }
-    $minRequiredDomains = 3
+    $minRequiredDomains = 1
     if ($validDomains.Count -lt $minRequiredDomains) {
         Write-OpenPathLog "Downloaded whitelist appears invalid ($($validDomains.Count) valid domains, minimum $minRequiredDomains required)" -Level ERROR
         throw "Invalid whitelist content: insufficient valid domains ($($validDomains.Count)/$minRequiredDomains)"

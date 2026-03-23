@@ -361,6 +361,21 @@ Describe "Common Module - Mocked Tests" {
             $result.Whitelist | Should -HaveCount 3
         }
 
+        It "Accepts structured whitelist with a single valid domain" {
+            Mock Invoke-OpenPathHttpGetText {
+                [PSCustomObject]@{
+                    StatusCode = 200
+                    Content    = "## WHITELIST`nsingle-domain.example"
+                    ETag       = $null
+                }
+            } -ModuleName Common
+
+            $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
+            $result.IsDisabled | Should -BeFalse
+            $result.Whitelist | Should -HaveCount 1
+            $result.Whitelist[0] | Should -Be "single-domain.example"
+        }
+
         It "Rejects whitelist with insufficient valid domains" {
             Mock Invoke-OpenPathHttpGetText {
                 [PSCustomObject]@{ StatusCode = 200; Content = "not-a-domain"; ETag = $null }
