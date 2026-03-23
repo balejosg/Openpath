@@ -752,10 +752,85 @@ Describe "DNS Module" {
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                '"IgnoreNegativeResponsesFromPrimaryServer" = "Yes"',
-                '"IgnoreNegativeResponsesFromSecondaryServer" = "Yes"',
+                '"IgnoreNegativeResponsesFromPrimaryServer" = "No"',
+                '"IgnoreNegativeResponsesFromSecondaryServer" = "No"',
+                '"AddressCacheDisabled" = "Yes"',
                 '"AddressCacheNegativeTime" = "0"'
             )
+        }
+
+        It "Writes allowlist affinity masks into AcrylicConfiguration.ini" {
+            $script:capturedAcrylicConfig = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS -ParameterFilter { $Path -like '*AcrylicConfiguration.ini' }
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Set-AcrylicConfiguration -WhitelistedDomains @('example.com', 'test.com')
+
+            $result | Should -BeTrue
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'SecondaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'example.com;*.example.com',
+                'test.com;*.test.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'IgnoreNegativeResponsesFromSecondaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+        }
+
+        It "Purges AcrylicCache.dat before restarting the service" {
+            $script:removedAcrylicPaths = @()
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Test-Path {
+                param([string]$Path)
+
+                return ($Path -like '*AcrylicCache.dat')
+            } -ModuleName DNS
+            Mock Remove-Item {
+                param(
+                    [string]$Path,
+                    [switch]$Force,
+                    [object]$ErrorAction
+                )
+
+                $script:removedAcrylicPaths += $Path
+            } -ModuleName DNS
+            Mock Get-Service {
+                [PSCustomObject]@{
+                    Name = 'AcrylicDNSProxySvc'
+                    Status = 'Running'
+                }
+            } -ModuleName DNS
+            Mock Restart-Service { } -ModuleName DNS
+            Mock Start-Sleep { } -ModuleName DNS
+
+            $result = Restart-AcrylicService
+
+            $result | Should -BeTrue
+            $script:removedAcrylicPaths | Should -Contain 'C:\Program Files (x86)\Acrylic DNS Proxy\AcrylicCache.dat'
         }
     }
 

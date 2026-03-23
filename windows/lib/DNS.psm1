@@ -210,6 +210,59 @@ function Get-AcrylicForwardRules {
     )
 }
 
+function Get-AcrylicEssentialDomainGroups {
+    [CmdletBinding()]
+    param()
+
+    return @(
+        [PSCustomObject]@{
+            Comment = '# Whitelist source'
+            Domains = @('raw.githubusercontent.com', 'github.com', 'githubusercontent.com')
+        },
+        [PSCustomObject]@{
+            Comment = '# Captive portal detection'
+            Domains = @('detectportal.firefox.com', 'connectivity-check.ubuntu.com', 'captive.apple.com', 'www.msftconnecttest.com', 'msftconnecttest.com', 'clients3.google.com')
+        },
+        [PSCustomObject]@{
+            Comment = '# Windows Update (optional, comment out if not needed)'
+            Domains = @('windowsupdate.microsoft.com', 'update.microsoft.com')
+        },
+        [PSCustomObject]@{
+            Comment = '# NTP'
+            Domains = @('time.windows.com', 'time.google.com')
+        }
+    )
+}
+
+function Get-AcrylicAffinityMaskEntries {
+    [CmdletBinding()]
+    param(
+        [string[]]$Domains = @()
+    )
+
+    $entries = [System.Collections.Generic.List[string]]::new()
+    $seenEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($domain in @($Domains)) {
+        $normalizedDomain = ([string]$domain).Trim().TrimEnd('.')
+        if ($normalizedDomain.StartsWith('*.')) {
+            $normalizedDomain = $normalizedDomain.Substring(2)
+        }
+
+        if (-not $normalizedDomain) {
+            continue
+        }
+
+        foreach ($entry in @($normalizedDomain, "*.$normalizedDomain")) {
+            if ($seenEntries.Add($entry)) {
+                [void]$entries.Add($entry)
+            }
+        }
+    }
+
+    return $entries.ToArray()
+}
+
 function New-AcrylicHostsSection {
     [CmdletBinding()]
     param(
@@ -252,35 +305,18 @@ function New-AcrylicHostsDefinition {
         $wasTruncated = $true
     }
 
-    $essentialLines = @(
-        '# Whitelist source'
-    )
-    foreach ($domain in @('raw.githubusercontent.com', 'github.com', 'githubusercontent.com')) {
-        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
-    }
+    $essentialLines = @()
+    $essentialDomains = @()
+    foreach ($group in @(Get-AcrylicEssentialDomainGroups)) {
+        if ($essentialLines.Count -gt 0) {
+            $essentialLines += ''
+        }
 
-    $essentialLines += @(
-        '',
-        '# Captive portal detection'
-    )
-    foreach ($domain in @('detectportal.firefox.com', 'connectivity-check.ubuntu.com', 'captive.apple.com', 'www.msftconnecttest.com', 'msftconnecttest.com', 'clients3.google.com')) {
-        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
-    }
-
-    $essentialLines += @(
-        '',
-        '# Windows Update (optional, comment out if not needed)'
-    )
-    foreach ($domain in @('windowsupdate.microsoft.com', 'update.microsoft.com')) {
-        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
-    }
-
-    $essentialLines += @(
-        '',
-        '# NTP'
-    )
-    foreach ($domain in @('time.windows.com', 'time.google.com')) {
-        $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+        $essentialLines += $group.Comment
+        foreach ($domain in @($group.Domains)) {
+            $essentialDomains += $domain
+            $essentialLines += @(Get-AcrylicForwardRules -Domain $domain)
+        }
     }
 
     $blockedLines = @(
@@ -320,12 +356,17 @@ function New-AcrylicHostsDefinition {
         -Description 'This MUST come last after FW rules.' `
         -Lines @('NX *')
 
+    $affinityMaskEntries = Get-AcrylicAffinityMaskEntries -Domains @($essentialDomains + $effectiveWhitelistedDomains)
+
     return [PSCustomObject]@{
         UpstreamDNS = $DnsSettings.PrimaryDNS
         Sections = $sections
         WasTruncated = $wasTruncated
         OriginalWhitelistedDomainCount = $originalWhitelistedDomainCount
         EffectiveWhitelistedDomains = $effectiveWhitelistedDomains
+        EssentialDomains = @($essentialDomains)
+        AffinityMaskEntries = @($affinityMaskEntries)
+        DomainAffinityMask = ($affinityMaskEntries -join ';')
         BlockedSubdomains = @($BlockedSubdomains)
     }
 }
@@ -415,6 +456,12 @@ function Update-AcrylicHost {
     
     # Write to file
     $content | Set-Content $hostsPath -Encoding UTF8 -Force
+
+    $configurationUpdated = Set-AcrylicConfiguration -WhitelistedDomains $definition.EffectiveWhitelistedDomains
+    if (-not $configurationUpdated) {
+        Write-OpenPathLog "Failed to update AcrylicConfiguration.ini" -Level ERROR
+        return $false
+    }
     
     Write-OpenPathLog "AcrylicHosts.txt updated"
     return $true
@@ -426,7 +473,9 @@ function Set-AcrylicConfiguration {
         Configures AcrylicConfiguration.ini with optimal settings
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    param()
+    param(
+        [string[]]$WhitelistedDomains = @()
+    )
 
     $acrylicPath = Get-AcrylicPath
     if (-not $acrylicPath) {
@@ -440,6 +489,10 @@ function Set-AcrylicConfiguration {
     $configPath = "$acrylicPath\AcrylicConfiguration.ini"
 
     $dnsSettings = Get-OpenPathDnsSettings
+
+    $definition = New-AcrylicHostsDefinition `
+        -WhitelistedDomains $WhitelistedDomains `
+        -DnsSettings $dnsSettings
 
     Write-OpenPathLog "Configuring Acrylic..."
     
@@ -457,8 +510,11 @@ function Set-AcrylicConfiguration {
         "SecondaryServerAddress" = $dnsSettings.SecondaryDNS
         "LocalIPv4BindingAddress" = "127.0.0.1"
         "LocalIPv4BindingPort" = "53"
-        "IgnoreNegativeResponsesFromPrimaryServer" = "Yes"
-        "IgnoreNegativeResponsesFromSecondaryServer" = "Yes"
+        "PrimaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask
+        "SecondaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask
+        "IgnoreNegativeResponsesFromPrimaryServer" = "No"
+        "IgnoreNegativeResponsesFromSecondaryServer" = "No"
+        "AddressCacheDisabled" = "Yes"
         "AddressCacheNegativeTime" = "0"
         "CacheSize" = "65536"
         "HitLogFileName" = ""
@@ -482,6 +538,35 @@ function Set-AcrylicConfiguration {
     
     Write-OpenPathLog "Acrylic configuration updated"
     return $true
+}
+
+function Clear-AcrylicCache {
+    <#
+    .SYNOPSIS
+        Deletes AcrylicCache.dat so stale cached answers cannot bypass updated policy
+    #>
+    [CmdletBinding()]
+    param()
+
+    $acrylicPath = Get-AcrylicPath
+    if (-not $acrylicPath) {
+        return $false
+    }
+
+    $cachePath = "$acrylicPath\AcrylicCache.dat"
+    if (-not (Test-Path $cachePath)) {
+        return $true
+    }
+
+    try {
+        Remove-Item $cachePath -Force -ErrorAction SilentlyContinue
+        Write-OpenPathLog "Purged Acrylic address cache"
+        return $true
+    }
+    catch {
+        Write-OpenPathLog "Failed to purge Acrylic address cache: $_" -Level WARN
+        return $false
+    }
 }
 
 function Set-LocalDNS {
@@ -561,6 +646,8 @@ function Restart-AcrylicService {
     $serviceName = "AcrylicDNSProxySvc"
     
     try {
+        Clear-AcrylicCache | Out-Null
+
         $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
         
         if (-not $service) {
