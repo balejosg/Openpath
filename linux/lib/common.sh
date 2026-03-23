@@ -212,9 +212,10 @@ persist_machine_name() {
 }
 
 # Global variables (initialized at runtime) - exported for use by other scripts
-export PRIMARY_DNS=""
-export GATEWAY_IP=""
-export DNS_CHANGED=false
+# Preserve test/runtime overrides when this file is sourced more than once.
+export PRIMARY_DNS="${PRIMARY_DNS:-}"
+export GATEWAY_IP="${GATEWAY_IP:-}"
+export DNS_CHANGED="${DNS_CHANGED:-false}"
 
 # Arrays for whitelist parsing
 WHITELIST_DOMAINS=()
@@ -456,6 +457,217 @@ is_network_authenticated() {
     [ "$state" = "AUTHENTICATED" ]
 }
 
+get_url_host() {
+    local url="$1"
+    local without_scheme="${url#*://}"
+    local host_port="${without_scheme%%/*}"
+
+    host_port="${host_port##*@}"
+    echo "${host_port%%:*}"
+}
+
+is_openpath_domain_format() {
+    local domain="$1"
+
+    if declare -F validate_domain >/dev/null 2>&1; then
+        validate_domain "$domain"
+        return $?
+    fi
+
+    [ -z "$domain" ] && return 1
+    [ ${#domain} -lt 4 ] && return 1
+    [ ${#domain} -gt 253 ] && return 1
+
+    local check_domain="$domain"
+    if [[ "$domain" == \*.* ]]; then
+        check_domain="${domain:2}"
+    fi
+
+    [[ "$domain" == "*." ]] && return 1
+    [[ "$domain" == "*" ]] && return 1
+    [[ "$check_domain" =~ \.local$ ]] && return 1
+    [[ "$check_domain" =~ \.\. ]] && return 1
+    [[ "$check_domain" != *.* ]] && return 1
+
+    IFS='.' read -ra labels <<< "$check_domain"
+    [ ${#labels[@]} -lt 2 ] && return 1
+
+    local label index last_index
+    last_index=$((${#labels[@]} - 1))
+    for index in "${!labels[@]}"; do
+        label="${labels[$index]}"
+        [ -z "$label" ] && return 1
+        [ ${#label} -gt 63 ] && return 1
+        [[ "$label" == -* ]] && return 1
+        [[ "$label" == *- ]] && return 1
+
+        if [ "$index" -eq "$last_index" ]; then
+            [ ${#label} -lt 2 ] && return 1
+            [[ ! "$label" =~ ^[a-zA-Z]+$ ]] && return 1
+        else
+            [[ ! "$label" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]] && return 1
+        fi
+    done
+
+    return 0
+}
+
+append_unique_openpath_domain() {
+    local domain="$1"
+
+    [ -z "$domain" ] && return 0
+
+    local normalized
+    normalized=$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
+    if ! is_openpath_domain_format "$normalized"; then
+        return 0
+    fi
+
+    local existing
+    for existing in "${OPENPATH_PROTECTED_DOMAINS[@]}"; do
+        if [ "$existing" = "$normalized" ]; then
+            return 0
+        fi
+    done
+
+    OPENPATH_PROTECTED_DOMAINS+=("$normalized")
+}
+
+get_openpath_protected_domains() {
+    OPENPATH_PROTECTED_DOMAINS=()
+
+    local domain
+    for domain in \
+        raw.githubusercontent.com \
+        github.com \
+        githubusercontent.com \
+        api.github.com \
+        release-assets.githubusercontent.com \
+        objects.githubusercontent.com \
+        balejosg.github.io \
+        sourceforge.net \
+        downloads.sourceforge.net; do
+        append_unique_openpath_domain "$domain"
+    done
+
+    local whitelist_url=""
+    if [ -f "$WHITELIST_URL_CONF" ]; then
+        whitelist_url=$(tr -d '\r\n' < "$WHITELIST_URL_CONF" 2>/dev/null || true)
+    elif [ -n "${WHITELIST_URL:-}" ]; then
+        whitelist_url="$WHITELIST_URL"
+    elif [ -n "${DEFAULT_WHITELIST_URL:-}" ]; then
+        whitelist_url="$DEFAULT_WHITELIST_URL"
+    fi
+    append_unique_openpath_domain "$(get_url_host "$whitelist_url")"
+
+    local health_api_url=""
+    if [ -f "$HEALTH_API_URL_CONF" ]; then
+        health_api_url=$(tr -d '\r\n' < "$HEALTH_API_URL_CONF" 2>/dev/null || true)
+    fi
+    append_unique_openpath_domain "$(get_url_host "$health_api_url")"
+
+    printf '%s\n' "${OPENPATH_PROTECTED_DOMAINS[@]}"
+}
+
+is_openpath_protected_domain() {
+    local candidate="$1"
+    [ -z "$candidate" ] && return 1
+
+    local normalized
+    normalized=$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
+
+    local protected
+    while IFS= read -r protected; do
+        [ -z "$protected" ] && continue
+        if [ "$protected" = "$normalized" ]; then
+            return 0
+        fi
+    done < <(get_openpath_protected_domains)
+
+    return 1
+}
+
+get_blocked_path_host() {
+    local rule="$1"
+    [ -z "$rule" ] && return 1
+
+    local candidate="$rule"
+    candidate="${candidate#*://}"
+
+    while [[ "$candidate" == \** ]]; do
+        candidate="${candidate#\*}"
+    done
+    while [[ "$candidate" == .* ]]; do
+        candidate="${candidate#.}"
+    done
+
+    [ -z "$candidate" ] && return 1
+    [[ "$candidate" == /* ]] && return 1
+
+    local host="${candidate%%/*}"
+    host="${host%%\?*}"
+    host="${host%%\#*}"
+    host="${host%%:*}"
+    host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
+
+    if is_openpath_domain_format "$host"; then
+        printf '%s\n' "$host"
+        return 0
+    fi
+
+    return 1
+}
+
+protect_control_plane_rules() {
+    local protected_domain
+    while IFS= read -r protected_domain; do
+        [ -z "$protected_domain" ] && continue
+
+        local found=false
+        local domain
+        for domain in "${WHITELIST_DOMAINS[@]}"; do
+            if [ "$domain" = "$protected_domain" ]; then
+                found=true
+                break
+            fi
+        done
+
+        if [ "$found" = false ]; then
+            WHITELIST_DOMAINS+=("$protected_domain")
+        fi
+    done < <(get_openpath_protected_domains)
+
+    local filtered_subdomains=()
+    local removed_subdomains=0
+    local blocked_subdomain
+    for blocked_subdomain in "${BLOCKED_SUBDOMAINS[@]}"; do
+        if is_openpath_protected_domain "$blocked_subdomain"; then
+            removed_subdomains=$((removed_subdomains + 1))
+            continue
+        fi
+        filtered_subdomains+=("$blocked_subdomain")
+    done
+    BLOCKED_SUBDOMAINS=("${filtered_subdomains[@]}")
+
+    local filtered_paths=()
+    local removed_paths=0
+    local blocked_path
+    for blocked_path in "${BLOCKED_PATHS[@]}"; do
+        local blocked_path_host=""
+        blocked_path_host=$(get_blocked_path_host "$blocked_path" 2>/dev/null || true)
+        if [ -n "$blocked_path_host" ] && is_openpath_protected_domain "$blocked_path_host"; then
+            removed_paths=$((removed_paths + 1))
+            continue
+        fi
+        filtered_paths+=("$blocked_path")
+    done
+    BLOCKED_PATHS=("${filtered_paths[@]}")
+
+    if [ "$removed_subdomains" -gt 0 ] || [ "$removed_paths" -gt 0 ]; then
+        log_warn "Removed ${removed_subdomains} blocked subdomains and ${removed_paths} blocked paths targeting protected control-plane domains"
+    fi
+}
+
 # Parse whitelist file sections
 parse_whitelist_sections() {
     local file="$1"
@@ -504,6 +716,8 @@ parse_whitelist_sections() {
         esac
     done < "$file"
     
+    protect_control_plane_rules
+
     log "Parsed: ${#WHITELIST_DOMAINS[@]} domains, ${#BLOCKED_SUBDOMAINS[@]} blocked subdomains, ${#BLOCKED_PATHS[@]} blocked paths"
 }
 

@@ -22,6 +22,12 @@ set -o pipefail
 # Part of the OpenPath DNS system
 ################################################################################
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! declare -F get_openpath_protected_domains >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/common.sh" ]; then
+    # shellcheck source=./common.sh
+    source "$SCRIPT_DIR/common.sh"
+fi
+
 # =============================================================================
 # Security: Domain Validation
 # =============================================================================
@@ -289,10 +295,16 @@ address=/#/
 # Required for system operation
 # =============================================
 
-# Whitelist download (GitHub)
-server=/raw.githubusercontent.com/${PRIMARY_DNS}
-server=/github.com/${PRIMARY_DNS}
-server=/githubusercontent.com/${PRIMARY_DNS}
+# Control plane and bootstrap/download
+EOF
+
+    local protected_domain
+    while IFS= read -r protected_domain; do
+        [ -z "$protected_domain" ] && continue
+        echo "server=/${protected_domain}/${PRIMARY_DNS}" >> "$temp_conf"
+    done < <(get_openpath_protected_domains)
+
+    cat >> "$temp_conf" << EOF
 
 # Captive portal detection
 server=/detectportal.firefox.com/${PRIMARY_DNS}

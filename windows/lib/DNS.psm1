@@ -216,8 +216,8 @@ function Get-AcrylicEssentialDomainGroups {
 
     return @(
         [PSCustomObject]@{
-            Comment = '# Whitelist source'
-            Domains = @('raw.githubusercontent.com', 'github.com', 'githubusercontent.com')
+            Comment = '# Control plane and bootstrap/download'
+            Domains = @(Get-OpenPathProtectedDomains)
         },
         [PSCustomObject]@{
             Comment = '# Captive portal detection'

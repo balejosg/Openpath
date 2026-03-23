@@ -378,6 +378,96 @@ function Get-HostFromUrl {
     }
 }
 
+function Get-OpenPathProtectedDomains {
+    <#
+    .SYNOPSIS
+        Returns control-plane and bootstrap/download domains that must never be blocked
+    #>
+    $domains = [System.Collections.Generic.List[string]]::new()
+    $seenDomains = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($domain in @(
+            'raw.githubusercontent.com',
+            'github.com',
+            'githubusercontent.com',
+            'api.github.com',
+            'release-assets.githubusercontent.com',
+            'objects.githubusercontent.com',
+            'balejosg.github.io',
+            'sourceforge.net',
+            'downloads.sourceforge.net'
+        )) {
+        if ($domain -and $seenDomains.Add($domain)) {
+            $domains.Add($domain) | Out-Null
+        }
+    }
+
+    try {
+        $config = Get-OpenPathConfig
+        foreach ($urlProperty in @('whitelistUrl', 'apiUrl')) {
+            if (-not $config.PSObject.Properties[$urlProperty]) {
+                continue
+            }
+
+            $host = Get-HostFromUrl -Url ([string]$config.$urlProperty)
+            if (-not $host) {
+                continue
+            }
+
+            $normalizedHost = $host.Trim().Trim('.')
+            if ($normalizedHost -and (Test-OpenPathDomainFormat -Domain $normalizedHost) -and $seenDomains.Add($normalizedHost)) {
+                $domains.Add($normalizedHost) | Out-Null
+            }
+        }
+    }
+    catch {
+        Write-Debug "Protected domains unavailable from config: $_"
+    }
+
+    return @($domains)
+}
+
+function Get-OpenPathHostFromBlockedPathRule {
+    <#
+    .SYNOPSIS
+        Extracts the host portion from a blocked path rule when one is present
+    #>
+    param(
+        [string]$Rule
+    )
+
+    if (-not $Rule) {
+        return $null
+    }
+
+    $candidate = $Rule.Trim()
+    if (-not $candidate) {
+        return $null
+    }
+
+    $candidate = $candidate -replace '^\*://', ''
+    $candidate = $candidate -replace '^[a-zA-Z][a-zA-Z0-9+.-]*://', ''
+    $candidate = $candidate.TrimStart('*').TrimStart('.')
+
+    if (-not $candidate -or $candidate.StartsWith('/')) {
+        return $null
+    }
+
+    $host = ($candidate -split '[/?#]')[0]
+    $host = ($host -split ':')[0]
+    $host = $host.Trim().Trim('*').Trim('.')
+
+    if (-not $host) {
+        return $null
+    }
+
+    if (Test-OpenPathDomainFormat -Domain $host) {
+        return $host
+    }
+
+    return $null
+}
+
 function Test-OpenPathDomainFormat {
     <#
     .SYNOPSIS
@@ -1179,9 +1269,8 @@ function Get-OpenPathFromUrl {
         }
     }
     
-    Write-OpenPathLog "Parsed: $($result.Whitelist.Count) whitelisted, $($result.BlockedSubdomains.Count) blocked subdomains, $($result.BlockedPaths.Count) blocked paths, disabled=$($result.IsDisabled)"
-
     if ($result.IsDisabled) {
+        Write-OpenPathLog "Parsed: $($result.Whitelist.Count) whitelisted, $($result.BlockedSubdomains.Count) blocked subdomains, $($result.BlockedPaths.Count) blocked paths, disabled=$($result.IsDisabled)"
         Write-OpenPathLog "Remote disable marker detected - skipping minimum-domain validation" -Level WARN
         if ($newEtag) {
             try {
@@ -1197,6 +1286,70 @@ function Get-OpenPathFromUrl {
         }
         return $result
     }
+
+    $protectedDomains = @(Get-OpenPathProtectedDomains)
+    $protectedDomainSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($domain in $protectedDomains) {
+        if ($domain) {
+            $protectedDomainSet.Add($domain) | Out-Null
+        }
+    }
+
+    if ($protectedDomainSet.Count -gt 0) {
+        $effectiveWhitelist = [System.Collections.Generic.List[string]]::new()
+        $whitelistSeen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($domain in @($result.Whitelist) + $protectedDomains) {
+            $normalizedDomain = ([string]$domain).Trim().Trim('.')
+            if (-not $normalizedDomain) {
+                continue
+            }
+
+            if ((Test-OpenPathDomainFormat -Domain $normalizedDomain) -and $whitelistSeen.Add($normalizedDomain)) {
+                $effectiveWhitelist.Add($normalizedDomain) | Out-Null
+            }
+        }
+
+        $blockedSubdomainRemovals = 0
+        $filteredBlockedSubdomains = @(
+            foreach ($subdomain in @($result.BlockedSubdomains)) {
+                $normalizedSubdomain = ([string]$subdomain).Trim().Trim('.')
+                if (-not $normalizedSubdomain) {
+                    continue
+                }
+
+                if ($protectedDomainSet.Contains($normalizedSubdomain)) {
+                    $blockedSubdomainRemovals++
+                    continue
+                }
+
+                $normalizedSubdomain
+            }
+        )
+
+        $blockedPathRemovals = 0
+        $filteredBlockedPaths = @(
+            foreach ($pathRule in @($result.BlockedPaths)) {
+                $protectedPathHost = Get-OpenPathHostFromBlockedPathRule -Rule $pathRule
+                if ($protectedPathHost -and $protectedDomainSet.Contains($protectedPathHost)) {
+                    $blockedPathRemovals++
+                    continue
+                }
+
+                $pathRule
+            }
+        )
+
+        if ($blockedSubdomainRemovals -gt 0 -or $blockedPathRemovals -gt 0) {
+            Write-OpenPathLog "Removed $blockedSubdomainRemovals blocked subdomains and $blockedPathRemovals blocked paths targeting protected control-plane domains" -Level WARN
+        }
+
+        $result.Whitelist = @($effectiveWhitelist)
+        $result.BlockedSubdomains = @($filteredBlockedSubdomains)
+        $result.BlockedPaths = @($filteredBlockedPaths)
+    }
+
+    Write-OpenPathLog "Parsed: $($result.Whitelist.Count) whitelisted, $($result.BlockedSubdomains.Count) blocked subdomains, $($result.BlockedPaths.Count) blocked paths, disabled=$($result.IsDisabled)"
 
     # Validate that the downloaded content looks like a real whitelist.
     # A valid policy may legitimately contain a single allowed domain.
@@ -1706,6 +1859,7 @@ Export-ModuleMember -Function @(
     'Set-OpenPathConfigValue',
     'Get-OpenPathFileAgeHours',
     'Get-HostFromUrl',
+    'Get-OpenPathProtectedDomains',
     'ConvertTo-OpenPathMachineName',
     'Get-OpenPathMachineName',
     'Test-OpenPathDomainFormat',

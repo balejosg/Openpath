@@ -159,7 +159,7 @@ teardown() {
     parse_whitelist_sections "$wl_file"
     
     # Check WHITELIST_DOMAINS array
-    [ ${#WHITELIST_DOMAINS[@]} -eq 3 ]
+    [ ${#WHITELIST_DOMAINS[@]} -ge 3 ]
     [[ " ${WHITELIST_DOMAINS[*]} " == *" google.com "* ]]
     [[ " ${WHITELIST_DOMAINS[*]} " == *" github.com "* ]]
 }
@@ -186,6 +186,39 @@ teardown() {
     
     [ ${#BLOCKED_PATHS[@]} -eq 2 ]
     [[ " ${BLOCKED_PATHS[*]} " == *" example.org/ads "* ]]
+}
+
+@test "parse_whitelist_sections preserves protected control-plane domains and strips their block rules" {
+    local wl_file="$TEST_TMP_DIR/protected-whitelist.txt"
+    cat > "$wl_file" <<'EOF'
+## WHITELIST
+safe.example
+
+## BLOCKED-SUBDOMAINS
+classroompath.example
+
+## BLOCKED-PATHS
+downloads.example/blocked
+EOF
+
+    ETC_CONFIG_DIR="$TEST_TMP_DIR/etc"
+    WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+    HEALTH_API_URL_CONF="$ETC_CONFIG_DIR/health-api-url.conf"
+    mkdir -p "$ETC_CONFIG_DIR"
+    echo "https://downloads.example/w/token/whitelist.txt" > "$WHITELIST_URL_CONF"
+    echo "https://classroompath.example" > "$HEALTH_API_URL_CONF"
+
+    source "$PROJECT_DIR/linux/lib/common.sh"
+    log() { echo "$1"; }
+    log_warn() { echo "$1"; }
+
+    parse_whitelist_sections "$wl_file"
+
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" safe.example "* ]]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" classroompath.example "* ]]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" downloads.example "* ]]
+    [[ " ${BLOCKED_SUBDOMAINS[*]} " != *" classroompath.example "* ]]
+    [[ " ${BLOCKED_PATHS[*]} " != *" downloads.example/blocked "* ]]
 }
 
 @test "parse_whitelist_sections handles nonexistent file" {

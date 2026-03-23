@@ -93,18 +93,19 @@ github.com"
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
     export VERSION="3.5"
+    export LOG_FILE="$TEST_TMP_DIR/openpath.log"
     
     mkdir -p "$(dirname "$DNSMASQ_CONF")"
-    
-    # Initialize arrays
-    WHITELIST_DOMAINS=("google.com" "github.com")
-    BLOCKED_SUBDOMAINS=()
-    
-    # Mock log
+
     log() { echo "$1"; }
     export -f log
     
+    source "$PROJECT_DIR/linux/lib/common.sh"
     source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    WHITELIST_DOMAINS=("google.com" "github.com")
+    BLOCKED_SUBDOMAINS=()
+    BLOCKED_PATHS=()
     
     run generate_dnsmasq_config
     [ "$status" -eq 0 ]
@@ -115,16 +116,19 @@ github.com"
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
     export VERSION="3.5"
+    export LOG_FILE="$TEST_TMP_DIR/openpath.log"
     
     mkdir -p "$(dirname "$DNSMASQ_CONF")"
-    
-    WHITELIST_DOMAINS=("google.com")
-    BLOCKED_SUBDOMAINS=()
-    
+
     log() { echo "$1"; }
     export -f log
     
+    source "$PROJECT_DIR/linux/lib/common.sh"
     source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    WHITELIST_DOMAINS=("google.com")
+    BLOCKED_SUBDOMAINS=()
+    BLOCKED_PATHS=()
     
     generate_dnsmasq_config
     
@@ -135,16 +139,19 @@ github.com"
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
     export VERSION="3.5"
+    export LOG_FILE="$TEST_TMP_DIR/openpath.log"
     
     mkdir -p "$(dirname "$DNSMASQ_CONF")"
-    
-    WHITELIST_DOMAINS=("example.org" "test.com")
-    BLOCKED_SUBDOMAINS=()
-    
+
     log() { echo "$1"; }
     export -f log
     
+    source "$PROJECT_DIR/linux/lib/common.sh"
     source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    WHITELIST_DOMAINS=("example.org" "test.com")
+    BLOCKED_SUBDOMAINS=()
+    BLOCKED_PATHS=()
     
     generate_dnsmasq_config
     
@@ -152,20 +159,56 @@ github.com"
     grep -q "server=/test.com/8.8.8.8" "$DNSMASQ_CONF"
 }
 
+@test "generate_dnsmasq_config includes protected control-plane and bootstrap domains" {
+    export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
+    export PRIMARY_DNS="8.8.8.8"
+    export VERSION="3.5"
+    export ETC_CONFIG_DIR="$TEST_TMP_DIR/etc"
+    export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+    export HEALTH_API_URL_CONF="$ETC_CONFIG_DIR/health-api-url.conf"
+    export LOG_FILE="$TEST_TMP_DIR/openpath.log"
+
+    mkdir -p "$(dirname "$DNSMASQ_CONF")" "$ETC_CONFIG_DIR"
+
+    echo "https://downloads.example/w/token/whitelist.txt" > "$WHITELIST_URL_CONF"
+    echo "https://classroompath.example" > "$HEALTH_API_URL_CONF"
+
+    WHITELIST_DOMAINS=("safe.example")
+    BLOCKED_SUBDOMAINS=()
+    BLOCKED_PATHS=()
+
+    log() { echo "$1"; }
+    export -f log
+
+    source "$PROJECT_DIR/linux/lib/common.sh"
+    source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    generate_dnsmasq_config
+
+    grep -q "server=/classroompath.example/8.8.8.8" "$DNSMASQ_CONF"
+    grep -q "server=/downloads.example/8.8.8.8" "$DNSMASQ_CONF"
+    grep -q "server=/api.github.com/8.8.8.8" "$DNSMASQ_CONF"
+    grep -q "server=/release-assets.githubusercontent.com/8.8.8.8" "$DNSMASQ_CONF"
+    grep -q "server=/downloads.sourceforge.net/8.8.8.8" "$DNSMASQ_CONF"
+}
+
 @test "generate_dnsmasq_config includes blocked subdomains" {
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
     export VERSION="3.5"
+    export LOG_FILE="$TEST_TMP_DIR/openpath.log"
     
     mkdir -p "$(dirname "$DNSMASQ_CONF")"
-    
-    WHITELIST_DOMAINS=("example.org")
-    BLOCKED_SUBDOMAINS=("ads.example.org")
-    
+
     log() { echo "$1"; }
     export -f log
     
+    source "$PROJECT_DIR/linux/lib/common.sh"
     source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    WHITELIST_DOMAINS=("example.org")
+    BLOCKED_SUBDOMAINS=("ads.example.org")
+    BLOCKED_PATHS=()
     
     generate_dnsmasq_config
     
