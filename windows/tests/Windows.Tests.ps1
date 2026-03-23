@@ -838,6 +838,52 @@ Describe "DNS Module" {
             $script:capturedAcrylicConfig | Should -Not -Match 'example\.com;'
         }
 
+        It "Allows updating Acrylic hosts before any classroom whitelist exists" {
+            $script:capturedAcrylicConfig = $null
+            $script:capturedHostsContent = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+
+                if ($Path -like '*AcrylicHosts.txt') {
+                    $script:capturedHostsContent = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Update-AcrylicHost -WhitelistedDomains @() -BlockedSubdomains @()
+
+            $result | Should -BeTrue
+            $script:capturedHostsContent | Should -Not -BeNullOrEmpty
+            $script:capturedHostsContent | Should -Match '# WHITELISTED DOMAINS \(0\)'
+            $script:capturedHostsContent | Should -Match 'NX \*'
+            $script:capturedHostsContent | Should -Not -Match 'FW example\.com'
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+        }
+
         It "Purges AcrylicCache.dat before restarting the service" {
             $script:removedAcrylicPaths = @()
 

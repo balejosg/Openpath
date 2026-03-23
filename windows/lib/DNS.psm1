@@ -424,6 +424,7 @@ function Update-AcrylicHost {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [string[]]$WhitelistedDomains,
 
         [string[]]$BlockedSubdomains = @()
