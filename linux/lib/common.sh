@@ -85,6 +85,9 @@ DEFAULT_WHITELIST_URL="${DEFAULT_WHITELIST_URL:-}"
 # Lock file for mutual exclusion between scripts that modify firewall/dnsmasq
 export OPENPATH_LOCK_FILE="${OPENPATH_LOCK_FILE:-/var/run/openpath.lock}"
 
+OPENPATH_PROTECTED_DOMAINS=()
+OPENPATH_PROTECTED_DOMAINS_READY=0
+
 # Acquire the shared OpenPath lock on file descriptor 200.
 # Intended for scripts that hold the lock for their entire runtime.
 # Returns 0 on success, 1 on failure.
@@ -533,8 +536,9 @@ append_unique_openpath_domain() {
     OPENPATH_PROTECTED_DOMAINS+=("$normalized")
 }
 
-get_openpath_protected_domains() {
+refresh_openpath_protected_domains() {
     OPENPATH_PROTECTED_DOMAINS=()
+    OPENPATH_PROTECTED_DOMAINS_READY=0
 
     local domain
     for domain in \
@@ -566,6 +570,18 @@ get_openpath_protected_domains() {
     fi
     append_unique_openpath_domain "$(get_url_host "$health_api_url")"
 
+    OPENPATH_PROTECTED_DOMAINS_READY=1
+}
+
+ensure_openpath_protected_domains() {
+    if [ "${OPENPATH_PROTECTED_DOMAINS_READY:-0}" -ne 1 ]; then
+        refresh_openpath_protected_domains
+    fi
+}
+
+get_openpath_protected_domains() {
+    refresh_openpath_protected_domains
+
     printf '%s\n' "${OPENPATH_PROTECTED_DOMAINS[@]}"
 }
 
@@ -576,13 +592,15 @@ is_openpath_protected_domain() {
     local normalized
     normalized=$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
 
+    ensure_openpath_protected_domains
+
     local protected
-    while IFS= read -r protected; do
+    for protected in "${OPENPATH_PROTECTED_DOMAINS[@]}"; do
         [ -z "$protected" ] && continue
         if [ "$protected" = "$normalized" ]; then
             return 0
         fi
-    done < <(get_openpath_protected_domains)
+    done
 
     return 1
 }
@@ -619,29 +637,35 @@ get_blocked_path_host() {
 }
 
 protect_control_plane_rules() {
+    refresh_openpath_protected_domains
+
+    local -A protected_domain_lookup=()
+    local -A whitelist_lookup=()
+
     local protected_domain
-    while IFS= read -r protected_domain; do
+    for protected_domain in "${OPENPATH_PROTECTED_DOMAINS[@]}"; do
         [ -z "$protected_domain" ] && continue
+        protected_domain_lookup["$protected_domain"]=1
+    done
 
-        local found=false
-        local domain
-        for domain in "${WHITELIST_DOMAINS[@]}"; do
-            if [ "$domain" = "$protected_domain" ]; then
-                found=true
-                break
-            fi
-        done
+    local domain
+    for domain in "${WHITELIST_DOMAINS[@]}"; do
+        [ -n "$domain" ] && whitelist_lookup["$domain"]=1
+    done
 
-        if [ "$found" = false ]; then
+    for protected_domain in "${OPENPATH_PROTECTED_DOMAINS[@]}"; do
+        [ -z "$protected_domain" ] && continue
+        if [ -z "${whitelist_lookup[$protected_domain]+x}" ]; then
             WHITELIST_DOMAINS+=("$protected_domain")
+            whitelist_lookup["$protected_domain"]=1
         fi
-    done < <(get_openpath_protected_domains)
+    done
 
     local filtered_subdomains=()
     local removed_subdomains=0
     local blocked_subdomain
     for blocked_subdomain in "${BLOCKED_SUBDOMAINS[@]}"; do
-        if is_openpath_protected_domain "$blocked_subdomain"; then
+        if [ -n "${protected_domain_lookup[$blocked_subdomain]+x}" ]; then
             removed_subdomains=$((removed_subdomains + 1))
             continue
         fi
@@ -655,7 +679,7 @@ protect_control_plane_rules() {
     for blocked_path in "${BLOCKED_PATHS[@]}"; do
         local blocked_path_host=""
         blocked_path_host=$(get_blocked_path_host "$blocked_path" 2>/dev/null || true)
-        if [ -n "$blocked_path_host" ] && is_openpath_protected_domain "$blocked_path_host"; then
+        if [ -n "$blocked_path_host" ] && [ -n "${protected_domain_lookup[$blocked_path_host]+x}" ]; then
             removed_paths=$((removed_paths + 1))
             continue
         fi
@@ -681,40 +705,34 @@ parse_whitelist_sections() {
         return 1
     fi
     
-    local section=""
-    
-    while IFS= read -r line || [ -n "$line" ]; do
-        # Detect sections
-        if [[ "$line" == "## WHITELIST" ]]; then
-            section="whitelist"
-            continue
-        elif [[ "$line" == "## BLOCKED-SUBDOMAINS" ]]; then
-            section="blocked_sub"
-            continue
-        elif [[ "$line" == "## BLOCKED-PATHS" ]]; then
-            section="blocked_path"
-            continue
-        fi
-        
-        # Ignore comments and empty lines
-        [[ "$line" =~ ^#.*$ ]] && continue
-        [[ -z "$line" ]] && continue
-        
-        # Assume whitelist if no section
-        [ -z "$section" ] && section="whitelist"
-        
-        case "$section" in
+    local entry_type=""
+    local entry_value=""
+    while IFS=$'\t' read -r entry_type entry_value; do
+        case "$entry_type" in
             "whitelist")
-                WHITELIST_DOMAINS+=("$line")
+                WHITELIST_DOMAINS+=("$entry_value")
                 ;;
             "blocked_sub")
-                BLOCKED_SUBDOMAINS+=("$line")
+                BLOCKED_SUBDOMAINS+=("$entry_value")
                 ;;
             "blocked_path")
-                BLOCKED_PATHS+=("$line")
+                BLOCKED_PATHS+=("$entry_value")
                 ;;
         esac
-    done < "$file"
+    done < <(
+        awk '
+            BEGIN { section = "whitelist" }
+            /^[[:space:]]*##[[:space:]]*WHITELIST[[:space:]]*$/ { section = "whitelist"; next }
+            /^[[:space:]]*##[[:space:]]*BLOCKED-SUBDOMAINS[[:space:]]*$/ { section = "blocked_sub"; next }
+            /^[[:space:]]*##[[:space:]]*BLOCKED-PATHS[[:space:]]*$/ { section = "blocked_path"; next }
+            /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+            {
+                line = $0
+                sub(/\r$/, "", line)
+                print section "\t" line
+            }
+        ' "$file"
+    )
     
     protect_control_plane_rules
 

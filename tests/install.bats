@@ -127,3 +127,11 @@ load 'test_helper'
     run grep -n "apt_install_with_retry()" "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 }
+
+@test "install.sh preserves the source tree after loading installed libraries" {
+    run grep -n 'INSTALLER_SOURCE_DIR="\$SCRIPT_DIR"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-update.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+}

@@ -47,7 +47,9 @@ teardown() {
     echo "Parsed 1000 domains in ${elapsed_ms}ms"
     # CI runners can be noisy; keep a stable threshold.
     [ "$elapsed_ms" -lt 3000 ]
-    [ "${#WHITELIST_DOMAINS[@]}" -eq 1000 ]
+    [ "${#WHITELIST_DOMAINS[@]}" -ge 1000 ]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" domain1.example.com "* ]]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" domain1000.example.com "* ]]
 }
 
 @test "parse 5000 domains under 15 seconds" {
@@ -67,7 +69,9 @@ teardown() {
     echo "Parsed 5000 domains in ${elapsed_ms}ms"
     # CI runners can be noisy; keep a stable threshold.
     [ "$elapsed_ms" -lt 15000 ]
-    [ "${#WHITELIST_DOMAINS[@]}" -eq 5000 ]
+    [ "${#WHITELIST_DOMAINS[@]}" -ge 5000 ]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" domain1.example.com "* ]]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" domain5000.example.com "* ]]
 }
 
 # =============================================================================

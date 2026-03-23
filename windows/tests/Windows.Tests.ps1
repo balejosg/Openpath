@@ -341,8 +341,10 @@ Describe "Common Module - Mocked Tests" {
             } -ModuleName Common
 
             $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
-            $result.Whitelist | Should -HaveCount 3
+            $result.Whitelist.Count | Should -BeGreaterOrEqual 3
             $result.Whitelist[0] | Should -Be "domain1.com"
+            $result.Whitelist | Should -Contain "domain2.com"
+            $result.Whitelist | Should -Contain "domain3.com"
             $result.BlockedSubdomains | Should -HaveCount 1
             $result.BlockedSubdomains[0] | Should -Be "bad.domain.com"
             $result.BlockedPaths | Should -HaveCount 1
@@ -377,7 +379,10 @@ Describe "Common Module - Mocked Tests" {
             } -ModuleName Common
 
             $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
-            $result.Whitelist | Should -HaveCount 3
+            $result.Whitelist.Count | Should -BeGreaterOrEqual 3
+            $result.Whitelist | Should -Contain "domain1.com"
+            $result.Whitelist | Should -Contain "domain2.com"
+            $result.Whitelist | Should -Contain "domain3.com"
         }
 
         It "Accepts structured whitelist with a single valid domain" {
@@ -391,24 +396,29 @@ Describe "Common Module - Mocked Tests" {
 
             $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
             $result.IsDisabled | Should -BeFalse
-            $result.Whitelist | Should -HaveCount 1
-            $result.Whitelist[0] | Should -Be "single-domain.example"
+            $result.Whitelist.Count | Should -BeGreaterOrEqual 1
+            $result.Whitelist | Should -Contain "single-domain.example"
         }
 
-        It "Rejects whitelist with insufficient valid domains" {
+        It "Falls back to protected domains when whitelist has insufficient valid domains" {
             Mock Invoke-OpenPathHttpGetText {
                 [PSCustomObject]@{ StatusCode = 200; Content = "not-a-domain"; ETag = $null }
             } -ModuleName Common
 
-            { Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt" } | Should -Throw "*Invalid whitelist*"
+            $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
+            $result.Whitelist.Count | Should -BeGreaterOrEqual 1
+            $result.Whitelist | Should -Contain "github.com"
+            $result.Whitelist | Should -Not -Contain "not-a-domain"
         }
 
-        It "Handles empty response content" {
+        It "Handles empty response content by retaining protected domains" {
             Mock Invoke-OpenPathHttpGetText {
                 [PSCustomObject]@{ StatusCode = 200; Content = ""; ETag = $null }
             } -ModuleName Common
 
-            { Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt" } | Should -Throw "*Invalid whitelist*"
+            $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
+            $result.Whitelist.Count | Should -BeGreaterOrEqual 1
+            $result.Whitelist | Should -Contain "github.com"
         }
 
         It "Protects control-plane hosts from blocked sections and injects them into the effective whitelist" {

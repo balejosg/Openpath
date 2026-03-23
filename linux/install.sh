@@ -36,7 +36,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION=$(cat "$SCRIPT_DIR/../VERSION" 2>/dev/null || echo "4.1.0")
+INSTALLER_SOURCE_DIR="$SCRIPT_DIR"
+VERSION=$(cat "$INSTALLER_SOURCE_DIR/../VERSION" 2>/dev/null || echo "4.1.0")
 
 # Directorios de instalación
 INSTALL_DIR="/usr/local/lib/openpath"
@@ -301,13 +302,13 @@ step_install_libraries() {
     mkdir -p "$INSTALL_DIR/lib"
     mkdir -p "$CONFIG_DIR"
 
-    cp "$SCRIPT_DIR/lib/common.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/dns.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/firewall.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/captive-portal.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/browser.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/services.sh" "$INSTALL_DIR/lib/"
-    cp "$SCRIPT_DIR/lib/rollback.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/common.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/dns.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/firewall.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/captive-portal.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/browser.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/services.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/rollback.sh" "$INSTALL_DIR/lib/"
 
     chmod +x "$INSTALL_DIR/lib/"*.sh
     echo "✓ Librerías instaladas"
@@ -360,22 +361,22 @@ step_install_scripts() {
     echo ""
     echo "[5/13] Instalando scripts..."
 
-    cp "$SCRIPT_DIR/scripts/runtime/openpath-update.sh" "$SCRIPTS_DIR/"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-update.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/openpath-update.sh"
 
-    cp "$SCRIPT_DIR/scripts/runtime/dnsmasq-watchdog.sh" "$SCRIPTS_DIR/"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/dnsmasq-watchdog.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/dnsmasq-watchdog.sh"
 
-    cp "$SCRIPT_DIR/scripts/runtime/captive-portal-detector.sh" "$SCRIPTS_DIR/"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/captive-portal-detector.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/captive-portal-detector.sh"
 
-    cp "$SCRIPT_DIR/scripts/runtime/openpath-sse-listener.sh" "$SCRIPTS_DIR/"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-sse-listener.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/openpath-sse-listener.sh"
 
-    cp "$SCRIPT_DIR/scripts/runtime/openpath-cmd.sh" "$SCRIPTS_DIR/openpath"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-cmd.sh" "$SCRIPTS_DIR/openpath"
     chmod +x "$SCRIPTS_DIR/openpath"
 
-    cp "$SCRIPT_DIR/scripts/runtime/openpath-self-update.sh" "$SCRIPTS_DIR/"
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-self-update.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/openpath-self-update.sh"
 
     create_dns_init_script
@@ -544,9 +545,9 @@ step_install_extension() {
     echo "[12/13] Instalando extensión Firefox..."
 
     if [ "$INSTALL_EXTENSION" = true ]; then
-        install_firefox_extension "$SCRIPT_DIR/firefox-extension"
+        install_firefox_extension "$INSTALLER_SOURCE_DIR/firefox-extension"
         if [ "$INSTALL_NATIVE_HOST" = true ]; then
-            install_native_host "$SCRIPT_DIR/firefox-extension/native"
+            install_native_host "$INSTALLER_SOURCE_DIR/firefox-extension/native"
         fi
         echo "✓ Extensión Firefox instalada"
     else
@@ -580,8 +581,8 @@ step_enable_services() {
 }
 
 run_smoke_tests() {
-    if [ -f "$SCRIPT_DIR/scripts/runtime/smoke-test.sh" ]; then
-        cp "$SCRIPT_DIR/scripts/runtime/smoke-test.sh" "$SCRIPTS_DIR/"
+    if [ -f "$INSTALLER_SOURCE_DIR/scripts/runtime/smoke-test.sh" ]; then
+        cp "$INSTALLER_SOURCE_DIR/scripts/runtime/smoke-test.sh" "$SCRIPTS_DIR/"
         chmod +x "$SCRIPTS_DIR/smoke-test.sh"
     fi
 
@@ -651,7 +652,7 @@ print_summary() {
     echo "  sudo smoke-test.sh        - Ejecutar smoke tests completos"
     echo "  sudo smoke-test.sh --quick - Solo tests críticos"
     echo ""
-    echo "Desinstalar: sudo $SCRIPT_DIR/uninstall.sh"
+    echo "Desinstalar: sudo $INSTALLER_SOURCE_DIR/uninstall.sh"
     echo ""
 }
 
