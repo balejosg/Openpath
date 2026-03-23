@@ -800,6 +800,44 @@ Describe "DNS Module" {
             )
         }
 
+        It "Allows install-time Acrylic configuration before any classroom whitelist exists" {
+            $script:capturedAcrylicConfig = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS -ParameterFilter { $Path -like '*AcrylicConfiguration.ini' }
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Set-AcrylicConfiguration
+
+            $result | Should -BeTrue
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+            $script:capturedAcrylicConfig | Should -Not -Match 'example\.com;'
+        }
+
         It "Purges AcrylicCache.dat before restarting the service" {
             $script:removedAcrylicPaths = @()
 

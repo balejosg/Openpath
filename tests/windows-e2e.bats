@@ -121,13 +121,19 @@ load 'test_helper'
     run grep -nF 'function Resolve-OpenPathDnsWithRetry' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"IgnoreNegativeResponsesFromPrimaryServer" = "Yes"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"IgnoreNegativeResponsesFromPrimaryServer" = "No"' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"IgnoreNegativeResponsesFromSecondaryServer" = "Yes"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"IgnoreNegativeResponsesFromSecondaryServer" = "No"' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
     run grep -nF '"AddressCacheNegativeTime" = "0"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"AddressCacheDisabled" = "Yes"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"PrimaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
     run grep -nF 'Start-Sleep -Milliseconds $DelayMilliseconds' "$PROJECT_DIR/windows/lib/DNS.psm1"

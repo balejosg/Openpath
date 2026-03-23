@@ -289,6 +289,7 @@ function New-AcrylicHostsDefinition {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [string[]]$WhitelistedDomains,
 
         [string[]]$BlockedSubdomains = @(),
@@ -474,6 +475,7 @@ function Set-AcrylicConfiguration {
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
+        [AllowEmptyCollection()]
         [string[]]$WhitelistedDomains = @()
     )
 
