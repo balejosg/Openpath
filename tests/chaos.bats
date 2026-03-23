@@ -114,8 +114,11 @@ teardown() {
 
     # Call directly (not with run) to check array
     parse_whitelist_sections "$WHITELIST_FILE"
-    # Arrays should be empty but defined
-    [ "${#WHITELIST_DOMAINS[@]}" -eq 0 ]
+    # Protected control-plane domains should still be preserved.
+    [ "${#WHITELIST_DOMAINS[@]}" -ge 1 ]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" github.com "* ]]
+    [ "${#BLOCKED_SUBDOMAINS[@]}" -eq 0 ]
+    [ "${#BLOCKED_PATHS[@]}" -eq 0 ]
 }
 
 # =============================================================================
