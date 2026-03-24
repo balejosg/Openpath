@@ -514,7 +514,7 @@ function Get-OpenPathRuntimeHealth {
 
     if (Get-Command -Name 'Test-DNSResolution' -ErrorAction SilentlyContinue) {
         try {
-            $dnsResolving = [bool](Test-DNSResolution -Domain 'google.com')
+            $dnsResolving = [bool](Test-DNSResolution)
         }
         catch {
             $dnsResolving = $false
@@ -525,6 +525,37 @@ function Get-OpenPathRuntimeHealth {
         DnsServiceRunning = [bool]$acrylicRunning
         DnsResolving = [bool]$dnsResolving
     }
+}
+
+function Get-OpenPathDnsProbeDomains {
+    <#
+    .SYNOPSIS
+        Returns candidate domains for DNS health probes based on the effective allowlist
+    #>
+    $domains = [System.Collections.Generic.List[string]]::new()
+    $seenDomains = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $whitelistPath = Join-Path $script:OpenPathRoot 'data\whitelist.txt'
+
+    try {
+        foreach ($domain in @(Get-ValidWhitelistDomainsFromFile -Path $whitelistPath)) {
+            $normalizedDomain = ([string]$domain).Trim().Trim('.')
+            if ($normalizedDomain -and (Test-OpenPathDomainFormat -Domain $normalizedDomain) -and $seenDomains.Add($normalizedDomain)) {
+                $domains.Add($normalizedDomain) | Out-Null
+            }
+        }
+    }
+    catch {
+        Write-Debug "DNS probe domains unavailable from whitelist: $_"
+    }
+
+    foreach ($domain in @(Get-OpenPathProtectedDomains)) {
+        $normalizedDomain = ([string]$domain).Trim().Trim('.')
+        if ($normalizedDomain -and (Test-OpenPathDomainFormat -Domain $normalizedDomain) -and $seenDomains.Add($normalizedDomain)) {
+            $domains.Add($normalizedDomain) | Out-Null
+        }
+    }
+
+    return @($domains)
 }
 
 function Get-ValidWhitelistDomainsFromFile {
@@ -1864,6 +1895,7 @@ Export-ModuleMember -Function @(
     'Get-OpenPathMachineName',
     'Test-OpenPathDomainFormat',
     'Get-OpenPathRuntimeHealth',
+    'Get-OpenPathDnsProbeDomains',
     'Get-ValidWhitelistDomainsFromFile',
     'Save-OpenPathWhitelistCheckpoint',
     'Get-OpenPathLatestCheckpoint',

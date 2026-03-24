@@ -571,7 +571,7 @@ else {
 }
 
 # Check DNS
-if (Test-DNSResolution -Domain "google.com") {
+if (Test-DNSResolution) {
     $checks += @{Name = "Resolucion DNS"; Status = "OK"}
 }
 else {
@@ -624,12 +624,22 @@ Write-Host "  - Agent version: $agentVersion"
 Write-Host "  - DNS upstream: $primaryDNS"
 Write-Host "  - Actualizacion: SSE real-time + cada 15 min (fallback)"
 Write-Host ""
+$dnsProbeDomain = '<allowed-domain>'
+try {
+    $resolvedProbeDomain = @((Get-OpenPathDnsProbeDomains) | Select-Object -First 1)[0]
+    if ($resolvedProbeDomain) {
+        $dnsProbeDomain = $resolvedProbeDomain
+    }
+}
+catch {
+    # Keep placeholder when no probe domain can be derived
+}
 Write-Host "Comandos utiles:"
 Write-Host "  .\OpenPath.ps1 status          # Estado del agente"
 Write-Host "  .\OpenPath.ps1 update          # Forzar actualizacion"
 Write-Host "  .\OpenPath.ps1 health          # Ejecutar watchdog"
 Write-Host "  .\OpenPath.ps1 self-update --check  # Comprobar actualizacion de agente"
-Write-Host "  nslookup google.com 127.0.0.1  # Probar DNS"
+Write-Host "  nslookup $dnsProbeDomain 127.0.0.1  # Probar DNS"
 Write-Host "  Get-ScheduledTask OpenPath-*  # Ver tareas"
 if ($classroomModeRequested) {
     Write-Host "  .\OpenPath.ps1 rotate-token -Secret <secret>  # Rotar token"

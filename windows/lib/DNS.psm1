@@ -812,18 +812,28 @@ function Test-DNSResolution {
     .SYNOPSIS
         Tests if DNS resolution is working correctly
     .PARAMETER Domain
-        Domain to test (should be whitelisted)
+        Optional domain to test. When omitted, uses the first policy-allowed probe domain.
     #>
     param(
-        [string]$Domain = "google.com",
+        [string]$Domain = "",
 
         [int]$MaxAttempts = 12,
 
         [int]$DelayMilliseconds = 1000
     )
 
+    $probeDomain = ([string]$Domain).Trim()
+    if (-not $probeDomain) {
+        $probeDomain = @((Get-OpenPathDnsProbeDomains) | Select-Object -First 1)[0]
+    }
+
+    if (-not $probeDomain) {
+        Write-OpenPathLog "DNS resolution probe skipped because no allowed probe domains are available" -Level WARN
+        return $false
+    }
+
     $result = Resolve-OpenPathDnsWithRetry `
-        -Domain $Domain `
+        -Domain $probeDomain `
         -MaxAttempts $MaxAttempts `
         -DelayMilliseconds $DelayMilliseconds
 

@@ -163,6 +163,25 @@ Describe "Common Module" {
         }
     }
 
+    Context "Get-OpenPathDnsProbeDomains" {
+        It "Prefers cached whitelist domains before protected fallbacks" {
+            $expectedWhitelistPath = 'C:\OpenPath\data\whitelist.txt'
+
+            Mock Test-Path { $true } -ModuleName Common -ParameterFilter { $Path -eq $expectedWhitelistPath }
+            Mock Get-ValidWhitelistDomainsFromFile { @('safe.example', 'allowed.example') } -ModuleName Common
+            Mock Get-OpenPathProtectedDomains { @('raw.githubusercontent.com', 'api.example.com') } -ModuleName Common
+
+            InModuleScope Common {
+                $domains = @(Get-OpenPathDnsProbeDomains)
+
+                $domains[0] | Should -Be 'safe.example'
+                $domains[1] | Should -Be 'allowed.example'
+                $domains | Should -Contain 'raw.githubusercontent.com'
+                $domains | Should -Contain 'api.example.com'
+            }
+        }
+    }
+
     Context "Machine identity helpers" {
         It "Canonicalizes machine names" {
             (ConvertTo-OpenPathMachineName -Value 'PC 01__Lab') | Should -Be 'pc-01-lab'
@@ -685,6 +704,19 @@ Describe "DNS Module" {
                 Test-Path $path | Should -BeTrue
             } else {
                 $path | Should -BeNullOrEmpty
+            }
+        }
+    }
+
+    Context "Test-DNSResolution" {
+        It "Uses the first allowed probe domain when no explicit domain is provided" {
+            Mock Get-OpenPathDnsProbeDomains { @('safe.example', 'fallback.example') } -ModuleName DNS
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '203.0.113.10' }) } -ModuleName DNS -ParameterFilter { $Name -eq 'safe.example' -and $Server -eq '127.0.0.1' }
+            Mock Start-Sleep { } -ModuleName DNS
+
+            InModuleScope DNS {
+                (Test-DNSResolution -MaxAttempts 1) | Should -BeTrue
+                Assert-MockCalled Resolve-DnsName -ModuleName DNS -Times 1 -Exactly -ParameterFilter { $Name -eq 'safe.example' -and $Server -eq '127.0.0.1' }
             }
         }
     }
@@ -1519,6 +1551,16 @@ Describe "Operational Command Script" {
             $content.Contains('& $ScriptPath @ScriptArguments') | Should -BeFalse
         }
     }
+
+    Context "DNS probe selection" {
+        It "Uses the shared probe selection instead of hard-coding google.com" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            $content.Contains("Test-DNSResolution -Domain 'google.com'") | Should -BeFalse
+            $content.Contains('Test-DNSResolution)') | Should -BeTrue
+        }
+    }
 }
 
 Describe "Update Script" {
@@ -1699,6 +1741,16 @@ Describe "Watchdog Script" {
         }
     }
 
+    Context "DNS probe selection" {
+        It "Relies on the shared DNS probe instead of a hard-coded public domain" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            $content.Contains('Test-DNSResolution -Domain "google.com"') | Should -BeFalse
+            $content.Contains('(Test-DNSResolution)') | Should -BeTrue
+        }
+    }
+
     Context "Checkpoint recovery" {
         It "Attempts checkpoint recovery when watchdog reaches CRITICAL" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
@@ -1845,6 +1897,20 @@ Describe "Installer" {
             $content.Contains('function Get-InstallerPrimaryDNS') | Should -BeTrue
             $content.Contains('$primaryDNS = Get-InstallerPrimaryDNS') | Should -BeTrue
             $content.Contains('Select-Object -First 1).ServerAddresses[0]') | Should -BeFalse
+        }
+    }
+
+    Context "DNS probe guidance" {
+        It "Derives the suggested nslookup domain from the shared probe list" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Get-OpenPathDnsProbeDomains',
+                'nslookup $dnsProbeDomain 127.0.0.1'
+            )
+            $content.Contains('Test-DNSResolution -Domain "google.com"') | Should -BeFalse
+            $content.Contains('nslookup google.com 127.0.0.1') | Should -BeFalse
         }
     }
 }

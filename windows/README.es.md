@@ -57,7 +57,7 @@ Si usas el modal de aulas en la React SPA, se genera un one-liner para descargar
 
 ```powershell
 # Probar DNS (debe resolver)
-nslookup google.com 127.0.0.1
+nslookup <dominio-permitido> 127.0.0.1
 
 # Probar sinkhole (debe fallar)
 nslookup facebook.com 127.0.0.1

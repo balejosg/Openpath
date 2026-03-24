@@ -60,7 +60,7 @@ If you use the React SPA classroom modal, it provides a one-liner that downloads
 
 ```powershell
 # Test DNS (should resolve)
-nslookup google.com 127.0.0.1
+nslookup <allowed-domain> 127.0.0.1
 
 # Test sinkhole (should fail)
 nslookup facebook.com 127.0.0.1

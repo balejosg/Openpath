@@ -158,7 +158,7 @@ function Show-OpenPathStatus {
     $firewallActive = $false
 
     try {
-        $dnsResolving = [bool](Test-DNSResolution -Domain 'google.com')
+        $dnsResolving = [bool](Test-DNSResolution)
     }
     catch {
         $dnsResolving = $false

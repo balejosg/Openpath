@@ -100,7 +100,7 @@ function Restore-CheckpointFromWatchdog {
     try {
         Start-Sleep -Seconds 2
 
-        if ((Test-DNSResolution -Domain "google.com") -and (Test-DNSSinkhole -Domain "this-should-be-blocked-test-12345.com")) {
+        if ((Test-DNSResolution) -and (Test-DNSSinkhole -Domain "this-should-be-blocked-test-12345.com")) {
             Write-OpenPathLog "Watchdog: Checkpoint recovery succeeded from $($restoreResult.CheckpointPath)" -Level WARN
             return $true
         }
@@ -149,10 +149,10 @@ catch {
     Write-OpenPathLog "Watchdog: Error checking Acrylic service: $_" -Level ERROR
 }
 
-# Check 2: DNS resolution working (should resolve whitelisted domain)
+# Check 2: DNS resolution working (should resolve an allowed domain)
 try {
-    if (-not $portalModeActive -and -not (Test-DNSResolution -Domain "google.com")) {
-        $issues += "DNS resolution failed for whitelisted domain"
+    if (-not $portalModeActive -and -not (Test-DNSResolution)) {
+        $issues += "DNS resolution failed for allowed domain"
         Write-OpenPathLog "Watchdog: DNS resolution failed, restarting Acrylic..." -Level WARN
         Restart-AcrylicService
         Start-Sleep -Seconds 3
