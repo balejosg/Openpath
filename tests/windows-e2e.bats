@@ -46,11 +46,20 @@ load 'test_helper'
     [ "$status" -ne 0 ]
 }
 
-@test "windows updater re-imports Common globally for standalone execution" {
-    run grep -nF 'Import-Module "$OpenPathRoot\lib\Common.psm1" -Force -Global' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+@test "windows standalone bootstrap imports dependent modules globally for updater execution" {
+    run grep -nF 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Update-OpenPath.ps1 failed to import required common commands' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    run grep -nF 'Initialize-OpenPathScriptSession' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force -Global' "$PROJECT_DIR/windows/lib/ScriptBootstrap.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Import-Module (Join-Path \$OpenPathRoot 'lib\Common.psm1') -Force -Global" "$PROJECT_DIR/windows/lib/ScriptBootstrap.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'Update-AcrylicHost'" "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
     [ "$status" -eq 0 ]
 }
 

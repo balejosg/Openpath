@@ -1532,7 +1532,7 @@ Describe "Script Bootstrap Module" {
                 '[string[]]$DependentModules = @()',
                 '[string[]]$RequiredCommands = @()',
                 '[string]$ScriptName = ''OpenPath script''',
-                'Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force',
+                'Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force -Global',
                 'Import-Module (Join-Path $OpenPathRoot ''lib\Common.psm1'') -Force -Global',
                 'failed to import required commands',
                 'Export-ModuleMember -Function @('
@@ -1759,7 +1759,7 @@ Describe "Watchdog Script" {
             $moduleContent = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $scriptContent -Needles @(
-                'CaptivePortal.psm1',
+                '-DependentModules @(''DNS'', ''Firewall'', ''CaptivePortal'')',
                 'Test-OpenPathCaptivePortalState',
                 'Enable-OpenPathCaptivePortalMode'
             )

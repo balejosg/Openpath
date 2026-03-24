@@ -23,7 +23,7 @@ function Initialize-OpenPathScriptSession {
             continue
         }
 
-        Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force
+        Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force -Global
     }
 
     # Re-import Common globally after dependent modules so exported helpers stay
