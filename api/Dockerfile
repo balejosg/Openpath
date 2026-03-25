@@ -54,8 +54,9 @@ COPY api/package.docker.json ./api/package.json
 COPY shared/package.docker.json ./shared/package.json
 COPY react-spa/package.docker.json ./react-spa/package.json
 
-# Install production dependencies only
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev && npm cache clean --force
+# Install production dependencies only. The mounted npm cache is ephemeral and
+# not committed into the image, so cleaning it here only adds failure modes.
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 # Restore runtime package metadata and built artifacts from the builder stage
 COPY --from=builder /app/api/package.json ./api/package.json
