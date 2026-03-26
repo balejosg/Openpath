@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { prepareFirefoxReleaseArtifacts } from './build-firefox-release.mjs';
 
@@ -55,10 +56,60 @@ export function findSignedXpiArtifact(artifactsDir) {
   return xpiFiles[0];
 }
 
+function readManifest(manifestPath) {
+  if (!fs.existsSync(manifestPath)) {
+    fail(`manifest.json not found at ${manifestPath}`);
+  }
+
+  return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+}
+
+export function prepareSigningSourceDir(options) {
+  const { sourceDir = extensionRoot, version = '' } = options;
+  const resolvedSourceDir = path.resolve(sourceDir);
+  const manifestPath = path.join(resolvedSourceDir, 'manifest.json');
+  const manifest = readManifest(manifestPath);
+  const baseVersion =
+    typeof manifest.version === 'string' && manifest.version.trim().length > 0
+      ? manifest.version.trim()
+      : '';
+
+  if (!baseVersion) {
+    fail(`manifest.json at ${manifestPath} must define a non-empty version`);
+  }
+
+  const effectiveVersion = version.trim() || baseVersion;
+  if (effectiveVersion === baseVersion) {
+    return {
+      sourceDir: resolvedSourceDir,
+      effectiveVersion,
+      cleanup() {},
+    };
+  }
+
+  const tempSourceDir = fs.mkdtempSync(path.join(tmpdir(), 'openpath-firefox-sign-'));
+  fs.cpSync(resolvedSourceDir, tempSourceDir, { recursive: true });
+
+  manifest.version = effectiveVersion;
+  fs.writeFileSync(
+    path.join(tempSourceDir, 'manifest.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`
+  );
+
+  return {
+    sourceDir: tempSourceDir,
+    effectiveVersion,
+    cleanup() {
+      fs.rmSync(tempSourceDir, { recursive: true, force: true });
+    },
+  };
+}
+
 function parseCliArgs(argv) {
   const parsed = {
     installUrl: '',
     artifactsDir: defaultArtifactsDir,
+    version: '',
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -74,14 +125,19 @@ function parseCliArgs(argv) {
         parsed.artifactsDir = next;
         index += 1;
         break;
+      case '--version':
+        parsed.version = next;
+        index += 1;
+        break;
       case '--help':
       case '-h':
         console.log(`Usage:
-  WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... node sign-firefox-release.mjs [--install-url https://...]
+  WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... node sign-firefox-release.mjs [--install-url https://...] [--version 2.0.0.123]
 
 Options:
   --install-url   Optional managed install URL to store in metadata.json
   --artifacts-dir Override the temporary web-ext artifacts directory
+  --version       Override manifest version for the signed release bundle
 `);
         process.exit(0);
         break;
@@ -97,37 +153,47 @@ Options:
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   try {
-    const { installUrl, artifactsDir } = parseCliArgs(process.argv.slice(2));
-    const args = buildWebExtSignArgs({
-      apiKey: process.env.WEB_EXT_API_KEY?.trim(),
-      apiSecret: process.env.WEB_EXT_API_SECRET?.trim(),
-      artifactsDir,
+    const { installUrl, artifactsDir, version } = parseCliArgs(process.argv.slice(2));
+    const signingSource = prepareSigningSourceDir({
       sourceDir: extensionRoot,
+      version,
     });
 
-    const result = spawnSync('npx', args, {
-      cwd: extensionRoot,
-      encoding: 'utf8',
-      stdio: 'inherit',
-    });
+    try {
+      const args = buildWebExtSignArgs({
+        apiKey: process.env.WEB_EXT_API_KEY?.trim(),
+        apiSecret: process.env.WEB_EXT_API_SECRET?.trim(),
+        artifactsDir,
+        sourceDir: signingSource.sourceDir,
+      });
 
-    if (result.status !== 0) {
-      fail(`web-ext sign failed with status ${String(result.status ?? 'unknown')}`);
-    }
+      const result = spawnSync('npx', args, {
+        cwd: extensionRoot,
+        encoding: 'utf8',
+        stdio: 'inherit',
+      });
 
-    const signedXpiPath = findSignedXpiArtifact(artifactsDir);
-    const prepared = prepareFirefoxReleaseArtifacts({
-      extensionRoot,
-      signedXpiPath,
-      installUrl,
-    });
+      if (result.status !== 0) {
+        fail(`web-ext sign failed with status ${String(result.status ?? 'unknown')}`);
+      }
 
-    console.log(
-      `[sign:firefox-release] Signed Firefox Release bundle ready in ${path.relative(
+      const signedXpiPath = findSignedXpiArtifact(artifactsDir);
+      const prepared = prepareFirefoxReleaseArtifacts({
         extensionRoot,
-        prepared.outputDir
-      )}`
-    );
+        signedXpiPath,
+        installUrl,
+        version: signingSource.effectiveVersion,
+      });
+
+      console.log(
+        `[sign:firefox-release] Signed Firefox Release bundle ready in ${path.relative(
+          extensionRoot,
+          prepared.outputDir
+        )}`
+      );
+    } finally {
+      signingSource.cleanup();
+    }
   } catch (error) {
     console.error(
       `[sign:firefox-release] ${error instanceof Error ? error.message : String(error)}`

@@ -1,6 +1,6 @@
 import { afterEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -39,11 +39,16 @@ interface SignFirefoxReleaseModule {
     sourceDir?: string;
   }) => string[];
   findSignedXpiArtifact: (artifactsDir: string) => string;
+  prepareSigningSourceDir: (options: { sourceDir?: string; version?: string }) => {
+    sourceDir: string;
+    effectiveVersion: string;
+    cleanup: () => void;
+  };
 }
 
 const { prepareFirefoxReleaseArtifacts } =
   (await import('../build-firefox-release.mjs')) as PrepareFirefoxReleaseArtifactsModule;
-const { buildWebExtSignArgs, findSignedXpiArtifact } =
+const { buildWebExtSignArgs, findSignedXpiArtifact, prepareSigningSourceDir } =
   (await import('../sign-firefox-release.mjs')) as SignFirefoxReleaseModule;
 
 const tempDirectories: string[] = [];
@@ -119,5 +124,28 @@ void describe('Firefox release signing helpers', () => {
     utimesSync(newerXpiPath, new Date('2026-03-26T11:00:00Z'), new Date('2026-03-26T11:00:00Z'));
 
     assert.equal(findSignedXpiArtifact(artifactsDir), newerXpiPath);
+  });
+
+  void test('prepareSigningSourceDir can override the manifest version in a temporary copy', () => {
+    const signingSource = prepareSigningSourceDir({
+      sourceDir: extensionRoot,
+      version: '2.0.0.123.4',
+    });
+
+    try {
+      assert.notEqual(
+        signingSource.sourceDir,
+        extensionRoot,
+        'version override should use a temporary signing directory'
+      );
+      assert.equal(signingSource.effectiveVersion, '2.0.0.123.4');
+
+      const manifest = JSON.parse(
+        readFileSync(path.join(signingSource.sourceDir, 'manifest.json'), 'utf8')
+      ) as { version?: string };
+      assert.equal(manifest.version, '2.0.0.123.4');
+    } finally {
+      signingSource.cleanup();
+    }
   });
 });
