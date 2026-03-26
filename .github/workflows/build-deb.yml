@@ -217,6 +217,28 @@ jobs:
             fi
           done
 
+      - name: Validate published package metadata
+        working-directory: gh-pages/apt
+        run: |
+          packages_file="dists/${{ env.SUITE }}/main/binary-amd64/Packages"
+
+          if [ ! -f "$packages_file" ]; then
+            echo "::error title=Published APT metadata missing Packages index::Expected $packages_file after publishing."
+            exit 1
+          fi
+
+          if ! grep -q '^Package: openpath-dnsmasq$' "$packages_file"; then
+            echo "::error title=Published APT metadata missing openpath-dnsmasq::Expected $packages_file to advertise openpath-dnsmasq."
+            cat "$packages_file"
+            exit 1
+          fi
+
+          if [ "${{ env.SUITE }}" = "stable" ] && grep -q '^Package: whitelist-dnsmasq$' "$packages_file"; then
+            echo "::error title=Legacy whitelist package leaked into stable metadata::Stable metadata must not advertise whitelist-dnsmasq."
+            cat "$packages_file"
+            exit 1
+          fi
+
       - name: Export GPG public key
         run: |
           gpg --armor --export ${{ env.GPG_KEY_ID }} > gh-pages/apt/pubkey.gpg

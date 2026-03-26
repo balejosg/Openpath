@@ -49,6 +49,17 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "apt bootstrap fails clearly when the selected track does not advertise openpath-dnsmasq" {
+    run grep -n 'apt-cache show openpath-dnsmasq' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'APT repository metadata does not advertise openpath-dnsmasq' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'stable track is still serving the legacy whitelist-dnsmasq package' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "stable deb publish workflow re-signs existing APT suites before exporting the public key" {
     run grep -n 'for suite in stable unstable; do' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
@@ -59,6 +70,14 @@ load 'test_helper'
 
 @test "stable deb publish workflow removes the legacy whitelist package before publishing" {
     run grep -n 'reprepro remove stable whitelist-dnsmasq || true' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "stable deb publish workflow validates the exported Packages metadata" {
+    run grep -n 'Published APT metadata missing openpath-dnsmasq' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'Legacy whitelist package leaked into stable metadata' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 }
 

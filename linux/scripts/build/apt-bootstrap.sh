@@ -124,7 +124,17 @@ curl -fsSL --proto '=https' --tlsv1.2 "$APT_SETUP_URL" -o "$setup_script"
 bash "$setup_script" "--$TRACK"
 echo "  OK Repository configured"
 
-echo "[3/4] Installing openpath-dnsmasq..."
+echo "[3/4] Validating and installing openpath-dnsmasq..."
+if ! apt-cache show openpath-dnsmasq >/dev/null 2>&1; then
+    echo "ERROR: APT repository metadata does not advertise openpath-dnsmasq."
+    if [ "$TRACK" = "stable" ] && apt-cache show whitelist-dnsmasq >/dev/null 2>&1; then
+        echo "  The stable track is still serving the legacy whitelist-dnsmasq package."
+    fi
+    echo "  Retry after the selected track is republished."
+    echo "  Temporary workaround (development builds only):"
+    echo "    curl -fsSL $APT_REPO_URL/apt-bootstrap.sh | sudo bash -s -- --unstable"
+    exit 1
+fi
 apt-get install -y openpath-dnsmasq
 echo "  OK Package installed"
 
