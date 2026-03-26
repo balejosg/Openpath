@@ -1542,9 +1542,11 @@ Describe "Browser Module" {
         It "Converts unresolved staged Windows XPI paths into file URLs" {
             Mock Resolve-Path { $null } -ModuleName Browser
 
-            $result = ConvertTo-OpenPathFileUrl -Path 'C:\OpenPath\browser-extension\firefox-release\openpath-firefox-extension.xpi'
+            InModuleScope Browser {
+                $result = ConvertTo-OpenPathFileUrl -Path 'C:\OpenPath\browser-extension\firefox-release\openpath-firefox-extension.xpi'
 
-            $result | Should -Be 'file:///C:/OpenPath/browser-extension/firefox-release/openpath-firefox-extension.xpi'
+                $result | Should -Be 'file:///C:/OpenPath/browser-extension/firefox-release/openpath-firefox-extension.xpi'
+            }
         }
     }
 
