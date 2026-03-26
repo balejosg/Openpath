@@ -1538,6 +1538,14 @@ Describe "Browser Module" {
             $policy.policies.ExtensionSettings.'monitor-bloqueos@openpath'.install_url | Should -Match '^file:///'
             $policy.policies.ExtensionSettings.'monitor-bloqueos@openpath'.install_url | Should -Match 'openpath-firefox-extension\.xpi$'
         }
+
+        It "Converts unresolved staged Windows XPI paths into file URLs" {
+            Mock Resolve-Path { $null } -ModuleName Browser
+
+            $result = ConvertTo-OpenPathFileUrl -Path 'C:\OpenPath\browser-extension\firefox-release\openpath-firefox-extension.xpi'
+
+            $result | Should -Be 'file:///C:/OpenPath/browser-extension/firefox-release/openpath-firefox-extension.xpi'
+        }
     }
 
     Context "Set-ChromePolicy" {

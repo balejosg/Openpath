@@ -25,8 +25,22 @@ function ConvertTo-OpenPathFileUrl {
 
     $resolvedPath = Resolve-Path $Path -ErrorAction SilentlyContinue
     $providerPath = if ($resolvedPath) { $resolvedPath.ProviderPath } else { $Path }
-    $uri = [System.Uri]::new($providerPath)
-    return $uri.AbsoluteUri
+    $absolutePath = [System.IO.Path]::GetFullPath($providerPath)
+
+    if ($absolutePath.StartsWith('\\')) {
+        $uncParts = $absolutePath.TrimStart('\') -split '\\', 2
+        $uriBuilder = [System.UriBuilder]::new()
+        $uriBuilder.Scheme = [System.Uri]::UriSchemeFile
+        $uriBuilder.Host = $uncParts[0]
+        $uriBuilder.Path = if ($uncParts.Length -gt 1) { $uncParts[1] -replace '\\', '/' } else { '' }
+        return $uriBuilder.Uri.AbsoluteUri
+    }
+
+    $uriBuilder = [System.UriBuilder]::new()
+    $uriBuilder.Scheme = [System.Uri]::UriSchemeFile
+    $uriBuilder.Host = ''
+    $uriBuilder.Path = $absolutePath -replace '\\', '/'
+    return $uriBuilder.Uri.AbsoluteUri
 }
 
 function Get-OpenPathFirefoxManagedExtensionPolicy {
