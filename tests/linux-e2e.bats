@@ -84,6 +84,17 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows installer stages Chromium managed rollout metadata when available" {
+    run grep -nF '$chromiumManagedCandidates = @(' "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'firefox-extension\build\chromium-managed' "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$OpenPathRoot\browser-extension\chromium-managed' "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows browser policies only force-install Firefox from signed distribution settings" {
     run grep -nF 'function Get-OpenPathFirefoxManagedExtensionPolicy' "$PROJECT_DIR/windows/lib/Browser.psm1"
     [ "$status" -eq 0 ]

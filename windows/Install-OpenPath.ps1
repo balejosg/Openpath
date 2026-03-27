@@ -397,15 +397,24 @@ elseif (-not ($FirefoxExtensionId -and $FirefoxExtensionInstallUrl)) {
     Write-Host "  Firefox browser policies will be applied without extension auto-install until a signed distribution is configured." -ForegroundColor Yellow
 }
 
-$chromiumManagedMetadataSource = Join-Path $scriptDir 'browser-extension\chromium-managed\metadata.json'
-if (Test-Path $chromiumManagedMetadataSource) {
+$chromiumManagedCandidates = @(
+    (Join-Path $scriptDir 'browser-extension\chromium-managed'),
+    (Join-Path $scriptDir 'firefox-extension\build\chromium-managed'),
+    (Join-Path (Split-Path $scriptDir -Parent) 'firefox-extension\build\chromium-managed')
+)
+$chromiumManagedSource = $chromiumManagedCandidates |
+    Where-Object { Test-Path (Join-Path $_ 'metadata.json') } |
+    Select-Object -First 1
+
+if ($chromiumManagedSource) {
     $chromiumManagedTarget = "$OpenPathRoot\browser-extension\chromium-managed"
+    Remove-Item $chromiumManagedTarget -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $chromiumManagedTarget -Force | Out-Null
-    Copy-Item $chromiumManagedMetadataSource -Destination (Join-Path $chromiumManagedTarget 'metadata.json') -Force
+    Copy-Item (Join-Path $chromiumManagedSource 'metadata.json') -Destination (Join-Path $chromiumManagedTarget 'metadata.json') -Force
     Write-Host "  Chromium managed rollout metadata staged in $OpenPathRoot\browser-extension\chromium-managed" -ForegroundColor Green
 }
 else {
-    Write-Host "  ADVERTENCIA: Chromium managed rollout metadata not found; Edge/Chrome managed extension install skipped" -ForegroundColor Yellow
+    Write-Host "  ADVERTENCIA: Chromium managed rollout metadata not found in browser-extension\chromium-managed or firefox-extension\build\chromium-managed; Edge/Chrome managed extension install skipped" -ForegroundColor Yellow
 }
 
 Write-Host "  Chrome/Edge extension auto-install is not available on unmanaged Windows; use Firefox auto-install or a managed CRX/update-manifest rollout." -ForegroundColor Yellow

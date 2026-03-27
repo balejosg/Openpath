@@ -78,6 +78,33 @@ Get-NetFirewallRule -DisplayName "OpenPath-*"
 - Chrome y Edge: OpenPath ahora deja la metadata del rollout gestionado en `C:\OpenPath\browser-extension\chromium-managed` y puede publicar un pipeline `CRX + manifiesto de actualización` cuando `firefox-extension/build/chromium-managed/` exista en el servidor. Genera esos artefactos con `npm run build:chromium-managed --workspace=@openpath/firefox-extension`.
 - El despliegue en Edge/Chrome sigue dependiendo de las restricciones de política enterprise del navegador en Windows. Si faltan los artefactos Chromium gestionados, OpenPath omite la instalación forzada y mantiene solo las políticas de bloqueo del navegador.
 
+### Despliegue gestionado de Edge/Chrome en Windows
+
+Usa este flujo cuando quieras que el instalador de Windows deje también la extensión provisionada
+automáticamente en Microsoft Edge y Google Chrome:
+
+1. Genera los artefactos Chromium gestionados en el servidor o fuente del paquete OpenPath:
+
+   ```bash
+   npm run build:chromium-managed --workspace=@openpath/firefox-extension
+   ```
+
+2. Conserva `build/chromium-managed/metadata.json` junto al paquete de la API. El bootstrap de
+   Windows ahora busca la metadata Chromium tanto en `browser-extension\chromium-managed\` como en
+   `firefox-extension\build\chromium-managed\`, replicando la misma lógica de fallback de Firefox
+   Release.
+3. Configura `apiUrl` en `C:\OpenPath\data\config.json` con la URL pública base de la API
+   OpenPath. Windows usa ese valor para construir `https://.../api/extensions/chromium/updates.xml`.
+4. Durante la instalación, OpenPath copia `metadata.json` en
+   `C:\OpenPath\browser-extension\chromium-managed\` y escribe `ExtensionInstallForcelist` para:
+   - `HKLM\SOFTWARE\Policies\Google\Chrome`
+   - `HKLM\SOFTWARE\Policies\Microsoft\Edge`
+
+Después el navegador descarga el CRX desde la API de OpenPath (`/api/extensions/chromium/openpath.crx`)
+usando ese manifiesto de actualización. Si falta `apiUrl` o faltan los artefactos Chromium
+gestionados, OpenPath mantiene las políticas de bloqueo del navegador pero omite la instalación
+automática de la extensión.
+
 ## Estructura
 
 ```
@@ -109,6 +136,7 @@ Editar `C:\OpenPath\data\config.json`:
 
 ```json
 {
+  "apiUrl": "https://api.example.com",
   "whitelistUrl": "http://servidor:3000/export/grupo.txt",
   "updateIntervalMinutes": 15,
   "primaryDNS": "8.8.8.8",

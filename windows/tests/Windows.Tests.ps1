@@ -2396,6 +2396,19 @@ Describe "Installer" {
             )
         }
 
+        It "Stages Chromium managed rollout metadata beneath the user-readable browser-extension ACL root" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$browserExtensionAclPath = "$OpenPathRoot\browser-extension"',
+                '$chromiumManagedCandidates = @(',
+                "firefox-extension\build\chromium-managed",
+                '$chromiumManagedTarget = "$OpenPathRoot\browser-extension\chromium-managed"',
+                'Chromium managed rollout metadata staged in $OpenPathRoot\browser-extension\chromium-managed'
+            )
+        }
+
         It "Stages Windows native host assets beneath the user-readable Firefox native directory" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
             $content = Get-Content $scriptPath -Raw

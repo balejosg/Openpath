@@ -78,6 +78,39 @@ npm run build:chromium-managed
 
 El script siempre prepara `build/chromium-unpacked/` para validación manual. Si además encuentra un navegador compatible para empaquetar y, opcionalmente, una clave estable en `OPENPATH_CHROMIUM_EXTENSION_KEY`, genera `build/chromium-managed/metadata.json` y `openpath-chromium-extension.crx` para el rollout gestionado que consume la API de Windows.
 
+Estructura esperada para `build/chromium-managed/`:
+
+```text
+build/chromium-managed/
+├── metadata.json
+└── openpath-chromium-extension.crx
+```
+
+`metadata.json` debe incluir al menos el ID Chromium y la versión:
+
+```json
+{
+  "extensionId": "abcdefghijklmnopabcdefghijklmnop",
+  "version": "1.0.0"
+}
+```
+
+Flujo recomendado para Windows:
+
+1. Genera `build/chromium-managed/` en el host que publica la API OpenPath.
+2. Asegura que `apiUrl` en `C:\OpenPath\data\config.json` apunta a esa API pública.
+3. El instalador de Windows busca la metadata Chromium en `browser-extension\chromium-managed\`
+   o `firefox-extension\build\chromium-managed\`, la copia bajo
+   `C:\OpenPath\browser-extension\chromium-managed\` y escribe `ExtensionInstallForcelist`
+   para Chrome y Edge.
+4. Chrome/Edge descargan el CRX usando:
+   - `GET /api/extensions/chromium/updates.xml`
+   - `GET /api/extensions/chromium/openpath.crx`
+
+- Si falta `apiUrl`, Windows no puede resolver la URL del manifiesto de actualización.
+- Si faltan `metadata.json` o el CRX publicado por la API, OpenPath mantiene las políticas de
+  bloqueo del navegador pero omite la auto-instalación en Edge/Chrome.
+
 ### Publicar en Firefox Add-ons (AMO)
 
 Para publicar la extensión en [addons.mozilla.org](https://addons.mozilla.org):

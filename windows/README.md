@@ -81,6 +81,32 @@ Get-NetFirewallRule -DisplayName "OpenPath-*"
 - Chrome and Edge: OpenPath now stages managed rollout metadata under `C:\OpenPath\browser-extension\chromium-managed` and can publish a managed `CRX + update manifest` pipeline when `firefox-extension/build/chromium-managed/` exists on the server. Build those artifacts with `npm run build:chromium-managed --workspace=@openpath/firefox-extension`.
 - Edge/Chrome rollout still depends on browser enterprise policy restrictions on Windows. If managed Chromium artifacts are absent, OpenPath skips the forced install and keeps only the browser blocking policies.
 
+### Managed Edge/Chrome rollout on Windows
+
+Use this flow when you want the Windows installer to provision the same extension automatically in
+Microsoft Edge and Google Chrome:
+
+1. Build the managed Chromium artifacts on the OpenPath server/package source:
+
+   ```bash
+   npm run build:chromium-managed --workspace=@openpath/firefox-extension
+   ```
+
+2. Keep `build/chromium-managed/metadata.json` with the API package. The Windows bootstrap now
+   looks for Chromium metadata in both `browser-extension\chromium-managed\` and
+   `firefox-extension\build\chromium-managed\`, mirroring the Firefox Release fallback logic.
+3. Set `apiUrl` in `C:\OpenPath\data\config.json` to the public OpenPath API base URL. Windows uses
+   that value to build `https://.../api/extensions/chromium/updates.xml`.
+4. During installation, OpenPath stages `metadata.json` to
+   `C:\OpenPath\browser-extension\chromium-managed\` and writes
+   `ExtensionInstallForcelist` for both:
+   - `HKLM\SOFTWARE\Policies\Google\Chrome`
+   - `HKLM\SOFTWARE\Policies\Microsoft\Edge`
+
+The browsers then download the CRX from the OpenPath API (`/api/extensions/chromium/openpath.crx`)
+using the managed update manifest. If `apiUrl` or the managed Chromium artifacts are missing,
+OpenPath keeps the browser blocking policies but skips extension auto-install.
+
 ## Structure
 
 ```
@@ -112,6 +138,7 @@ Edit `C:\OpenPath\data\config.json`:
 
 ```json
 {
+  "apiUrl": "https://api.example.com",
   "whitelistUrl": "http://server:3000/w/<token>/whitelist.txt",
   "version": "4.1.0",
   "updateIntervalMinutes": 15,
