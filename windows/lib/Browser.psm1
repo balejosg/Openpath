@@ -93,16 +93,33 @@ function Sync-OpenPathFirefoxNativeHostArtifacts {
     }
 
     $artifactNames = @('OpenPath-NativeHost.ps1', 'OpenPath-NativeHost.cmd')
-    $missingArtifacts = @(
-        $artifactNames | Where-Object { -not (Test-Path (Join-Path $SourceRoot $_)) }
-    )
+    $candidateRoots = @($SourceRoot, $nativeRoot) | Select-Object -Unique
+    $artifactSources = @{}
+    $missingArtifacts = @()
+
+    foreach ($artifactName in $artifactNames) {
+        $artifactSource = $candidateRoots |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path (Join-Path $_ $artifactName)) } |
+            Select-Object -First 1
+
+        if ($artifactSource) {
+            $artifactSources[$artifactName] = $artifactSource
+            continue
+        }
+
+        $missingArtifacts += $artifactName
+    }
 
     if ($missingArtifacts.Count -gt 0) {
         throw "Firefox native host artifacts not found in ${SourceRoot}: $($missingArtifacts -join ', ')"
     }
 
     foreach ($artifactName in $artifactNames) {
-        Copy-Item (Join-Path $SourceRoot $artifactName) -Destination (Join-Path $nativeRoot $artifactName) -Force
+        $sourcePath = Join-Path $artifactSources[$artifactName] $artifactName
+        $destinationPath = Join-Path $nativeRoot $artifactName
+        if (-not [string]::Equals($sourcePath, $destinationPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item $sourcePath -Destination $destinationPath -Force
+        }
     }
 
     return $true

@@ -1748,7 +1748,7 @@ Describe "Browser Module" {
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 "Write-Host '  doctor        Print focused diagnostics (for example: browser)'",
-                "Write-Host '  .\\OpenPath.ps1 doctor browser'",
+                "Write-Host '  .\OpenPath.ps1 doctor browser'",
                 "'doctor' {",
                 "'browser' {",
                 'Get-OpenPathBrowserDoctorReport'
@@ -1792,7 +1792,7 @@ Describe "Browser Module" {
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'function Grant-OpenPathTaskRunAccessToUsers',
-                "GetTask(\$TaskName)",
+                'GetTask($TaskName)',
                 'GetSecurityDescriptor(0xF)',
                 'SetSecurityDescriptor($updatedSecurityDescriptor, 0)',
                 "(A;;GRGX;;;BU)",
@@ -1983,8 +1983,8 @@ Describe "Services Module" {
             $content = Get-Content $commonPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                "Copy-Item -Path \$download.StagedPath -Destination \$download.DestinationPath -Force",
-                "Register-OpenPathFirefoxNativeHost -Config \$config | Out-Null"
+                'Copy-Item -Path $download.StagedPath -Destination $download.DestinationPath -Force',
+                'Register-OpenPathFirefoxNativeHost -Config $config | Out-Null'
             )
         }
     }
@@ -2433,12 +2433,24 @@ Describe "Installer" {
             $content = Get-Content $browserModulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Mozilla\NativeMessagingHosts\whitelist_native_host',
-                'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'function ConvertTo-OpenPathRegistryProviderPath',
+                'return "Registry::HKEY_LOCAL_MACHINE\\$($RegistryPath.Substring(5))"',
+                'if ($RegistryPath -match ''^HKLM\\'')',
                 'Remove-OpenPathRegistryKeyIfPresent -RegistryPath $registryPath',
                 'if (Test-Path $providerPath)'
             )
             $content.Contains('& reg.exe DELETE $registryPath /f 2>$null | Out-Null') | Should -BeFalse
+        }
+
+        It "Falls back to the staged native host directory during re-registration after self-update" {
+            $browserModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.psm1"
+            $content = Get-Content $browserModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$candidateRoots = @($SourceRoot, $nativeRoot) | Select-Object -Unique',
+                '$artifactSources[$artifactName] = $artifactSource',
+                '[string]::Equals($sourcePath, $destinationPath, [System.StringComparison]::OrdinalIgnoreCase)'
+            )
         }
     }
 
@@ -2610,8 +2622,9 @@ Describe "Uninstaller" {
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Mozilla\NativeMessagingHosts\whitelist_native_host',
-                'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'function Convert-ToRegistryProviderPath',
+                'return "Registry::HKEY_LOCAL_MACHINE\\$($RegistryPath.Substring(5))"',
+                'if ($RegistryPath -match ''^HKLM\\'')',
                 'if (Test-Path $providerPath)',
                 'Remove-Item -Path $providerPath -Recurse -Force -ErrorAction SilentlyContinue'
             )

@@ -41,6 +41,20 @@ import { sql } from 'drizzle-orm';
 
 export async function ensureSchedulesOneOffSchema(): Promise<void> {
   const ensureSchedules = [
+    'CREATE TABLE IF NOT EXISTS "schedules" (\n' +
+      '  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n' +
+      '  "classroom_id" varchar(50) NOT NULL,\n' +
+      '  "teacher_id" varchar(50) NOT NULL,\n' +
+      '  "group_id" varchar(100) NOT NULL,\n' +
+      '  "day_of_week" integer,\n' +
+      '  "start_time" time,\n' +
+      '  "end_time" time,\n' +
+      '  "start_at" timestamp with time zone,\n' +
+      '  "end_at" timestamp with time zone,\n' +
+      '  "recurrence" varchar(20) DEFAULT \'weekly\',\n' +
+      '  "created_at" timestamp with time zone DEFAULT now(),\n' +
+      '  "updated_at" timestamp with time zone DEFAULT now()\n' +
+      ');',
     'ALTER TABLE "schedules" ADD COLUMN IF NOT EXISTS "start_at" timestamp with time zone;',
     'ALTER TABLE "schedules" ADD COLUMN IF NOT EXISTS "end_at" timestamp with time zone;',
     'ALTER TABLE "schedules" ALTER COLUMN "day_of_week" DROP NOT NULL;',
