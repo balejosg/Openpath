@@ -213,6 +213,7 @@ jobs:
         with:
           build-shared: 'true'
           build-api: 'true'
+          build-extension: 'true'
 
       - name: Run database migrations
         run: |
