@@ -21,7 +21,7 @@ load 'test_helper'
 }
 
 @test "linux debian postinst treats firefox extension installation as best effort" {
-    run grep -nF 'install_firefox_extension /usr/share/openpath/firefox-extension || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    run grep -nF 'install_firefox_extension /usr/share/openpath/firefox-extension /usr/share/openpath/firefox-release || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
     [ "$status" -eq 0 ]
 }
 
@@ -32,6 +32,22 @@ load 'test_helper'
 
 @test "linux deb build includes browser native host assets" {
     run grep -nF 'cp -r "$ROOT_DIR/firefox-extension/native" "$BUILD_DIR/usr/share/openpath/firefox-extension/"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux deb build stages Firefox release artifacts when available" {
+    run grep -nF '$ROOT_DIR/firefox-extension/build/firefox-release' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$BUILD_DIR/usr/share/openpath/firefox-release' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux install script stages Firefox release artifacts when available" {
+    run grep -nF '$INSTALL_DIR/firefox-release' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$INSTALLER_SOURCE_DIR/firefox-extension/build/firefox-release' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 }
 

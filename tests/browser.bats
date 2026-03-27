@@ -11,6 +11,7 @@ setup() {
     export CONFIG_DIR="$TEST_TMP_DIR/config"
     export INSTALL_DIR="$TEST_TMP_DIR/install"
     export FIREFOX_POLICIES="$TEST_TMP_DIR/firefox/policies/policies.json"
+    export FIREFOX_EXTENSIONS_ROOT="$TEST_TMP_DIR/share/mozilla/extensions"
     export CHROMIUM_POLICIES_BASE="$TEST_TMP_DIR/chromium/policies/managed"
     export BROWSER_POLICIES_HASH="$CONFIG_DIR/browser-policies.hash"
     export CHROME_EXTERNAL_EXTENSIONS_DIR="$TEST_TMP_DIR/chrome/extensions"
@@ -22,6 +23,7 @@ setup() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$INSTALL_DIR/lib"
     mkdir -p "$(dirname "$FIREFOX_POLICIES")"
+    mkdir -p "$FIREFOX_EXTENSIONS_ROOT"
     mkdir -p "$CHROMIUM_POLICIES_BASE"
     mkdir -p "$CHROME_EXTERNAL_EXTENSIONS_DIR"
     mkdir -p "$EDGE_EXTERNAL_EXTENSIONS_DIR"
@@ -293,43 +295,68 @@ teardown() {
 @test "install_firefox_extension copies extension files" {
     # Create mock extension directory
     local ext_dir="$TEST_TMP_DIR/firefox-extension"
-    mkdir -p "$ext_dir/popup" "$ext_dir/icons"
+    mkdir -p "$ext_dir/dist/lib" "$ext_dir/popup" "$ext_dir/icons" "$ext_dir/blocked"
     echo '{"manifest_version": 2}' > "$ext_dir/manifest.json"
-    echo 'console.log("bg");' > "$ext_dir/background.js"
+    echo 'console.log("bg");' > "$ext_dir/dist/background.js"
+    echo 'console.log("popup");' > "$ext_dir/dist/popup.js"
+    echo 'console.log("lib");' > "$ext_dir/dist/lib/runtime.js"
     touch "$ext_dir/popup/popup.html"
     touch "$ext_dir/icons/icon-48.png"
+    touch "$ext_dir/blocked/blocked.html"
+    touch "$ext_dir/blocked/blocked.css"
+    touch "$ext_dir/blocked/blocked.js"
     
     # Mock the system extension directory to be in TEST_TMP_DIR
-    local ext_install_dir="$TEST_TMP_DIR/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/monitor-bloqueos@openpath"
+    local ext_install_dir="$FIREFOX_EXTENSIONS_ROOT/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/monitor-bloqueos@openpath"
     
     source "$PROJECT_DIR/linux/lib/browser.sh"
     
     # Mock functions to use test directory
     detect_firefox_dir() { echo "$TEST_TMP_DIR/usr/lib/firefox-esr"; }
     generate_firefox_autoconfig() { return 0; }
-    add_extension_to_policies() { return 0; }
-    export -f detect_firefox_dir generate_firefox_autoconfig add_extension_to_policies
-    
-    # Override the install function to use test directory
-    install_firefox_extension() {
-        local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
-        mkdir -p "$ext_install_dir"
-        cp "$ext_source/manifest.json" "$ext_install_dir/"
-        cp "$ext_source/background.js" "$ext_install_dir/"
-        cp -r "$ext_source/popup" "$ext_install_dir/"
-        cp -r "$ext_source/icons" "$ext_install_dir/"
-        return 0
-    }
-    export -f install_firefox_extension
+    export -f detect_firefox_dir generate_firefox_autoconfig
     
     run install_firefox_extension "$ext_dir"
     [ "$status" -eq 0 ]
     
     # Check files were copied
     [ -f "$ext_install_dir/manifest.json" ]
-    [ -f "$ext_install_dir/background.js" ]
+    [ -f "$ext_install_dir/dist/background.js" ]
+    [ -f "$ext_install_dir/dist/popup.js" ]
+    [ -f "$ext_install_dir/dist/lib/runtime.js" ]
     [ -d "$ext_install_dir/popup" ]
     [ -d "$ext_install_dir/icons" ]
+    [ -d "$ext_install_dir/blocked" ]
+}
+
+@test "install_firefox_extension prefers signed Firefox release artifacts when available" {
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$release_dir"
+    cat > "$release_dir/metadata.json" <<'EOF'
+{"extensionId":"monitor-bloqueos@openpath","version":"2.0.0"}
+EOF
+    touch "$release_dir/openpath-firefox-extension.xpi"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    generate_firefox_autoconfig() {
+        echo "called" > "$TEST_TMP_DIR/autoconfig-called"
+        return 0
+    }
+    add_extension_to_policies() {
+        printf '%s\n%s\n%s\n' "$1" "$2" "$3" > "$TEST_TMP_DIR/policy-args"
+        return 0
+    }
+    export -f generate_firefox_autoconfig add_extension_to_policies
+
+    run install_firefox_extension "$TEST_TMP_DIR/missing-unpacked-extension" "$release_dir"
+    [ "$status" -eq 0 ]
+    [ ! -f "$TEST_TMP_DIR/autoconfig-called" ]
+
+    mapfile -t policy_args < "$TEST_TMP_DIR/policy-args"
+    [ "${policy_args[0]}" = "monitor-bloqueos@openpath" ]
+    [ "${policy_args[1]}" = "$release_dir/openpath-firefox-extension.xpi" ]
+    [[ "${policy_args[2]}" == file://* ]]
 }
 
 @test "install_firefox_extension handles nonexistent directory" {
@@ -368,6 +395,27 @@ teardown() {
     [ "$status" -eq 0 ]
     
     grep -q "Locked" "$FIREFOX_POLICIES"
+}
+
+@test "add_extension_to_policies uses explicit install_url when provided" {
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run add_extension_to_policies \
+        "test-ext@test" \
+        "$TEST_TMP_DIR/test-ext.xpi" \
+        "https://downloads.example/test-ext.xpi"
+    [ "$status" -eq 0 ]
+
+    python3 - <<PYEOF
+import json
+
+with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
+    policies = json.load(fh)
+
+entry = policies["policies"]["ExtensionSettings"]["test-ext@test"]
+assert entry["install_url"] == "https://downloads.example/test-ext.xpi"
+assert "https://downloads.example/test-ext.xpi" in policies["policies"]["Extensions"]["Install"]
+PYEOF
 }
 
 # ============== Tests de install_native_host ==============

@@ -98,7 +98,7 @@ EOF
         
         # Step 7: Install Firefox extension
         echo "  Instalando extensión Firefox..."
-        install_firefox_extension /usr/share/openpath/firefox-extension || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"
+        install_firefox_extension /usr/share/openpath/firefox-extension /usr/share/openpath/firefox-release || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"
         install_chromium_extension /usr/share/openpath/firefox-extension || echo "⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"
         
         # Step 8: Apply browser policies

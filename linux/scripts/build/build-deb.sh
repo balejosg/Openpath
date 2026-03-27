@@ -74,6 +74,28 @@ cp -r "$ROOT_DIR/firefox-extension/icons" "$BUILD_DIR/usr/share/openpath/firefox
 cp -r "$ROOT_DIR/firefox-extension/blocked" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
 cp -r "$ROOT_DIR/firefox-extension/native" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
 
+firefox_release_source=""
+for candidate in \
+    "$ROOT_DIR/browser-extension/firefox-release" \
+    "$ROOT_DIR/firefox-extension/build/firefox-release"
+do
+    if [ -f "$candidate/metadata.json" ]; then
+        firefox_release_source="$candidate"
+        break
+    fi
+done
+
+if [ -n "$firefox_release_source" ]; then
+    mkdir -p "$BUILD_DIR/usr/share/openpath/firefox-release"
+    cp "$firefox_release_source/metadata.json" "$BUILD_DIR/usr/share/openpath/firefox-release/"
+    if [ -f "$firefox_release_source/openpath-firefox-extension.xpi" ]; then
+        cp "$firefox_release_source/openpath-firefox-extension.xpi" "$BUILD_DIR/usr/share/openpath/firefox-release/"
+    fi
+    echo "  Included Firefox Release artifacts from $firefox_release_source"
+else
+    echo "  Firefox Release artifacts not found; signed Firefox auto-install will fall back to unpacked bundle"
+fi
+
 # Set correct permissions
 echo "[7/8] Setting permissions..."
 find "$BUILD_DIR" -type d -exec chmod 755 {} \;

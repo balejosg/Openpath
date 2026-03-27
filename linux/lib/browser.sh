@@ -730,6 +730,82 @@ EOF
     return 0
 }
 
+get_firefox_extensions_root() {
+    echo "${FIREFOX_EXTENSIONS_ROOT:-/usr/share/mozilla/extensions}"
+}
+
+convert_openpath_file_url() {
+    local install_target="$1"
+
+    python3 << PYEOF
+from pathlib import Path
+
+print(Path("$install_target").resolve().as_uri())
+PYEOF
+}
+
+get_firefox_release_extension_policy() {
+    local release_dir="${1:-$INSTALL_DIR/firefox-release}"
+    local metadata_path="$release_dir/metadata.json"
+    local policy_lines
+    local policy_status
+
+    if [ ! -f "$metadata_path" ]; then
+        return 1
+    fi
+
+    policy_lines=$(python3 << PYEOF
+import json
+import sys
+from pathlib import Path
+
+metadata_path = Path("$metadata_path")
+signed_xpi_path = Path("$release_dir") / "openpath-firefox-extension.xpi"
+
+try:
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+extension_id = str(metadata.get("extensionId", "")).strip()
+if not extension_id:
+    raise SystemExit(2)
+
+if signed_xpi_path.is_file():
+    print(extension_id)
+    print(str(signed_xpi_path.resolve()))
+    print(signed_xpi_path.resolve().as_uri())
+    raise SystemExit(0)
+
+install_url = str(metadata.get("installUrl", "")).strip()
+if not install_url:
+    raise SystemExit(3)
+
+print(extension_id)
+print(install_url)
+print(install_url)
+PYEOF
+)
+    policy_status=$?
+
+    if [ "$policy_status" -ne 0 ]; then
+        case "$policy_status" in
+            1)
+                echo "⚠ Failed to parse Firefox release extension metadata: $metadata_path" >&2
+                ;;
+            2)
+                echo "⚠ Firefox release extension metadata is incomplete: $metadata_path" >&2
+                ;;
+            3)
+                echo "⚠ Firefox release extension metadata did not resolve to a signed XPI source: $metadata_path" >&2
+                ;;
+        esac
+        return 1
+    fi
+
+    printf '%s\n' "$policy_lines"
+}
+
 # ============================================================================
 # FIREFOX EXTENSION INSTALLATION
 # ============================================================================
@@ -737,10 +813,25 @@ EOF
 # Install Firefox extension system-wide
 install_firefox_extension() {
     local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
+    local release_source="${2:-$INSTALL_DIR/firefox-release}"
     local ext_id="monitor-bloqueos@openpath"
     local firefox_app_id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
-    local ext_dir="/usr/share/mozilla/extensions/$firefox_app_id"
-    
+    local ext_dir
+    local managed_policy
+    local managed_policy_values=()
+
+    ext_dir="$(get_firefox_extensions_root)/$firefox_app_id"
+
+    if managed_policy=$(get_firefox_release_extension_policy "$release_source"); then
+        mapfile -t managed_policy_values <<< "$managed_policy"
+        ext_id="${managed_policy_values[0]}"
+
+        log "Installing Firefox extension from signed release artifacts..."
+        add_extension_to_policies "$ext_id" "${managed_policy_values[1]}" "${managed_policy_values[2]}"
+        log "✓ Firefox extension installed from signed release artifacts"
+        return 0
+    fi
+
     if [ ! -d "$ext_source" ]; then
         log "⚠ Extension directory not found: $ext_source"
         return 1
@@ -825,10 +916,22 @@ install_firefox_extension() {
 # Add extension to Firefox policies for force-install
 add_extension_to_policies() {
     local ext_id="$1"
-    local ext_path="$2"
+    local install_target="$2"
+    local install_url="${3:-}"
+    local install_entry="$install_target"
     
     local policies_file="$FIREFOX_POLICIES"
     mkdir -p "$(dirname "$policies_file")"
+
+    if [ -z "$install_url" ]; then
+        if [[ "$install_target" == *://* ]]; then
+            install_url="$install_target"
+        else
+            install_url="$(convert_openpath_file_url "$install_target")"
+        fi
+    else
+        install_entry="$install_url"
+    fi
     
     python3 << PYEOF
 import json
@@ -836,7 +939,8 @@ import os
 
 policies_file = "$policies_file"
 ext_id = "$ext_id"
-ext_path = "$ext_path"
+install_entry = "$install_entry"
+install_url = "$install_url"
 
 # Read existing policies or create new
 if os.path.exists(policies_file):
@@ -858,7 +962,7 @@ if "ExtensionSettings" not in policies["policies"]:
 
 policies["policies"]["ExtensionSettings"][ext_id] = {
     "installation_mode": "force_installed",
-    "install_url": f"file://{ext_path}"
+    "install_url": install_url
 }
 
 # Also add to Extensions.Install list
@@ -869,8 +973,8 @@ if "Install" not in policies["policies"]["Extensions"]:
     policies["policies"]["Extensions"]["Install"] = []
 
 # Add path if not already present
-if ext_path not in policies["policies"]["Extensions"]["Install"]:
-    policies["policies"]["Extensions"]["Install"].append(ext_path)
+if install_entry not in policies["policies"]["Extensions"]["Install"]:
+    policies["policies"]["Extensions"]["Install"].append(install_entry)
 
 # Lock the extension so users can't disable it
 if "Locked" not in policies["policies"]["Extensions"]:

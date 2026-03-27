@@ -546,9 +546,13 @@ step_install_extension() {
 
     if [ "$INSTALL_EXTENSION" = true ]; then
         local staged_ext_dir="$INSTALL_DIR/firefox-extension"
+        local staged_release_dir="$INSTALL_DIR/firefox-release"
         local chromium_ext_id=""
+        local firefox_release_source=""
+        local candidate=""
 
         rm -rf "$staged_ext_dir"
+        rm -rf "$staged_release_dir"
         mkdir -p "$staged_ext_dir"
         cp "$INSTALLER_SOURCE_DIR/firefox-extension/manifest.json" "$staged_ext_dir/"
         cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/dist" "$staged_ext_dir/"
@@ -559,7 +563,26 @@ step_install_extension() {
             cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/native" "$staged_ext_dir/"
         fi
 
-        install_firefox_extension "$staged_ext_dir"
+        for candidate in \
+            "$INSTALLER_SOURCE_DIR/browser-extension/firefox-release" \
+            "$INSTALLER_SOURCE_DIR/firefox-extension/build/firefox-release"
+        do
+            if [ -f "$candidate/metadata.json" ]; then
+                firefox_release_source="$candidate"
+                break
+            fi
+        done
+
+        if [ -n "$firefox_release_source" ]; then
+            mkdir -p "$staged_release_dir"
+            cp "$firefox_release_source/metadata.json" "$staged_release_dir/"
+            if [ -f "$firefox_release_source/openpath-firefox-extension.xpi" ]; then
+                cp "$firefox_release_source/openpath-firefox-extension.xpi" "$staged_release_dir/"
+            fi
+            echo "  ✓ Artefactos Firefox Release firmados preparados"
+        fi
+
+        install_firefox_extension "$staged_ext_dir" "$staged_release_dir"
         if install_chromium_extension "$staged_ext_dir"; then
             chromium_ext_id="$(cat "$(get_chromium_extension_id_file)" 2>/dev/null || true)"
         else
