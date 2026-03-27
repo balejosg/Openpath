@@ -40,5 +40,5 @@ echo "$msg" | grep -q '^Verified-by: pre-commit$' || {
 }
 
 echo ""
-echo "[OK] Commit verified: pre-commit hook executed verify:full"
+echo "[OK] Commit verified: pre-commit hook executed the fast staged guard"
 echo ""

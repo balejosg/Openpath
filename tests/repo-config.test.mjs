@@ -84,16 +84,16 @@ describe('repository verification contract', () => {
     );
   });
 
-  test('pre-commit delegates coverage to verify:full instead of running it as a fourth step', () => {
+  test('pre-commit stays on the fast staged guard without re-running coverage', () => {
     const hook = readFileSync(resolve(projectRoot, '.husky/pre-commit'), 'utf8');
 
     assert.ok(
-      hook.includes('[3/3] Running full verification suite...'),
-      'pre-commit should collapse coverage into the full verification step'
+      hook.includes('[3/3] Running staged verification...'),
+      'pre-commit should keep the staged verification step as its final fast guard'
     );
     assert.ok(
       !hook.includes('npm run verify:coverage'),
-      'pre-commit should not rerun verify:coverage after verify:full'
+      'pre-commit should not run verify:coverage directly'
     );
     assert.ok(!hook.includes('[4/4]'), 'pre-commit should no longer advertise a fourth stage');
   });
