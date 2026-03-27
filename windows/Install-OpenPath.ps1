@@ -348,6 +348,27 @@ else {
     Write-Host "  ADVERTENCIA: Firefox development extension source not found; local unsigned bundle staging skipped" -ForegroundColor Yellow
 }
 
+$firefoxNativeHostTarget = "$OpenPathRoot\browser-extension\firefox\native"
+$nativeHostSourceRoot = Join-Path $scriptDir 'scripts'
+$nativeHostArtifacts = @('OpenPath-NativeHost.ps1', 'OpenPath-NativeHost.cmd')
+$missingNativeHostArtifacts = @(
+    $nativeHostArtifacts | Where-Object { -not (Test-Path (Join-Path $nativeHostSourceRoot $_)) }
+)
+
+if ($missingNativeHostArtifacts.Count -eq 0) {
+    New-Item -ItemType Directory -Path $firefoxNativeHostTarget -Force | Out-Null
+    foreach ($nativeHostArtifact in $nativeHostArtifacts) {
+        Copy-Item (Join-Path $nativeHostSourceRoot $nativeHostArtifact) `
+            -Destination (Join-Path $firefoxNativeHostTarget $nativeHostArtifact) `
+            -Force
+    }
+
+    Write-Host "  Firefox native host assets staged in $OpenPathRoot\browser-extension\firefox\native" -ForegroundColor Green
+}
+else {
+    Write-Host "  ADVERTENCIA: Firefox native host artifacts missing ($($missingNativeHostArtifacts -join ', '))" -ForegroundColor Yellow
+}
+
 $firefoxReleaseCandidates = @(
     (Join-Path $scriptDir 'browser-extension\firefox-release'),
     (Join-Path $scriptDir 'firefox-extension\build\firefox-release'),
@@ -551,6 +572,13 @@ Import-Module "$OpenPathRoot\lib\DNS.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Browser.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Services.psm1" -Force
 
+try {
+    Register-OpenPathFirefoxNativeHost -Config $config -ClearWhitelist | Out-Null
+}
+catch {
+    Write-Host "  ADVERTENCIA: No se pudo registrar el host nativo de Firefox: $_" -ForegroundColor Yellow
+}
+
 # Step 4: Install Acrylic DNS
 Write-Host "[4/7] Instalando Acrylic DNS Proxy..." -ForegroundColor Yellow
 
@@ -648,6 +676,14 @@ if ($classroomModeRequested) {
             Write-Host "  Error registering machine: $_" -ForegroundColor Yellow
         }
     }
+}
+
+try {
+    $nativeHostConfig = Get-OpenPathConfig
+    Sync-OpenPathFirefoxNativeHostState -Config $nativeHostConfig -ClearWhitelist | Out-Null
+}
+catch {
+    Write-Host "  ADVERTENCIA: No se pudo sincronizar el estado del host nativo de Firefox: $_" -ForegroundColor Yellow
 }
 
 # Step 7: First update

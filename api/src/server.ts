@@ -312,7 +312,7 @@ function buildWindowsAgentFileManifest(options?: {
 
   for (const relativeDirectory of WINDOWS_AGENT_DIRECTORIES) {
     const absoluteDirectory = path.join(WINDOWS_AGENT_ROOT, relativeDirectory);
-    addManifestDirectory(absoluteDirectory, relativeDirectory, /\.(ps1|psm1)$/i);
+    addManifestDirectory(absoluteDirectory, relativeDirectory, /\.(ps1|psm1|cmd)$/i);
   }
 
   addManifestFile(

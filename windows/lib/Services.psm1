@@ -6,6 +6,40 @@ $modulePath = Split-Path $PSScriptRoot -Parent
 Import-Module "$modulePath\lib\Common.psm1" -Force -ErrorAction SilentlyContinue
 
 $script:TaskPrefix = "OpenPath"
+$script:UsersRunTaskAce = '(A;;GRGX;;;BU)'
+
+function Grant-OpenPathTaskRunAccessToUsers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName
+    )
+
+    try {
+        $schedule = New-Object -ComObject 'Schedule.Service'
+        $schedule.Connect()
+        $task = $schedule.GetFolder('\').GetTask($TaskName)
+        $currentSecurityDescriptor = [string]$task.GetSecurityDescriptor(0xF)
+
+        if ($currentSecurityDescriptor.Contains($script:UsersRunTaskAce)) {
+            return $true
+        }
+
+        $updatedSecurityDescriptor = if ($currentSecurityDescriptor -match '^(.*?D:)(.*)$') {
+            "$($Matches[1])$script:UsersRunTaskAce$($Matches[2])"
+        }
+        else {
+            "D:$script:UsersRunTaskAce$currentSecurityDescriptor"
+        }
+
+        $task.SetSecurityDescriptor($updatedSecurityDescriptor, 0)
+        Write-OpenPathLog "Granted BUILTIN\\Users read/execute access to scheduled task $TaskName"
+        return $true
+    }
+    catch {
+        Write-OpenPathLog "Failed to grant BUILTIN\\Users access to scheduled task $TaskName : $_" -Level WARN
+        return $false
+    }
+}
 
 function Register-OpenPathTask {
     <#
@@ -49,6 +83,8 @@ function Register-OpenPathTask {
         -Principal $updatePrincipal `
         -Settings $updateSettings `
         -Force | Out-Null
+
+    Grant-OpenPathTaskRunAccessToUsers -TaskName "$script:TaskPrefix-Update" | Out-Null
     
     Write-OpenPathLog "Registered: $script:TaskPrefix-Update (every $UpdateIntervalMinutes min)"
     

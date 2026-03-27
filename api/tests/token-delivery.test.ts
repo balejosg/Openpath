@@ -630,6 +630,24 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       );
     });
 
+    await test('should include Windows Firefox native host runtime files in the bootstrap manifest', async () => {
+      const manifestResponse = await fetch(`${API_URL}/api/agent/windows/bootstrap/latest.json`, {
+        headers: {
+          Authorization: `Bearer ${enrollmentToken}`,
+        },
+      });
+
+      assert.strictEqual(manifestResponse.status, 200);
+      const manifest = (await manifestResponse.json()) as {
+        success: boolean;
+        files: { path: string; sha256: string; size: number }[];
+      };
+
+      assert.strictEqual(manifest.success, true);
+      assert.ok(manifest.files.some((file) => file.path === 'scripts/OpenPath-NativeHost.ps1'));
+      assert.ok(manifest.files.some((file) => file.path === 'scripts/OpenPath-NativeHost.cmd'));
+    });
+
     await test('should publish Chromium managed rollout endpoints when build artifacts exist', async () => {
       mkdirSync(chromiumManagedBuildRoot, { recursive: true });
       writeFileSync(

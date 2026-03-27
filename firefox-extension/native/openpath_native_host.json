@@ -1,5 +1,5 @@
 {
-  "name": "openpath_native_host",
+  "name": "whitelist_native_host",
   "description": "Native messaging host for Monitor de Bloqueos de Red extension",
   "path": "/usr/local/bin/openpath-native-host.py",
   "type": "stdio",

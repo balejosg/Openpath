@@ -97,6 +97,27 @@ foreach ($path in $firefoxPolicies) {
     }
 }
 
+$firefoxNativeHostRegistryPaths = @(
+    'HKLM\SOFTWARE\Mozilla\NativeMessagingHosts\whitelist_native_host',
+    'HKLM\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host'
+)
+foreach ($registryPath in $firefoxNativeHostRegistryPaths) {
+    & reg.exe DELETE $registryPath /f 2>$null | Out-Null
+}
+
+$firefoxNativeHostArtifacts = @(
+    "$OpenPathRoot\browser-extension\firefox\native\OpenPath-NativeHost.ps1",
+    "$OpenPathRoot\browser-extension\firefox\native\OpenPath-NativeHost.cmd",
+    "$OpenPathRoot\browser-extension\firefox\native\whitelist_native_host.json",
+    "$OpenPathRoot\browser-extension\firefox\native\native-state.json",
+    "$OpenPathRoot\browser-extension\firefox\native\whitelist.txt"
+)
+foreach ($artifactPath in $firefoxNativeHostArtifacts) {
+    if (Test-Path $artifactPath) {
+        Remove-Item $artifactPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Chrome/Edge registry
 $regPaths = @(
     "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist",

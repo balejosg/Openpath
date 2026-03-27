@@ -18,6 +18,62 @@ function Get-OpenPathFirefoxReleaseXpiPath {
     return "$script:OpenPathRoot\browser-extension\firefox-release\openpath-firefox-extension.xpi"
 }
 
+function Get-OpenPathFirefoxNativeHostName {
+    return 'whitelist_native_host'
+}
+
+function Get-OpenPathFirefoxNativeHostRoot {
+    return "$script:OpenPathRoot\browser-extension\firefox\native"
+}
+
+function Get-OpenPathFirefoxNativeHostManifestPath {
+    return "$(Get-OpenPathFirefoxNativeHostRoot)\whitelist_native_host.json"
+}
+
+function Get-OpenPathFirefoxNativeHostScriptPath {
+    return "$(Get-OpenPathFirefoxNativeHostRoot)\OpenPath-NativeHost.ps1"
+}
+
+function Get-OpenPathFirefoxNativeHostWrapperPath {
+    return "$(Get-OpenPathFirefoxNativeHostRoot)\OpenPath-NativeHost.cmd"
+}
+
+function Get-OpenPathFirefoxNativeStatePath {
+    return "$(Get-OpenPathFirefoxNativeHostRoot)\native-state.json"
+}
+
+function Get-OpenPathFirefoxNativeWhitelistMirrorPath {
+    return "$(Get-OpenPathFirefoxNativeHostRoot)\whitelist.txt"
+}
+
+function Get-OpenPathFirefoxNativeHostUpdateTaskName {
+    return 'OpenPath-Update'
+}
+
+function Get-OpenPathFirefoxNativeHostRegistryPaths {
+    return @(
+        'HKLM\SOFTWARE\Mozilla\NativeMessagingHosts\whitelist_native_host',
+        'HKLM\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host'
+    )
+}
+
+function Get-OpenPathScheduledTaskSecurityDescriptor {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName
+    )
+
+    try {
+        $schedule = New-Object -ComObject 'Schedule.Service'
+        $schedule.Connect()
+        $task = $schedule.GetFolder('\').GetTask($TaskName)
+        return [string]$task.GetSecurityDescriptor(0xF)
+    }
+    catch {
+        return $null
+    }
+}
+
 function ConvertTo-OpenPathFileUrl {
     param(
         [Parameter(Mandatory = $true)]
@@ -152,6 +208,135 @@ function Get-OpenPathFirefoxManagedExtensionPolicy {
     }
 }
 
+function Sync-OpenPathFirefoxNativeHostState {
+    param(
+        [AllowNull()]
+        [object]$Config = $null,
+
+        [string]$WhitelistPath = "$script:OpenPathRoot\data\whitelist.txt",
+
+        [switch]$ClearWhitelist
+    )
+
+    $nativeRoot = Get-OpenPathFirefoxNativeHostRoot
+    if (-not (Test-Path $nativeRoot)) {
+        New-Item -ItemType Directory -Path $nativeRoot -Force | Out-Null
+    }
+
+    if (-not $Config) {
+        try {
+            $Config = Get-OpenPathConfig
+        }
+        catch {
+            $Config = [PSCustomObject]@{}
+        }
+    }
+
+    $machineName = if (
+        $Config -and
+        $Config.PSObject.Properties['machineName'] -and
+        $Config.machineName
+    ) {
+        [string]$Config.machineName
+    }
+    else {
+        [string]$env:COMPUTERNAME
+    }
+
+    $whitelistUrl = if (
+        $Config -and
+        $Config.PSObject.Properties['whitelistUrl'] -and
+        $Config.whitelistUrl
+    ) {
+        [string]$Config.whitelistUrl
+    }
+    else {
+        ''
+    }
+
+    $version = if (
+        $Config -and
+        $Config.PSObject.Properties['version'] -and
+        $Config.version
+    ) {
+        [string]$Config.version
+    }
+    else {
+        ''
+    }
+
+    $statePath = Get-OpenPathFirefoxNativeStatePath
+    $stateJson = [ordered]@{
+        machineName = $machineName
+        whitelistUrl = $whitelistUrl
+        version = $version
+        syncedAt = (Get-Date -Format 'o')
+    } | ConvertTo-Json -Depth 8
+    Write-OpenPathUtf8NoBomFile -Path $statePath -Value $stateJson
+
+    $whitelistMirrorPath = Get-OpenPathFirefoxNativeWhitelistMirrorPath
+    if ($ClearWhitelist) {
+        Remove-Item $whitelistMirrorPath -Force -ErrorAction SilentlyContinue
+    }
+    elseif (Test-Path $WhitelistPath) {
+        Copy-Item $WhitelistPath -Destination $whitelistMirrorPath -Force
+    }
+
+    return $true
+}
+
+function Register-OpenPathFirefoxNativeHost {
+    param(
+        [AllowNull()]
+        [object]$Config = $null,
+
+        [switch]$ClearWhitelist
+    )
+
+    $nativeRoot = Get-OpenPathFirefoxNativeHostRoot
+    if (-not (Test-Path $nativeRoot)) {
+        New-Item -ItemType Directory -Path $nativeRoot -Force | Out-Null
+    }
+
+    $manifestPath = Get-OpenPathFirefoxNativeHostManifestPath
+    $wrapperPath = Get-OpenPathFirefoxNativeHostWrapperPath
+    $manifestJson = [ordered]@{
+        name = Get-OpenPathFirefoxNativeHostName
+        description = 'OpenPath Windows Native Messaging Host'
+        path = $wrapperPath
+        type = 'stdio'
+        allowed_extensions = @('monitor-bloqueos@openpath')
+    } | ConvertTo-Json -Depth 8
+    Write-OpenPathUtf8NoBomFile -Path $manifestPath -Value $manifestJson
+
+    foreach ($registryPath in Get-OpenPathFirefoxNativeHostRegistryPaths) {
+        & reg.exe ADD $registryPath /ve /d $manifestPath /f | Out-Null
+    }
+
+    Sync-OpenPathFirefoxNativeHostState -Config $Config -ClearWhitelist:$ClearWhitelist | Out-Null
+    return $true
+}
+
+function Unregister-OpenPathFirefoxNativeHost {
+    foreach ($registryPath in Get-OpenPathFirefoxNativeHostRegistryPaths) {
+        & reg.exe DELETE $registryPath /f 2>$null | Out-Null
+    }
+
+    $paths = @(
+        (Get-OpenPathFirefoxNativeHostManifestPath),
+        (Get-OpenPathFirefoxNativeHostScriptPath),
+        (Get-OpenPathFirefoxNativeHostWrapperPath),
+        (Get-OpenPathFirefoxNativeStatePath),
+        (Get-OpenPathFirefoxNativeWhitelistMirrorPath)
+    )
+
+    foreach ($path in $paths) {
+        Remove-Item $path -Force -ErrorAction SilentlyContinue
+    }
+
+    return $true
+}
+
 function Get-OpenPathChromiumManagedMetadataPath {
     return "$script:OpenPathRoot\browser-extension\chromium-managed\metadata.json"
 }
@@ -192,6 +377,24 @@ function Get-OpenPathChromiumManagedPolicy {
 function Get-OpenPathBrowserDoctorReport {
     $metadataPath = Get-OpenPathFirefoxReleaseMetadataPath
     $xpiPath = Get-OpenPathFirefoxReleaseXpiPath
+    $nativeHostManifestPath = Get-OpenPathFirefoxNativeHostManifestPath
+    $nativeHostWrapperPath = Get-OpenPathFirefoxNativeHostWrapperPath
+    $nativeHostScriptPath = Get-OpenPathFirefoxNativeHostScriptPath
+    $nativeHostStatePath = Get-OpenPathFirefoxNativeStatePath
+    $nativeHostWhitelistPath = Get-OpenPathFirefoxNativeWhitelistMirrorPath
+    $nativeHostUpdateTaskName = Get-OpenPathFirefoxNativeHostUpdateTaskName
+    $nativeHostRegistryPaths = Get-OpenPathFirefoxNativeHostRegistryPaths
+    $nativeHostRegistrySummary = '(missing)'
+    $nativeHostManifestParse = 'missing'
+    $nativeHostManifestName = '(missing)'
+    $nativeHostAllowedExtensions = '(missing)'
+    $nativeHostRegistryPath = ($nativeHostRegistryPaths -join '; ')
+    $nativeHostWrapperPresent = Test-Path $nativeHostWrapperPath
+    $nativeHostScriptPresent = Test-Path $nativeHostScriptPath
+    $nativeHostStateReadable = $false
+    $nativeHostWhitelistReadable = $false
+    $nativeHostUpdateTaskPresent = $false
+    $nativeHostUpdateTaskUserAccess = 'missing'
     $policyCandidates = @(
         "$env:ProgramFiles\Mozilla Firefox\distribution\policies.json",
         "${env:ProgramFiles(x86)}\Mozilla Firefox\distribution\policies.json"
@@ -258,6 +461,83 @@ function Get-OpenPathBrowserDoctorReport {
         }
     }
 
+    if (Test-Path $nativeHostManifestPath) {
+        try {
+            $nativeManifest = Get-Content $nativeHostManifestPath -Raw | ConvertFrom-Json
+            $nativeHostManifestParse = 'ok'
+            $nativeHostManifestName = if ($nativeManifest.name) { [string]$nativeManifest.name } else { '(missing)' }
+            $nativeHostAllowedExtensions = if ($nativeManifest.allowed_extensions) {
+                @($nativeManifest.allowed_extensions) -join ', '
+            }
+            else {
+                '(missing)'
+            }
+        }
+        catch {
+            $nativeHostManifestParse = "error: $($_.Exception.Message)"
+        }
+    }
+
+    $nativeHostRegistryStates = @()
+    foreach ($registryPath in $nativeHostRegistryPaths) {
+        try {
+            $query = & reg.exe QUERY $registryPath /ve 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $nativeHostRegistryStates += "$registryPath=present"
+            }
+            else {
+                $nativeHostRegistryStates += "$registryPath=missing"
+            }
+        }
+        catch {
+            $nativeHostRegistryStates += "$registryPath=error"
+        }
+    }
+    if ($nativeHostRegistryStates.Count -gt 0) {
+        $nativeHostRegistrySummary = $nativeHostRegistryStates -join '; '
+    }
+
+    try {
+        if (Test-Path $nativeHostStatePath) {
+            $null = Get-Content $nativeHostStatePath -Raw -ErrorAction Stop | ConvertFrom-Json
+            $nativeHostStateReadable = $true
+        }
+    }
+    catch {
+        $nativeHostStateReadable = $false
+    }
+
+    try {
+        if (Test-Path $nativeHostWhitelistPath) {
+            $null = Get-Content $nativeHostWhitelistPath -TotalCount 1 -ErrorAction Stop
+            $nativeHostWhitelistReadable = $true
+        }
+    }
+    catch {
+        $nativeHostWhitelistReadable = $false
+    }
+
+    try {
+        $task = Get-ScheduledTask -TaskName $nativeHostUpdateTaskName -ErrorAction Stop
+        if ($task) {
+            $nativeHostUpdateTaskPresent = $true
+            $securityDescriptor = Get-OpenPathScheduledTaskSecurityDescriptor -TaskName $nativeHostUpdateTaskName
+            if ($securityDescriptor -and $securityDescriptor -match '\(A;;[^)]*(?:GX|GA)[^)]*;;;BU\)') {
+                $nativeHostUpdateTaskUserAccess = 'granted'
+            }
+            elseif ($securityDescriptor) {
+                $nativeHostUpdateTaskUserAccess = 'missing'
+            }
+            else {
+                $nativeHostUpdateTaskUserAccess = 'unknown'
+            }
+        }
+    }
+    catch {
+        $nativeHostUpdateTaskPresent = $false
+        $nativeHostUpdateTaskUserAccess = 'missing'
+    }
+
     $managedExtensionPolicy = Get-OpenPathFirefoxManagedExtensionPolicy
     $resolvedInstallUrl = if ($managedExtensionPolicy) {
         [string]$managedExtensionPolicy.InstallUrl
@@ -307,6 +587,22 @@ function Get-OpenPathBrowserDoctorReport {
         "Firefox XPI bytes: $xpiBytes"
         "Firefox XPI sha256: $xpiSha256"
         "Firefox XPI ACL summary: $aclSummary"
+        "Native host manifest path: $nativeHostManifestPath"
+        "Native host manifest parse: $nativeHostManifestParse"
+        "Native host manifest name: $nativeHostManifestName"
+        "Native host allowed extensions: $nativeHostAllowedExtensions"
+        "Native host registry path: $nativeHostRegistryPath"
+        "Native host registry summary: $nativeHostRegistrySummary"
+        "Native host wrapper path: $nativeHostWrapperPath"
+        "Native host wrapper present: $nativeHostWrapperPresent"
+        "Native host script path: $nativeHostScriptPath"
+        "Native host script present: $nativeHostScriptPresent"
+        "Native host state path: $nativeHostStatePath"
+        "Native host state readable: $nativeHostStateReadable"
+        "Native host whitelist readable: $nativeHostWhitelistReadable"
+        "Native host update task: $nativeHostUpdateTaskName"
+        "Native host update task present: $nativeHostUpdateTaskPresent"
+        "Native host update task user access: $nativeHostUpdateTaskUserAccess"
         "Resolved install_url: $resolvedInstallUrl"
         "Policy file path: $policyPath"
         "Policy file present: $(Test-Path $policyPath)"
@@ -592,6 +888,9 @@ function Set-AllBrowserPolicy {
 # Export module members
 Export-ModuleMember -Function @(
     'Get-OpenPathBrowserDoctorReport',
+    'Register-OpenPathFirefoxNativeHost',
+    'Sync-OpenPathFirefoxNativeHostState',
+    'Unregister-OpenPathFirefoxNativeHost',
     'Set-FirefoxPolicy',
     'Set-ChromePolicy',
     'Remove-BrowserPolicy',

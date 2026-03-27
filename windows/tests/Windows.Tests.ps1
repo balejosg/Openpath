@@ -1736,6 +1736,39 @@ Describe "Browser Module" {
                 'Get-OpenPathBrowserDoctorReport'
             )
         }
+
+        It "Reports Firefox native host diagnostics alongside browser policy state" {
+            $browserModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.psm1"
+            $content = Get-Content $browserModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Native host manifest path:',
+                'Native host manifest parse:',
+                'Native host registry path:',
+                'Native host manifest name:',
+                'Native host wrapper path:',
+                'Native host whitelist readable:',
+                'Native host state readable:',
+                'Native host update task present:',
+                'Native host update task user access:'
+            )
+        }
+    }
+
+    Context "Task scheduler permissions" {
+        It "Grants standard users read and execute access to the update task" {
+            $servicesModulePath = Join-Path $PSScriptRoot ".." "lib" "Services.psm1"
+            $content = Get-Content $servicesModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Grant-OpenPathTaskRunAccessToUsers',
+                "GetTask(\$TaskName)",
+                'GetSecurityDescriptor(0xF)',
+                'SetSecurityDescriptor($updatedSecurityDescriptor, 0)',
+                "(A;;GRGX;;;BU)",
+                'Grant-OpenPathTaskRunAccessToUsers -TaskName "$script:TaskPrefix-Update"'
+            )
+        }
     }
 
     Context "DoH blocking" {
@@ -2320,6 +2353,30 @@ Describe "Installer" {
                 'Signed Firefox Release artifacts staged in $OpenPathRoot\browser-extension\firefox-release'
             )
         }
+
+        It "Stages Windows native host assets beneath the user-readable Firefox native directory" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$firefoxNativeHostTarget = "$OpenPathRoot\browser-extension\firefox\native"',
+                'OpenPath-NativeHost.ps1',
+                'OpenPath-NativeHost.cmd',
+                'Firefox native host assets staged in $OpenPathRoot\browser-extension\firefox\native'
+            )
+        }
+
+        It "Registers Firefox native messaging host in both 64-bit and WOW6432Node registry views" {
+            $browserModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.psm1"
+            $content = Get-Content $browserModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                "allowed_extensions = @('monitor-bloqueos@openpath')",
+                'name = Get-OpenPathFirefoxNativeHostName'
+            )
+        }
     }
 
     Context "Source path validation" {
@@ -2466,6 +2523,22 @@ Describe "Installer" {
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Register-OpenPathTask -UpdateIntervalMinutes 15 -WatchdogIntervalMinutes 1',
                 'Start-OpenPathTask -TaskType SSE'
+            )
+        }
+    }
+}
+
+Describe "Uninstaller" {
+    Context "Firefox native host cleanup" {
+        It "Removes Firefox native messaging registry entries and staged host artifacts" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Uninstall-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'OpenPath-NativeHost.ps1',
+                'OpenPath-NativeHost.cmd'
             )
         }
     }

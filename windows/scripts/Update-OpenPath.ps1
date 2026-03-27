@@ -44,6 +44,7 @@ Initialize-OpenPathScriptSession `
     'Restore-OpenPathProtectedMode',
     'Save-OpenPathWhitelistCheckpoint',
     'Send-OpenPathHealthReport',
+    'Sync-OpenPathFirefoxNativeHostState',
     'Update-AcrylicHost',
     'Restore-OriginalDNS',
     'Remove-OpenPathFirewall',
@@ -154,6 +155,22 @@ function Write-UpdateCatchLog {
     }
 }
 
+function Sync-FirefoxNativeHostMirror {
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Config,
+
+        [switch]$ClearWhitelist
+    )
+
+    try {
+        Sync-OpenPathFirefoxNativeHostState -Config $Config -WhitelistPath $whitelistPath -ClearWhitelist:$ClearWhitelist | Out-Null
+    }
+    catch {
+        Write-OpenPathLog "Firefox native host mirror sync failed: $_" -Level WARN
+    }
+}
+
 try {
     $mutex = [System.Threading.Mutex]::new($false, $script:UpdateMutexName)
     try {
@@ -243,6 +260,8 @@ try {
                 throw "No local whitelist available and download failed"
             }
 
+            Sync-FirefoxNativeHostMirror -Config $config
+
             $cachedAgeHours = Get-OpenPathFileAgeHours -Path $whitelistPath
             if ($enableStaleFailsafe -and $staleWhitelistMaxAgeHours -gt 0 -and $cachedAgeHours -ge $staleWhitelistMaxAgeHours) {
                 Enter-StaleWhitelistFailsafe -Config $config -WhitelistAgeHours $cachedAgeHours
@@ -266,6 +285,7 @@ try {
         }
         else {
             if ($whitelist.PSObject.Properties['NotModified'] -and $whitelist.NotModified) {
+                Sync-FirefoxNativeHostMirror -Config $config
                 Write-OpenPathLog "Whitelist not modified (ETag) - skipping apply"
 
                 try {
@@ -294,6 +314,7 @@ try {
 
                 # Remove browser policies
                 Remove-BrowserPolicy
+                Sync-FirefoxNativeHostMirror -Config $config -ClearWhitelist
 
                 Clear-StaleFailsafeState
 
@@ -309,6 +330,7 @@ try {
             else {
                 # Save whitelist to local file
                 $whitelist.Whitelist | Set-Content $whitelistPath -Encoding UTF8
+                Sync-FirefoxNativeHostMirror -Config $config
 
                 # Update Acrylic DNS hosts
                 Update-AcrylicHost -WhitelistedDomains $whitelist.Whitelist -BlockedSubdomains $whitelist.BlockedSubdomains
@@ -350,6 +372,7 @@ catch {
         $rollbackSucceeded = Restore-OpenPathCheckpoint -Config $config
         if ($rollbackSucceeded) {
             $rollbackMethod = 'checkpoint'
+            Sync-FirefoxNativeHostMirror -Config $config
         }
     }
 
@@ -358,6 +381,7 @@ catch {
         Write-UpdateCatchLog 'Falling back to backup whitelist rollback...' -Level WARN
         try {
             Copy-Item $backupPath $whitelistPath -Force
+            Sync-FirefoxNativeHostMirror -Config $config
             $backupContent = Get-ValidWhitelistDomainsFromFile -Path $whitelistPath
             Update-AcrylicHost -WhitelistedDomains $backupContent -BlockedSubdomains @() -ErrorAction SilentlyContinue
             Restore-OpenPathProtectedMode -Config $config -ErrorAction SilentlyContinue | Out-Null
