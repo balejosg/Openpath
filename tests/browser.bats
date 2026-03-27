@@ -292,6 +292,58 @@ teardown() {
 
 # ============== Tests de install_firefox_extension ==============
 
+@test "install_firefox_release_extension configures policies from signed artifacts" {
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$release_dir"
+    cat > "$release_dir/metadata.json" <<'EOF'
+{"extensionId":"monitor-bloqueos@openpath","version":"2.0.0"}
+EOF
+    touch "$release_dir/openpath-firefox-extension.xpi"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    add_extension_to_policies() {
+        printf '%s\n%s\n%s\n' "$1" "$2" "$3" > "$TEST_TMP_DIR/policy-args"
+        return 0
+    }
+    export -f add_extension_to_policies
+
+    run install_firefox_release_extension "$release_dir"
+    [ "$status" -eq 0 ]
+
+    mapfile -t policy_args < "$TEST_TMP_DIR/policy-args"
+    [ "${policy_args[0]}" = "monitor-bloqueos@openpath" ]
+    [ "${policy_args[1]}" = "$release_dir/openpath-firefox-extension.xpi" ]
+    [[ "${policy_args[2]}" == file://* ]]
+}
+
+@test "stage_firefox_unpacked_extension_assets copies required bundle files" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    local staged_dir="$TEST_TMP_DIR/staged-extension"
+    mkdir -p "$ext_dir/dist/lib" "$ext_dir/popup" "$ext_dir/icons" "$ext_dir/blocked"
+    echo '{"manifest_version": 2}' > "$ext_dir/manifest.json"
+    echo 'console.log("bg");' > "$ext_dir/dist/background.js"
+    echo 'console.log("popup");' > "$ext_dir/dist/popup.js"
+    echo 'console.log("lib");' > "$ext_dir/dist/lib/runtime.js"
+    touch "$ext_dir/popup/popup.html"
+    touch "$ext_dir/icons/icon-48.png"
+    touch "$ext_dir/blocked/blocked.html"
+    touch "$ext_dir/blocked/blocked.css"
+    touch "$ext_dir/blocked/blocked.js"
+
+    source "$PROJECT_DIR/linux/lib/firefox-extension-assets.sh"
+
+    run stage_firefox_unpacked_extension_assets "$ext_dir" "$staged_dir"
+    [ "$status" -eq 0 ]
+    [ -f "$staged_dir/manifest.json" ]
+    [ -f "$staged_dir/dist/background.js" ]
+    [ -f "$staged_dir/dist/popup.js" ]
+    [ -f "$staged_dir/dist/lib/runtime.js" ]
+    [ -d "$staged_dir/popup" ]
+    [ -d "$staged_dir/icons" ]
+    [ -d "$staged_dir/blocked" ]
+}
+
 @test "install_firefox_extension copies extension files" {
     # Create mock extension directory
     local ext_dir="$TEST_TMP_DIR/firefox-extension"

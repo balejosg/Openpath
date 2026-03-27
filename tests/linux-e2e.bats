@@ -31,23 +31,32 @@ load 'test_helper'
 }
 
 @test "linux deb build includes browser native host assets" {
-    run grep -nF 'cp -r "$ROOT_DIR/firefox-extension/native" "$BUILD_DIR/usr/share/openpath/firefox-extension/"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    run grep -nF 'stage_firefox_optional_extension_assets \' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"$ROOT_DIR/firefox-extension" \' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"$BUILD_DIR/usr/share/openpath/firefox-extension"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "linux deb build stages Firefox release artifacts when available" {
-    run grep -nF '$ROOT_DIR/firefox-extension/build/firefox-release' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    run grep -nF 'source "$LINUX_DIR/lib/firefox-extension-assets.sh"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$BUILD_DIR/usr/share/openpath/firefox-release' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    run grep -nF 'stage_firefox_release_artifacts "$ROOT_DIR" "$BUILD_DIR/usr/share/openpath/firefox-release"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "linux install script stages Firefox release artifacts when available" {
-    run grep -nF '$INSTALL_DIR/firefox-release' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF '$INSTALLER_SOURCE_DIR/lib/firefox-extension-assets.sh' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$INSTALLER_SOURCE_DIR/firefox-extension/build/firefox-release' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'stage_firefox_release_artifacts "$INSTALLER_SOURCE_DIR" "$staged_release_dir"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'stage_firefox_unpacked_extension_assets "$INSTALLER_SOURCE_DIR/firefox-extension" "$staged_ext_dir"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 }
 

@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 # LINUX_DIR contains the linux-specific files
 LINUX_DIR="$ROOT_DIR/linux"
+# shellcheck source=../../lib/firefox-extension-assets.sh
+source "$LINUX_DIR/lib/firefox-extension-assets.sh"
 BUILD_DIR="$ROOT_DIR/build/openpath-dnsmasq_${VERSION}-${RELEASE}_amd64"
 PACKAGE_NAME="openpath-dnsmasq_${VERSION}-${RELEASE}_amd64.deb"
 
@@ -62,35 +64,14 @@ chmod +x "$BUILD_DIR/usr/local/bin/"*
 
 # Copy Firefox extension
 echo "[6/8] Copying Firefox extension..."
-mkdir -p "$BUILD_DIR/usr/share/openpath/firefox-extension"
-# Copy extension files (excluding dev/build files)
-cp "$ROOT_DIR/firefox-extension/manifest.json" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
-mkdir -p "$BUILD_DIR/usr/share/openpath/firefox-extension/dist"
-cp "$ROOT_DIR/firefox-extension/dist/background.js" "$BUILD_DIR/usr/share/openpath/firefox-extension/dist/"
-cp "$ROOT_DIR/firefox-extension/dist/popup.js" "$BUILD_DIR/usr/share/openpath/firefox-extension/dist/"
-cp -r "$ROOT_DIR/firefox-extension/dist/lib" "$BUILD_DIR/usr/share/openpath/firefox-extension/dist/"
-cp -r "$ROOT_DIR/firefox-extension/popup" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
-cp -r "$ROOT_DIR/firefox-extension/icons" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
-cp -r "$ROOT_DIR/firefox-extension/blocked" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
-cp -r "$ROOT_DIR/firefox-extension/native" "$BUILD_DIR/usr/share/openpath/firefox-extension/"
+stage_firefox_unpacked_extension_assets \
+    "$ROOT_DIR/firefox-extension" \
+    "$BUILD_DIR/usr/share/openpath/firefox-extension"
+stage_firefox_optional_extension_assets \
+    "$ROOT_DIR/firefox-extension" \
+    "$BUILD_DIR/usr/share/openpath/firefox-extension"
 
-firefox_release_source=""
-for candidate in \
-    "$ROOT_DIR/browser-extension/firefox-release" \
-    "$ROOT_DIR/firefox-extension/build/firefox-release"
-do
-    if [ -f "$candidate/metadata.json" ]; then
-        firefox_release_source="$candidate"
-        break
-    fi
-done
-
-if [ -n "$firefox_release_source" ]; then
-    mkdir -p "$BUILD_DIR/usr/share/openpath/firefox-release"
-    cp "$firefox_release_source/metadata.json" "$BUILD_DIR/usr/share/openpath/firefox-release/"
-    if [ -f "$firefox_release_source/openpath-firefox-extension.xpi" ]; then
-        cp "$firefox_release_source/openpath-firefox-extension.xpi" "$BUILD_DIR/usr/share/openpath/firefox-release/"
-    fi
+if firefox_release_source="$(stage_firefox_release_artifacts "$ROOT_DIR" "$BUILD_DIR/usr/share/openpath/firefox-release")"; then
     echo "  Included Firefox Release artifacts from $firefox_release_source"
 else
     echo "  Firefox Release artifacts not found; signed Firefox auto-install will fall back to unpacked bundle"

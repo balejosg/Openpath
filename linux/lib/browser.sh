@@ -22,6 +22,11 @@ set -o pipefail
 # Part of the OpenPath DNS system
 ################################################################################
 
+_browser_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=firefox-extension-assets.sh
+source "$_browser_lib_dir/firefox-extension-assets.sh"
+unset _browser_lib_dir
+
 # Calculate hash of current policies
 # Uses sha256sum for consistency with openpath-update.sh
 get_policies_hash() {
@@ -810,107 +815,58 @@ PYEOF
 # FIREFOX EXTENSION INSTALLATION
 # ============================================================================
 
+install_firefox_release_extension() {
+    local release_source="${1:-$INSTALL_DIR/firefox-release}"
+    local ext_id="monitor-bloqueos@openpath"
+    local managed_policy=""
+    local managed_policy_values=()
+
+    managed_policy="$(get_firefox_release_extension_policy "$release_source")" || return 1
+    mapfile -t managed_policy_values <<< "$managed_policy"
+    ext_id="${managed_policy_values[0]}"
+
+    log "Installing Firefox extension from signed release artifacts..."
+    add_extension_to_policies "$ext_id" "${managed_policy_values[1]}" "${managed_policy_values[2]}"
+    log "✓ Firefox extension installed from signed release artifacts"
+    return 0
+}
+
+install_firefox_unpacked_extension() {
+    local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
+    local ext_id="monitor-bloqueos@openpath"
+    local firefox_app_id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
+    local ext_dir=""
+
+    ext_dir="$(get_firefox_extensions_root)/$firefox_app_id/$ext_id"
+
+    log "Installing Firefox extension..."
+
+    # First, generate autoconfig to disable signature requirements
+    generate_firefox_autoconfig
+
+    stage_firefox_unpacked_extension_assets "$ext_source" "$ext_dir" || return 1
+
+    # Set permissions
+    chmod -R 755 "$ext_dir"
+
+    log "✓ Extension copied to $ext_dir"
+
+    # Update policies.json to force-install the extension
+    add_extension_to_policies "$ext_id" "$ext_dir"
+
+    log "✓ Firefox extension installed"
+    return 0
+}
+
 # Install Firefox extension system-wide
 install_firefox_extension() {
     local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
     local release_source="${2:-$INSTALL_DIR/firefox-release}"
-    local ext_id="monitor-bloqueos@openpath"
-    local firefox_app_id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
-    local ext_dir
-    local managed_policy
-    local managed_policy_values=()
-
-    ext_dir="$(get_firefox_extensions_root)/$firefox_app_id"
-
-    if managed_policy=$(get_firefox_release_extension_policy "$release_source"); then
-        mapfile -t managed_policy_values <<< "$managed_policy"
-        ext_id="${managed_policy_values[0]}"
-
-        log "Installing Firefox extension from signed release artifacts..."
-        add_extension_to_policies "$ext_id" "${managed_policy_values[1]}" "${managed_policy_values[2]}"
-        log "✓ Firefox extension installed from signed release artifacts"
+    if install_firefox_release_extension "$release_source"; then
         return 0
     fi
 
-    if [ ! -d "$ext_source" ]; then
-        log "⚠ Extension directory not found: $ext_source"
-        return 1
-    fi
-    
-    log "Installing Firefox extension..."
-    
-    # First, generate autoconfig to disable signature requirements
-    generate_firefox_autoconfig
-    
-    # Create extension directory
-    mkdir -p "$ext_dir/$ext_id"
-    
-    # Copy extension files (excluding native host and build scripts)
-    # Manifest references dist/background.js and popup/popup.html (which loads dist/*.js)
-    if [[ ! -f "$ext_source/manifest.json" ]]; then
-        log "⚠ Missing extension manifest: $ext_source/manifest.json"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/popup/popup.html" ]]; then
-        log "⚠ Missing extension popup HTML: $ext_source/popup/popup.html"
-        return 1
-    fi
-
-    if [[ ! -d "$ext_source/icons" ]]; then
-        log "⚠ Missing extension icons directory: $ext_source/icons"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/dist/background.js" ]]; then
-        log "⚠ Missing extension build artifact: $ext_source/dist/background.js"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/dist/popup.js" ]]; then
-        log "⚠ Missing extension build artifact: $ext_source/dist/popup.js"
-        return 1
-    fi
-
-    if [[ ! -d "$ext_source/dist/lib" ]]; then
-        log "⚠ Missing extension build artifact directory: $ext_source/dist/lib"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/blocked/blocked.html" ]]; then
-        log "⚠ Missing extension blocked screen: $ext_source/blocked/blocked.html"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/blocked/blocked.css" ]]; then
-        log "⚠ Missing extension blocked screen: $ext_source/blocked/blocked.css"
-        return 1
-    fi
-
-    if [[ ! -f "$ext_source/blocked/blocked.js" ]]; then
-        log "⚠ Missing extension blocked screen: $ext_source/blocked/blocked.js"
-        return 1
-    fi
-
-    cp "$ext_source/manifest.json" "$ext_dir/$ext_id/"
-    mkdir -p "$ext_dir/$ext_id/dist"
-    cp "$ext_source/dist/background.js" "$ext_dir/$ext_id/dist/"
-    cp "$ext_source/dist/popup.js" "$ext_dir/$ext_id/dist/"
-    cp -r "$ext_source/dist/lib" "$ext_dir/$ext_id/dist/"
-    cp -r "$ext_source/popup" "$ext_dir/$ext_id/"
-    cp -r "$ext_source/icons" "$ext_dir/$ext_id/"
-    cp -r "$ext_source/blocked" "$ext_dir/$ext_id/"
-    
-    # Set permissions
-    chmod -R 755 "$ext_dir/$ext_id"
-    
-    log "✓ Extension copied to $ext_dir/$ext_id"
-    
-    # Update policies.json to force-install the extension
-    add_extension_to_policies "$ext_id" "$ext_dir/$ext_id"
-    
-    log "✓ Firefox extension installed"
-    return 0
+    install_firefox_unpacked_extension "$ext_source"
 }
 
 # Add extension to Firefox policies for force-install

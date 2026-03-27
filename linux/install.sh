@@ -307,6 +307,7 @@ step_install_libraries() {
     cp "$INSTALLER_SOURCE_DIR/lib/firewall.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/captive-portal.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/browser.sh" "$INSTALL_DIR/lib/"
+    cp "$INSTALLER_SOURCE_DIR/lib/firefox-extension-assets.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/services.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/rollback.sh" "$INSTALL_DIR/lib/"
 
@@ -549,37 +550,14 @@ step_install_extension() {
         local staged_release_dir="$INSTALL_DIR/firefox-release"
         local chromium_ext_id=""
         local firefox_release_source=""
-        local candidate=""
 
         rm -rf "$staged_ext_dir"
         rm -rf "$staged_release_dir"
-        mkdir -p "$staged_ext_dir"
-        cp "$INSTALLER_SOURCE_DIR/firefox-extension/manifest.json" "$staged_ext_dir/"
-        cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/dist" "$staged_ext_dir/"
-        cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/popup" "$staged_ext_dir/"
-        cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/icons" "$staged_ext_dir/"
-        cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/blocked" "$staged_ext_dir/"
-        if [ -d "$INSTALLER_SOURCE_DIR/firefox-extension/native" ]; then
-            cp -r "$INSTALLER_SOURCE_DIR/firefox-extension/native" "$staged_ext_dir/"
-        fi
+        stage_firefox_unpacked_extension_assets "$INSTALLER_SOURCE_DIR/firefox-extension" "$staged_ext_dir"
+        stage_firefox_optional_extension_assets "$INSTALLER_SOURCE_DIR/firefox-extension" "$staged_ext_dir"
 
-        for candidate in \
-            "$INSTALLER_SOURCE_DIR/browser-extension/firefox-release" \
-            "$INSTALLER_SOURCE_DIR/firefox-extension/build/firefox-release"
-        do
-            if [ -f "$candidate/metadata.json" ]; then
-                firefox_release_source="$candidate"
-                break
-            fi
-        done
-
-        if [ -n "$firefox_release_source" ]; then
-            mkdir -p "$staged_release_dir"
-            cp "$firefox_release_source/metadata.json" "$staged_release_dir/"
-            if [ -f "$firefox_release_source/openpath-firefox-extension.xpi" ]; then
-                cp "$firefox_release_source/openpath-firefox-extension.xpi" "$staged_release_dir/"
-            fi
-            echo "  ✓ Artefactos Firefox Release firmados preparados"
+        if firefox_release_source="$(stage_firefox_release_artifacts "$INSTALLER_SOURCE_DIR" "$staged_release_dir")"; then
+            echo "  ✓ Artefactos Firefox Release firmados preparados desde $firefox_release_source"
         fi
 
         install_firefox_extension "$staged_ext_dir" "$staged_release_dir"
