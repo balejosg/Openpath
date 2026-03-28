@@ -386,7 +386,6 @@ restart_updated_services() {
 verify_updated_installation() {
     local expected_version="$1"
     local installed_version=""
-    local attempt=0
 
     installed_version=$(read_installed_version)
     if [ "$installed_version" != "$expected_version" ]; then
@@ -399,7 +398,7 @@ verify_updated_installation() {
         return 1
     fi
 
-    for attempt in $(seq 1 10); do
+    for _ in $(seq 1 10); do
         if systemctl is-active --quiet dnsmasq; then
             return 0
         fi
