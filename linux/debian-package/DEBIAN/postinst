@@ -116,6 +116,7 @@ EOF
         
         systemctl enable dnsmasq
         systemctl enable openpath-dnsmasq.timer
+        systemctl enable openpath-agent-update.timer
         systemctl enable dnsmasq-watchdog.timer
         systemctl enable captive-portal-detector.service
         systemctl enable openpath-sse-listener.service
@@ -140,6 +141,7 @@ EOF
         fi
         
         systemctl start openpath-dnsmasq.timer
+        systemctl start openpath-agent-update.timer
         systemctl start dnsmasq-watchdog.timer
         systemctl start captive-portal-detector.service
         systemctl start openpath-sse-listener.service

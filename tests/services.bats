@@ -134,6 +134,20 @@ EOF
     grep -q "OnCalendar=\*:0/5" "$timer_file"
 }
 
+@test "services library defines unattended linux agent update timer with randomized delay" {
+    run grep -nF 'create_agent_update_timer()' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'openpath-agent-update.timer' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'RandomizedDelaySec=6h' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Persistent=true' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+}
+
 # ============== Tests de create_watchdog_service ==============
 
 @test "create_watchdog_service generates unit file" {

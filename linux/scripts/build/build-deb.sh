@@ -46,7 +46,7 @@ echo "[4/8] Copying libraries..."
 mkdir -p "$BUILD_DIR/usr/local/lib/openpath/lib"
 cp "$LINUX_DIR/lib/"*.sh "$BUILD_DIR/usr/local/lib/openpath/lib/"
 cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"
-cp "$ROOT_DIR/VERSION" "$BUILD_DIR/usr/local/lib/openpath/VERSION"
+printf '%s\n' "$VERSION" > "$BUILD_DIR/usr/local/lib/openpath/VERSION"
 chmod +x "$BUILD_DIR/usr/local/lib/openpath/lib/"*.sh
 chmod +x "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"
 
@@ -57,9 +57,10 @@ cp "$LINUX_DIR/scripts/runtime/openpath-update.sh" "$BUILD_DIR/usr/local/bin/"
 cp "$LINUX_DIR/scripts/runtime/dnsmasq-watchdog.sh" "$BUILD_DIR/usr/local/bin/"
 cp "$LINUX_DIR/scripts/runtime/captive-portal-detector.sh" "$BUILD_DIR/usr/local/bin/"
 cp "$LINUX_DIR/scripts/runtime/openpath-sse-listener.sh" "$BUILD_DIR/usr/local/bin/"
-cp "$LINUX_DIR/scripts/runtime/smoke-test.sh" "$BUILD_DIR/usr/local/bin/"
-cp "$LINUX_DIR/scripts/runtime/openpath-self-update.sh" "$BUILD_DIR/usr/local/bin/"
-cp "$LINUX_DIR/scripts/runtime/openpath-cmd.sh" "$BUILD_DIR/usr/local/bin/openpath"
+    cp "$LINUX_DIR/scripts/runtime/smoke-test.sh" "$BUILD_DIR/usr/local/bin/"
+    cp "$LINUX_DIR/scripts/runtime/openpath-self-update.sh" "$BUILD_DIR/usr/local/bin/"
+    cp "$LINUX_DIR/scripts/runtime/openpath-agent-update.sh" "$BUILD_DIR/usr/local/bin/"
+    cp "$LINUX_DIR/scripts/runtime/openpath-cmd.sh" "$BUILD_DIR/usr/local/bin/openpath"
 chmod +x "$BUILD_DIR/usr/local/bin/"*
 
 # Copy Firefox extension

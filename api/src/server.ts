@@ -114,6 +114,7 @@ const PORT = config.port;
 const HOST = config.host;
 
 const WINDOWS_AGENT_ROOT = path.resolve(process.cwd(), '../windows');
+const LINUX_AGENT_BUILD_ROOT = path.resolve(process.cwd(), '../build');
 const WINDOWS_AGENT_VERSION_FILE = path.resolve(process.cwd(), '../VERSION');
 const FIREFOX_EXTENSION_ROOT = path.resolve(process.cwd(), '../firefox-extension');
 const FIREFOX_RELEASE_ROOT = path.join(FIREFOX_EXTENSION_ROOT, 'build', 'firefox-release');
@@ -192,6 +193,18 @@ interface WindowsAgentFileEntry {
   absolutePath: string;
   sha256: string;
   size: number;
+}
+
+interface LinuxAgentPackageEntry {
+  version: string;
+  packageFileName: string;
+  absolutePath: string;
+  sha256: string;
+  size: number;
+  minSupportedVersion: string;
+  minDirectUpgradeVersion: string;
+  bridgeVersions: string[];
+  downloadPath: string;
 }
 
 type MachineByToken = Awaited<ReturnType<typeof classroomStorage.getMachineByDownloadTokenHash>>;
@@ -377,6 +390,83 @@ function buildWindowsAgentFileManifest(options?: {
       };
     })
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+function getLinuxAgentPackageFileName(version: string): string {
+  return `openpath-dnsmasq_${version}-1_amd64.deb`;
+}
+
+function parseLinuxBridgeVersions(): string[] {
+  const rawValue = process.env.OPENPATH_LINUX_AGENT_BRIDGE_VERSIONS?.trim();
+  if (!rawValue) {
+    return [];
+  }
+
+  return rawValue
+    .split(',')
+    .map((version) => version.trim())
+    .filter((version) => version.length > 0);
+}
+
+function resolveLinuxAgentPackagePath(version: string): string | null {
+  const configuredPath = process.env.OPENPATH_LINUX_AGENT_PACKAGE_PATH?.trim();
+  if (configuredPath) {
+    const resolvedPath = path.resolve(configuredPath);
+    if (fs.existsSync(resolvedPath)) {
+      return resolvedPath;
+    }
+  }
+
+  const configuredDirectory = process.env.OPENPATH_LINUX_AGENT_PACKAGE_DIR?.trim();
+  if (configuredDirectory) {
+    const candidatePath = path.join(
+      path.resolve(configuredDirectory),
+      getLinuxAgentPackageFileName(version)
+    );
+    if (fs.existsSync(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  const defaultCandidatePath = path.join(
+    LINUX_AGENT_BUILD_ROOT,
+    getLinuxAgentPackageFileName(version)
+  );
+  if (fs.existsSync(defaultCandidatePath)) {
+    return defaultCandidatePath;
+  }
+
+  return null;
+}
+
+function buildLinuxAgentPackageManifest(): LinuxAgentPackageEntry | null {
+  const version = readServerVersion();
+  const absolutePath = resolveLinuxAgentPackagePath(version);
+  if (!absolutePath) {
+    return null;
+  }
+
+  const packageBuffer = fs.readFileSync(absolutePath);
+  const packageFileName = path.basename(absolutePath);
+  const minSupportedVersion = process.env.OPENPATH_LINUX_AGENT_MIN_SUPPORTED_VERSION?.trim();
+  const minDirectUpgradeVersion =
+    process.env.OPENPATH_LINUX_AGENT_MIN_DIRECT_UPGRADE_VERSION?.trim();
+
+  return {
+    version,
+    packageFileName,
+    absolutePath,
+    sha256: createHash('sha256').update(packageBuffer).digest('hex'),
+    size: packageBuffer.length,
+    minSupportedVersion:
+      minSupportedVersion && minSupportedVersion.length > 0 ? minSupportedVersion : '0.0.0',
+    minDirectUpgradeVersion:
+      minDirectUpgradeVersion && minDirectUpgradeVersion.length > 0
+        ? minDirectUpgradeVersion
+        : '0.0.0',
+    bridgeVersions: parseLinuxBridgeVersions(),
+    downloadPath: `/api/agent/linux/package?version=${encodeURIComponent(version)}`,
+  };
 }
 
 function getPublicBaseUrl(req: Request): string {
@@ -1421,6 +1511,91 @@ app.get('/api/agent/windows/file', (req: Request, res: Response): void => {
       res.type('text/plain').send(fileContents);
     } catch (error) {
       logger.error('Error serving Windows agent file', { error: getErrorMessage(error) });
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Internal error' });
+      }
+    }
+  })();
+});
+
+app.get('/api/agent/linux/latest.json', (req: Request, res: Response): void => {
+  void (async (): Promise<void> => {
+    try {
+      const machine = await authenticateMachineToken(req, res);
+      if (!machine) {
+        return;
+      }
+
+      const packageEntry = buildLinuxAgentPackageManifest();
+      if (!packageEntry) {
+        logger.warn('Linux agent manifest requested but no package found', {
+          root: LINUX_AGENT_BUILD_ROOT,
+        });
+        res.status(503).json({ success: false, error: 'Linux agent package unavailable' });
+        return;
+      }
+
+      await classroomStorage.updateMachineLastSeen(machine.hostname);
+
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.json({
+        success: true,
+        version: packageEntry.version,
+        generatedAt: new Date().toISOString(),
+        packageFileName: packageEntry.packageFileName,
+        sha256: packageEntry.sha256,
+        size: packageEntry.size,
+        minSupportedVersion: packageEntry.minSupportedVersion,
+        minDirectUpgradeVersion: packageEntry.minDirectUpgradeVersion,
+        bridgeVersions: packageEntry.bridgeVersions,
+        downloadPath: packageEntry.downloadPath,
+      });
+    } catch (error) {
+      logger.error('Error serving Linux agent manifest', { error: getErrorMessage(error) });
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Internal error' });
+      }
+    }
+  })();
+});
+
+app.get('/api/agent/linux/package', (req: Request, res: Response): void => {
+  void (async (): Promise<void> => {
+    try {
+      const machine = await authenticateMachineToken(req, res);
+      if (!machine) {
+        return;
+      }
+
+      const requestedVersion =
+        typeof req.query.version === 'string' ? req.query.version.trim() : '';
+      if (!requestedVersion) {
+        res.status(400).json({ success: false, error: 'version query parameter required' });
+        return;
+      }
+
+      const absolutePath = resolveLinuxAgentPackagePath(requestedVersion);
+      if (!absolutePath) {
+        logger.warn('Linux agent package requested but no package found', {
+          version: requestedVersion,
+          root: LINUX_AGENT_BUILD_ROOT,
+        });
+        res.status(503).json({ success: false, error: 'Linux agent package unavailable' });
+        return;
+      }
+
+      await classroomStorage.updateMachineLastSeen(machine.hostname);
+
+      const packageContents = fs.readFileSync(absolutePath);
+      const packageFileName = path.basename(absolutePath);
+
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Content-Disposition', `attachment; filename="${packageFileName}"`);
+      res.type('application/vnd.debian.binary-package').send(packageContents);
+    } catch (error) {
+      logger.error('Error serving Linux agent package', { error: getErrorMessage(error) });
       if (!res.headersSent) {
         res.status(500).json({ success: false, error: 'Internal error' });
       }

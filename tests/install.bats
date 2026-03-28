@@ -196,3 +196,8 @@ load 'test_helper'
     run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-update.sh"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 }
+
+@test "install.sh stages unattended linux agent updater runtime" {
+    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-agent-update.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+}

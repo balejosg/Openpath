@@ -49,6 +49,7 @@ fi
 echo ""
 echo "[1/7] Deteniendo servicios..."
 systemctl stop openpath-dnsmasq.timer 2>/dev/null || true
+systemctl stop openpath-agent-update.timer 2>/dev/null || true
 systemctl stop dnsmasq-watchdog.timer 2>/dev/null || true
 systemctl stop captive-portal-detector.service 2>/dev/null || true
 systemctl stop dnsmasq 2>/dev/null || true
@@ -79,12 +80,15 @@ fi
 
 echo "[2/7] Deshabilitando servicios..."
 systemctl disable openpath-dnsmasq.timer 2>/dev/null || true
+systemctl disable openpath-agent-update.timer 2>/dev/null || true
 systemctl disable dnsmasq-watchdog.timer 2>/dev/null || true
 systemctl disable captive-portal-detector.service 2>/dev/null || true
 
 echo "[3/7] Eliminando servicios systemd..."
 rm -f /etc/systemd/system/openpath-dnsmasq.service
 rm -f /etc/systemd/system/openpath-dnsmasq.timer
+rm -f /etc/systemd/system/openpath-agent-update.service
+rm -f /etc/systemd/system/openpath-agent-update.timer
 rm -f /etc/systemd/system/dnsmasq-watchdog.service
 rm -f /etc/systemd/system/dnsmasq-watchdog.timer
 rm -f /etc/systemd/system/captive-portal-detector.service
@@ -201,6 +205,7 @@ rm -f /usr/local/bin/dnsmasq-init-resolv.sh
 rm -f /usr/local/bin/captive-portal-detector.sh
 rm -f /usr/local/bin/openpath
 rm -f /usr/local/bin/openpath-self-update.sh
+rm -f /usr/local/bin/openpath-agent-update.sh
 rm -rf /usr/local/lib/openpath
 rm -f /etc/dnsmasq.d/openpath.conf
 rm -rf /var/lib/openpath

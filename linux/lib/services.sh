@@ -27,6 +27,8 @@ create_systemd_services() {
     
     create_whitelist_service
     create_whitelist_timer
+    create_agent_update_service
+    create_agent_update_timer
     create_sse_listener_service
     create_watchdog_service
     create_watchdog_timer
@@ -98,6 +100,45 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+EOF
+}
+
+# Agent update service
+create_agent_update_service() {
+    cat > /etc/systemd/system/openpath-agent-update.service << 'EOF'
+[Unit]
+Description=OpenPath Linux Agent Update Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/openpath-agent-update.sh
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Timer for unattended agent software updates
+create_agent_update_timer() {
+    cat > /etc/systemd/system/openpath-agent-update.timer << 'EOF'
+[Unit]
+Description=Timer for OpenPath Linux Agent Updates
+After=network-online.target
+
+[Timer]
+OnBootSec=45min
+OnUnitActiveSec=1d
+AccuracySec=1h
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 EOF
 }
 
@@ -175,11 +216,13 @@ enable_services() {
     
     systemctl enable dnsmasq
     systemctl enable openpath-dnsmasq.timer
+    systemctl enable openpath-agent-update.timer
     systemctl enable dnsmasq-watchdog.timer
     systemctl enable captive-portal-detector.service
     systemctl enable openpath-sse-listener.service 2>/dev/null || true
     
     systemctl start openpath-dnsmasq.timer
+    systemctl start openpath-agent-update.timer
     systemctl start dnsmasq-watchdog.timer
     systemctl start captive-portal-detector.service
     systemctl start openpath-sse-listener.service 2>/dev/null || true
@@ -193,12 +236,14 @@ disable_services() {
     
     systemctl stop openpath-sse-listener.service 2>/dev/null || true
     systemctl stop openpath-dnsmasq.timer 2>/dev/null || true
+    systemctl stop openpath-agent-update.timer 2>/dev/null || true
     systemctl stop dnsmasq-watchdog.timer 2>/dev/null || true
     systemctl stop captive-portal-detector.service 2>/dev/null || true
     systemctl stop dnsmasq 2>/dev/null || true
     
     systemctl disable openpath-sse-listener.service 2>/dev/null || true
     systemctl disable openpath-dnsmasq.timer 2>/dev/null || true
+    systemctl disable openpath-agent-update.timer 2>/dev/null || true
     systemctl disable dnsmasq-watchdog.timer 2>/dev/null || true
     systemctl disable captive-portal-detector.service 2>/dev/null || true
     
@@ -213,6 +258,8 @@ remove_services() {
     
     rm -f /etc/systemd/system/openpath-dnsmasq.service
     rm -f /etc/systemd/system/openpath-dnsmasq.timer
+    rm -f /etc/systemd/system/openpath-agent-update.service
+    rm -f /etc/systemd/system/openpath-agent-update.timer
     rm -f /etc/systemd/system/openpath-sse-listener.service
     rm -f /etc/systemd/system/dnsmasq-watchdog.service
     rm -f /etc/systemd/system/dnsmasq-watchdog.timer

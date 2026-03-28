@@ -10,8 +10,151 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "linux self-update script supports api-hosted package manifests for managed clients" {
+    run grep -nF '/api/agent/linux/latest.json' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'get_machine_token_from_whitelist_url_file' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update reuses managed bearer auth for package downloads" {
+    run grep -nF 'DOWNLOAD_AUTH_HEADER=' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'DOWNLOAD_AUTH_HEADER="$auth_header"' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'curl -sS -L --connect-timeout 15 --max-time 120 -H "$DOWNLOAD_AUTH_HEADER" -o "$destination_file" "$source_url"' \
+        "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update computes bridge upgrade sequences from API manifest metadata" {
+    run grep -nF 'BRIDGE_VERSIONS=()' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'resolve_update_sequence()' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'bridgeVersions' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update caches rollback packages and can revert to the previous agent version" {
+    run grep -nF 'PACKAGE_CACHE_DIR="${OPENPATH_AGENT_PACKAGE_CACHE_DIR:-$VAR_STATE_DIR/packages}"' \
+        "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'attempt_agent_package_rollback()' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '/api/agent/linux/package?version=' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update keeps stdout reserved for cache path return values" {
+    run grep -nF 'log "Caching OpenPath package v${version}..." >&2' \
+        "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'log_error "Downloaded file is not a valid .deb package" >&2' \
+        "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update returns a clean cached package path when callers use command substitution" {
+    run env PROJECT_DIR="$PROJECT_DIR" bash -lc '
+        set -euo pipefail
+
+        tmpdir=$(mktemp -d)
+        trap "rm -rf \"$tmpdir\"" EXIT
+
+        export INSTALL_DIR="$tmpdir/install"
+        export ETC_CONFIG_DIR="$tmpdir/etc"
+        export VAR_STATE_DIR="$tmpdir/var"
+        export LOG_FILE="$tmpdir/openpath.log"
+        mkdir -p "$INSTALL_DIR/lib" "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+        cp "$PROJECT_DIR/linux/lib/"*.sh "$INSTALL_DIR/lib/"
+
+        pkgroot="$tmpdir/pkg-root"
+        mkdir -p "$pkgroot/DEBIAN"
+        cat > "$pkgroot/DEBIAN/control" <<'"'"'EOF'"'"'
+Package: openpath-dnsmasq
+Version: 1.2.3-1
+Architecture: amd64
+Maintainer: OpenPath Tests <tests@example.com>
+Description: Test package
+EOF
+        dpkg-deb --build "$pkgroot" "$tmpdir/source.deb" >/dev/null
+
+        export OPENPATH_SELF_UPDATE_SOURCE_ONLY=1
+        # shellcheck source=/dev/null
+        source "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+
+        PACKAGE_SOURCE="$tmpdir/source.deb"
+        download_url_to_file() {
+            local _source_url="$1"
+            local destination_file="$2"
+            mkdir -p "$(dirname "$destination_file")"
+            cp "$PACKAGE_SOURCE" "$destination_file"
+            verify_deb_package "$destination_file"
+        }
+
+        LATEST_VERSION="1.2.3"
+        DOWNLOAD_URL="https://example.test/openpath-dnsmasq_1.2.3-1_amd64.deb"
+        UPDATE_SOURCE="github-release"
+
+        result=$(ensure_cached_package_for_version "1.2.3")
+        expected="$VAR_STATE_DIR/packages/openpath-dnsmasq_1.2.3-1_amd64.deb"
+
+        [ "$result" = "$expected" ]
+        [ -f "$result" ]
+    '
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update keeps bridge versions that lie between current and target releases" {
+    run env PROJECT_DIR="$PROJECT_DIR" bash -lc '
+        set -euo pipefail
+
+        tmpdir=$(mktemp -d)
+        trap "rm -rf \"$tmpdir\"" EXIT
+
+        export INSTALL_DIR="$tmpdir/install"
+        export ETC_CONFIG_DIR="$tmpdir/etc"
+        export VAR_STATE_DIR="$tmpdir/var"
+        export LOG_FILE="$tmpdir/openpath.log"
+        mkdir -p "$INSTALL_DIR/lib" "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+        cp "$PROJECT_DIR/linux/lib/"*.sh "$INSTALL_DIR/lib/"
+
+        export OPENPATH_SELF_UPDATE_SOURCE_ONLY=1
+        # shellcheck source=/dev/null
+        source "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+
+        BRIDGE_VERSIONS=("5.1.1")
+        resolve_update_sequence "5.1.0" "5.1.2"
+
+        [ "${#UPDATE_SEQUENCE[@]}" -eq 2 ]
+        [ "${UPDATE_SEQUENCE[0]}" = "5.1.1" ]
+        [ "${UPDATE_SEQUENCE[1]}" = "5.1.2" ]
+    '
+    [ "$status" -eq 0 ]
+}
+
+@test "linux self-update validates dnsmasq health before declaring agent update success" {
+    run grep -nF 'systemctl is-active --quiet dnsmasq' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "linux packaged updates keep the installed uninstaller available" {
     run grep -nF 'cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux deb build stamps the target agent version into the packaged VERSION file" {
+    run grep -nF "printf '%s\\n' \"\$VERSION\" > \"\$BUILD_DIR/usr/local/lib/openpath/VERSION\"" \
+        "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -92,10 +235,69 @@ load 'test_helper'
     run grep -nF "Testing agent self-update mechanism (openpath-self-update.sh)..." "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
     [ "$status" -eq 0 ]
 
+    run grep -nF "Testing agent bridge upgrade and rollback mechanism..." "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
+    [ "$status" -eq 0 ]
+
     run grep -nF "Verifying Linux uninstall removes installed state..." "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF "/usr/local/lib/openpath/uninstall.sh --auto-yes" "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux gh actions workflow runs Linux e2e coverage on Ubuntu runners" {
+    run grep -nF 'os: [ubuntu-22.04, ubuntu-24.04]' "$PROJECT_DIR/.github/workflows/e2e-tests.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'bash tests/e2e/ci/run-linux-e2e.sh' "$PROJECT_DIR/.github/workflows/e2e-tests.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux runtime includes unattended agent update wrapper and systemd wiring" {
+    run grep -nF 'openpath-agent-update.sh' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'openpath-agent-update.sh' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'openpath-agent-update.timer' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'openpath-agent-update.service' "$PROJECT_DIR/linux/lib/services.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux debian package ships static systemd units for unattended agent updates" {
+    run test -f "$PROJECT_DIR/linux/debian-package/lib/systemd/system/openpath-agent-update.service"
+    [ "$status" -eq 0 ]
+
+    run test -f "$PROJECT_DIR/linux/debian-package/lib/systemd/system/openpath-agent-update.timer"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'ExecStart=/usr/local/bin/openpath-agent-update.sh' \
+        "$PROJECT_DIR/linux/debian-package/lib/systemd/system/openpath-agent-update.service"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'RandomizedDelaySec=6h' \
+        "$PROJECT_DIR/linux/debian-package/lib/systemd/system/openpath-agent-update.timer"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux debian maintainer scripts manage unattended agent update timer lifecycle" {
+    run grep -nF 'systemctl enable openpath-agent-update.timer' \
+        "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'systemctl start openpath-agent-update.timer' \
+        "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'systemctl stop openpath-agent-update.timer' \
+        "$PROJECT_DIR/linux/debian-package/DEBIAN/prerm"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'systemctl disable openpath-agent-update.timer' \
+        "$PROJECT_DIR/linux/debian-package/DEBIAN/prerm"
     [ "$status" -eq 0 ]
 }
 

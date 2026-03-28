@@ -380,6 +380,9 @@ step_install_scripts() {
     cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-self-update.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/openpath-self-update.sh"
 
+    cp "$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-agent-update.sh" "$SCRIPTS_DIR/"
+    chmod +x "$SCRIPTS_DIR/openpath-agent-update.sh"
+
     create_dns_init_script
 
     mkdir -p "$ETC_CONFIG_DIR"
@@ -653,6 +656,7 @@ print_summary() {
     echo "Estado:"
     echo "  - dnsmasq: $(systemctl is-active dnsmasq)"
     echo "  - Timer: $(systemctl is-active openpath-dnsmasq.timer)"
+    echo "  - Agent Update: $(systemctl is-active openpath-agent-update.timer)"
     echo "  - Watchdog: $(systemctl is-active dnsmasq-watchdog.timer)"
     echo "  - Smoke Tests: $SMOKE_STATUS"
     if [ -n "$MACHINE_REGISTERED" ]; then

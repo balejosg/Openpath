@@ -11,7 +11,7 @@
 import { test, describe, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getAvailablePort, resetDb, trpcMutate as _trpcMutate, parseTRPC } from './test-utils.js';
@@ -28,6 +28,11 @@ let adminPassword: string;
 const currentFilePath = fileURLToPath(import.meta.url);
 const apiTestsDir = dirname(currentFilePath);
 const apiRoot = resolve(apiTestsDir, '..');
+const serverVersionFilePath = resolve(apiRoot, '../VERSION');
+const linuxAgentVersion = readFileSync(serverVersionFilePath, 'utf8').trim() || '0.0.0';
+const linuxAgentBuildRoot = resolve(apiRoot, '../build');
+const linuxAgentPackageFileName = `openpath-dnsmasq_${linuxAgentVersion}-1_amd64.deb`;
+const linuxAgentPackageFilePath = resolve(linuxAgentBuildRoot, linuxAgentPackageFileName);
 const firefoxExtensionRoot = resolve(apiRoot, '../firefox-extension');
 const firefoxReleaseBuildRoot = resolve(firefoxExtensionRoot, 'build/firefox-release');
 const firefoxReleaseMetadataPath = resolve(firefoxReleaseBuildRoot, 'metadata.json');
@@ -135,6 +140,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
 
   after(async () => {
     await resetDb();
+    rmSync(linuxAgentBuildRoot, { recursive: true, force: true });
     rmSync(firefoxReleaseBuildRoot, { recursive: true, force: true });
     rmSync(chromiumManagedBuildRoot, { recursive: true, force: true });
 
@@ -471,6 +477,137 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       assert.ok(
         data.files.some((file) => file.path === 'browser-extension/firefox/popup/popup.html')
       );
+    });
+  });
+
+  await describe('GET /api/agent/linux/*', async () => {
+    let machineToken: string;
+
+    before(async () => {
+      await createTestClassroom('LinuxAgentClassroom', 'linux-agent-group');
+
+      mkdirSync(linuxAgentBuildRoot, { recursive: true });
+      writeFileSync(linuxAgentPackageFilePath, 'fake-linux-agent-package');
+
+      const registerResponse = await fetch(`${API_URL}/api/machines/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${registrationToken}`,
+        },
+        body: JSON.stringify({
+          hostname: 'linux-agent-test-pc',
+          classroomName: 'LinuxAgentClassroom',
+          version: '1.0.0',
+        }),
+      });
+
+      assert.strictEqual(registerResponse.status, 200);
+      const registerData = (await registerResponse.json()) as { whitelistUrl: string };
+      machineToken = extractMachineToken(registerData.whitelistUrl);
+    });
+
+    await test('should require machine bearer token for linux manifest', async () => {
+      const response = await fetch(`${API_URL}/api/agent/linux/latest.json`);
+      assert.strictEqual(response.status, 401);
+    });
+
+    await test('should return linux package metadata and hash from the API manifest', async () => {
+      const response = await fetch(`${API_URL}/api/agent/linux/latest.json`, {
+        headers: {
+          Authorization: `Bearer ${machineToken}`,
+        },
+      });
+
+      assert.strictEqual(response.status, 200);
+      const data = (await response.json()) as {
+        success: boolean;
+        version: string;
+        packageFileName: string;
+        sha256: string;
+        size: number;
+        minSupportedVersion: string;
+        minDirectUpgradeVersion: string;
+        downloadPath: string;
+      };
+
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.version, linuxAgentVersion);
+      assert.strictEqual(data.packageFileName, linuxAgentPackageFileName);
+      assert.strictEqual(data.size, 'fake-linux-agent-package'.length);
+      assert.strictEqual(data.sha256.length, 64);
+      assert.ok(data.minSupportedVersion.length > 0);
+      assert.ok(data.minDirectUpgradeVersion.length > 0);
+      assert.ok(
+        data.downloadPath.includes(
+          `/api/agent/linux/package?version=${encodeURIComponent(data.version)}`
+        )
+      );
+    });
+
+    await test('should include configured bridge versions in the linux API manifest', async () => {
+      process.env.OPENPATH_LINUX_AGENT_BRIDGE_VERSIONS = '3.8.0, 3.9.0';
+
+      try {
+        const response = await fetch(`${API_URL}/api/agent/linux/latest.json`, {
+          headers: {
+            Authorization: `Bearer ${machineToken}`,
+          },
+        });
+
+        assert.strictEqual(response.status, 200);
+        const data = (await response.json()) as {
+          bridgeVersions: string[];
+        };
+
+        assert.deepStrictEqual(data.bridgeVersions, ['3.8.0', '3.9.0']);
+      } finally {
+        delete process.env.OPENPATH_LINUX_AGENT_BRIDGE_VERSIONS;
+      }
+    });
+
+    await test('should download the linux agent package through the API path', async () => {
+      const manifestResponse = await fetch(`${API_URL}/api/agent/linux/latest.json`, {
+        headers: {
+          Authorization: `Bearer ${machineToken}`,
+        },
+      });
+      assert.strictEqual(manifestResponse.status, 200);
+
+      const manifest = (await manifestResponse.json()) as {
+        downloadPath: string;
+      };
+      assert.ok(manifest.downloadPath);
+
+      const response = await fetch(`${API_URL}${manifest.downloadPath}`, {
+        headers: {
+          Authorization: `Bearer ${machineToken}`,
+        },
+      });
+
+      assert.strictEqual(response.status, 200);
+      const packageContent = await response.text();
+      assert.strictEqual(packageContent, 'fake-linux-agent-package');
+    });
+
+    await test('should download a specific bridge package version when it is available', async () => {
+      const bridgeVersion = '3.9.0';
+      const bridgePackageFileName = `openpath-dnsmasq_${bridgeVersion}-1_amd64.deb`;
+      const bridgePackageFilePath = resolve(linuxAgentBuildRoot, bridgePackageFileName);
+      writeFileSync(bridgePackageFilePath, 'fake-linux-bridge-package');
+
+      const response = await fetch(
+        `${API_URL}/api/agent/linux/package?version=${encodeURIComponent(bridgeVersion)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${machineToken}`,
+          },
+        }
+      );
+
+      assert.strictEqual(response.status, 200);
+      const packageContent = await response.text();
+      assert.strictEqual(packageContent, 'fake-linux-bridge-package');
     });
   });
 

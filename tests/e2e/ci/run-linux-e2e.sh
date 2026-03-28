@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 IMAGE_TAG="${OPENPATH_E2E_IMAGE_TAG:-openpath-e2e:latest}"
-CONTAINER_NAME="${OPENPATH_E2E_CONTAINER_NAME:-e2e-test}"
+CONTAINER_NAME="${OPENPATH_E2E_CONTAINER_NAME:-e2e-test-$$}"
 
 _context_dir=""
 
@@ -179,8 +179,9 @@ run_agent_self_update_test() {
         release_dir="$workdir/release"
         build_log="$workdir/build.log"
         server_log="$workdir/http.log"
+        update_log="$workdir/update.log"
         current_conf="$(cat /etc/openpath/whitelist-url.conf)"
-        current_version="$(cat /openpath/VERSION 2>/dev/null || echo 4.1.0)"
+        current_version="$(cat /usr/local/lib/openpath/VERSION 2>/dev/null || cat /openpath/VERSION 2>/dev/null || echo 4.1.0)"
 
         target_version="$(CURRENT_VERSION="$current_version" python3 - <<'"'"'PY'"'"'
 import os
@@ -218,27 +219,247 @@ EOF
         python3 -m http.server 18080 --bind 127.0.0.1 --directory "$release_dir" >"$server_log" 2>&1 &
         server_pid=$!
         trap "kill \$server_pid >/dev/null 2>&1 || true" EXIT
-        sleep 1
+        for _ in $(seq 1 20); do
+            if curl -fsS "http://127.0.0.1:18080/latest.json" >/dev/null 2>&1; then
+                break
+            fi
+            sleep 0.5
+        done
 
-        OPENPATH_SELF_UPDATE_API="http://127.0.0.1:18080/latest.json" /usr/local/bin/openpath-self-update.sh
+        if ! OPENPATH_SELF_UPDATE_API="http://127.0.0.1:18080/latest.json" /usr/local/bin/openpath-self-update.sh >"$update_log" 2>&1; then
+            echo "Self-update command failed"
+            echo "--- update log ---"
+            cat "$update_log"
+            echo "--- build log ---"
+            cat "$build_log"
+            echo "--- server log ---"
+            cat "$server_log"
+            exit 1
+        fi
 
         if ! dpkg -s openpath-dnsmasq 2>/dev/null | grep -q "Version: ${target_version}-1"; then
             echo "Self-update did not install package version ${target_version}-1"
+            cat "$update_log"
+            exit 1
+        fi
+
+        if [ "$(cat /usr/local/lib/openpath/VERSION)" != "$target_version" ]; then
+            echo "Self-update did not update /usr/local/lib/openpath/VERSION to ${target_version}"
+            cat "$update_log"
             exit 1
         fi
 
         if [ "$(cat /etc/openpath/whitelist-url.conf)" != "$current_conf" ]; then
             echo "Self-update did not preserve whitelist-url.conf"
+            cat "$update_log"
             exit 1
         fi
 
         if [ ! -x /usr/local/bin/openpath-self-update.sh ]; then
             echo "Self-update removed the installed self-update command"
+            cat "$update_log"
             exit 1
         fi
     '
 
     echo "Agent self-update test completed"
+}
+
+run_agent_bridge_and_rollback_test() {
+    echo ""
+    echo "Testing agent bridge upgrade and rollback mechanism..."
+
+    docker exec "$CONTAINER_NAME" bash -lc '
+        set -euo pipefail
+
+        workdir="/tmp/openpath-agent-bridge-rollback"
+        release_dir="$workdir/release"
+        server_script="$workdir/server.py"
+        server_log="$workdir/http.log"
+        update_log="$workdir/update.log"
+        build_log="$workdir/build.log"
+        machine_token="test-machine-token"
+        current_version="$(cat /usr/local/lib/openpath/VERSION 2>/dev/null || cat /openpath/VERSION 2>/dev/null || echo 4.1.0)"
+
+        mapfile -t versions < <(CURRENT_VERSION="$current_version" python3 - <<'"'"'PY'"'"'
+import os
+import re
+
+raw = os.environ.get("CURRENT_VERSION", "4.1.0")
+parts = [int(p) for p in re.findall(r"\d+", raw)[:3]]
+while len(parts) < 3:
+    parts.append(0)
+
+bridge = parts[:]
+bridge[2] += 1
+
+target = parts[:]
+target[2] += 2
+
+print(f"{bridge[0]}.{bridge[1]}.{bridge[2]}")
+print(f"{target[0]}.{target[1]}.{target[2]}")
+PY
+)
+
+        rollback_version="$current_version"
+        bridge_version="${versions[0]}"
+        target_version="${versions[1]}"
+
+        rm -rf "$workdir" /var/lib/openpath/packages
+        mkdir -p "$release_dir"
+
+        cd /openpath
+        ./linux/scripts/build/build-deb.sh "$rollback_version" 1 >>"$build_log" 2>&1
+        ./linux/scripts/build/build-deb.sh "$bridge_version" 1 >>"$build_log" 2>&1
+        ./linux/scripts/build/build-deb.sh "$target_version" 1 >>"$build_log" 2>&1
+
+        target_build_dir="/openpath/build/openpath-dnsmasq_${target_version}-1_amd64"
+        TARGET_POSTINST="$target_build_dir/DEBIAN/postinst" python3 - <<'"'"'PY'"'"'
+import os
+from pathlib import Path
+
+path = Path(os.environ["TARGET_POSTINST"])
+content = path.read_text()
+needle = "\nexit 0\n"
+replacement = "\n# Force rollback path during Linux E2E\necho \"Forced failure during Linux E2E\" >&2\nexit 1\n"
+if needle not in content:
+    raise SystemExit("postinst did not contain the expected final exit 0")
+path.write_text(content.replace(needle, replacement, 1))
+PY
+        chmod 755 "$target_build_dir/DEBIAN/postinst"
+        dpkg-deb --build --root-owner-group "$target_build_dir" >/dev/null
+
+        rollback_deb="openpath-dnsmasq_${rollback_version}-1_amd64.deb"
+        bridge_deb="openpath-dnsmasq_${bridge_version}-1_amd64.deb"
+        target_deb="openpath-dnsmasq_${target_version}-1_amd64.deb"
+
+        cp "/openpath/build/$rollback_deb" "$release_dir/$rollback_deb"
+        cp "/openpath/build/$bridge_deb" "$release_dir/$bridge_deb"
+        cp "/openpath/build/$target_deb" "$release_dir/$target_deb"
+
+        cat > "$server_script" <<PY
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+import json
+
+RELEASE_DIR = Path(${release_dir@Q})
+EXPECTED_TOKEN = ${machine_token@Q}
+TARGET_VERSION = ${target_version@Q}
+BRIDGE_VERSION = ${bridge_version@Q}
+
+class Handler(BaseHTTPRequestHandler):
+    def _write_json(self, status, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _write_file(self, path):
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.debian.binary-package")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        auth_header = self.headers.get("Authorization")
+        if auth_header != f"Bearer {EXPECTED_TOKEN}":
+            self._write_json(401, {"success": False, "error": "Unauthorized"})
+            return
+
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/agent/linux/latest.json":
+            self._write_json(200, {
+                "success": True,
+                "version": TARGET_VERSION,
+                "downloadPath": f"/api/agent/linux/package?version={TARGET_VERSION}",
+                "minSupportedVersion": "0.0.0",
+                "minDirectUpgradeVersion": BRIDGE_VERSION,
+                "bridgeVersions": [BRIDGE_VERSION],
+            })
+            return
+
+        if parsed.path == "/api/agent/linux/package":
+            version = parse_qs(parsed.query).get("version", [""])[0]
+            package_path = RELEASE_DIR / f"openpath-dnsmasq_{version}-1_amd64.deb"
+            if not package_path.exists():
+                self._write_json(404, {"success": False, "error": "Package not found"})
+                return
+            self._write_file(package_path)
+            return
+
+        self._write_json(404, {"success": False, "error": "Not found"})
+
+    def log_message(self, format, *args):
+        pass
+
+HTTPServer(("127.0.0.1", 18081), Handler).serve_forever()
+PY
+
+        python3 "$server_script" >"$server_log" 2>&1 &
+        server_pid=$!
+        trap "kill \$server_pid >/dev/null 2>&1 || true" EXIT
+        sleep 1
+
+        printf "http://127.0.0.1:18081\n" > /etc/openpath/api-url.conf
+        printf "http://127.0.0.1/w/%s/whitelist.txt\n" "$machine_token" > /etc/openpath/whitelist-url.conf
+
+        set +e
+        /usr/local/bin/openpath-self-update.sh >"$update_log" 2>&1
+        update_rc=$?
+        set -e
+
+        if [ "$update_rc" -eq 0 ]; then
+            echo "Bridge rollback scenario unexpectedly succeeded"
+            cat "$update_log"
+            exit 1
+        fi
+
+        if ! grep -q "Attempting rollback to OpenPath v${bridge_version}" "$update_log"; then
+            echo "Rollback log did not mention bridge version ${bridge_version}"
+            cat "$update_log"
+            exit 1
+        fi
+
+        if ! dpkg -s openpath-dnsmasq 2>/dev/null | grep -q "Version: ${bridge_version}-1"; then
+            echo "Rollback did not restore bridge package version ${bridge_version}-1"
+            cat "$update_log"
+            exit 1
+        fi
+
+        if [ "$(cat /usr/local/lib/openpath/VERSION)" != "$bridge_version" ]; then
+            echo "Rollback did not restore /usr/local/lib/openpath/VERSION to ${bridge_version}"
+            cat "$update_log"
+            exit 1
+        fi
+
+        if [ ! -f "/var/lib/openpath/packages/$rollback_deb" ]; then
+            echo "Rollback cache is missing the original package $rollback_deb"
+            exit 1
+        fi
+
+        if [ ! -f "/var/lib/openpath/packages/$bridge_deb" ]; then
+            echo "Rollback cache is missing the bridge package $bridge_deb"
+            exit 1
+        fi
+
+        if [ ! -f "/var/lib/openpath/packages/$target_deb" ]; then
+            echo "Rollback cache is missing the failed target package $target_deb"
+            exit 1
+        fi
+
+        if ! systemctl is-active --quiet dnsmasq; then
+            echo "dnsmasq is not active after rollback"
+            cat "$update_log"
+            exit 1
+        fi
+    '
+
+    echo "Agent bridge upgrade and rollback test completed"
 }
 
 verify_linux_uninstall() {
@@ -279,6 +500,8 @@ main() {
     echo ""
     echo "Starting systemd container..."
 
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+
     docker run -d --name "$CONTAINER_NAME" \
         --privileged \
         --cgroupns=host \
@@ -314,6 +537,7 @@ main() {
 
     run_whitelist_update_test
     run_agent_self_update_test
+    run_agent_bridge_and_rollback_test
     verify_linux_uninstall
 
     echo ""

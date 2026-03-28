@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer for OpenPath Linux Agent Updates
+After=network-online.target
+
+[Timer]
+OnBootSec=45min
+OnUnitActiveSec=1d
+AccuracySec=1h
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

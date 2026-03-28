@@ -120,7 +120,7 @@ cmd_status() {
     echo ""
     
     echo -e "${YELLOW}Servicios:${NC}"
-    for svc in dnsmasq openpath-dnsmasq.timer dnsmasq-watchdog.timer captive-portal-detector openpath-sse-listener; do
+    for svc in dnsmasq openpath-dnsmasq.timer openpath-agent-update.timer dnsmasq-watchdog.timer captive-portal-detector openpath-sse-listener; do
         if systemctl is-active --quiet $svc 2>/dev/null; then
             echo -e "  $svc: ${GREEN}● activo${NC}"
         else
@@ -187,6 +187,23 @@ cmd_status() {
         echo "  API URL: $api_url"
     else
         echo "  API URL: no configurada"
+    fi
+
+    local agent_update_state_file="$VAR_STATE_DIR/agent-update-state.json"
+    echo ""
+    echo -e "${YELLOW}Agent Update:${NC}"
+    if [ -f "$agent_update_state_file" ]; then
+        local update_status=""
+        local update_check=""
+        local update_success=""
+        update_status=$(grep -oP '"status":\s*"\K[^"]+' "$agent_update_state_file" 2>/dev/null | head -1 || true)
+        update_check=$(grep -oP '"lastCheckAt":\s*"\K[^"]+' "$agent_update_state_file" 2>/dev/null | head -1 || true)
+        update_success=$(grep -oP '"lastSuccessAt":\s*"\K[^"]+' "$agent_update_state_file" 2>/dev/null | head -1 || true)
+        echo "  Estado: ${update_status:-desconocido}"
+        echo "  Ultimo check: ${update_check:-nunca}"
+        echo "  Ultimo exito: ${update_success:-nunca}"
+    else
+        echo "  Estado: sin historial"
     fi
 
     if [ -n "$whitelist_url" ]; then
@@ -858,7 +875,7 @@ case "${1:-status}" in
     setup)      shift; cmd_setup "$@" ;;
     rotate-token) cmd_rotate_token ;;
     enroll)     shift; cmd_enroll "$@" ;;
-    self-update) shift; /usr/local/bin/openpath-self-update.sh "$@" ;;
+    self-update) shift; /usr/local/bin/openpath-agent-update.sh "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
         echo -e "${RED}Comando desconocido: $1${NC}"
