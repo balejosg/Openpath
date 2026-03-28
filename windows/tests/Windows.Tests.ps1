@@ -1559,6 +1559,70 @@ Describe "Browser Module" {
             $policy.policies.ExtensionSettings.'monitor-bloqueos@openpath'.install_url | Should -Match 'openpath-firefox-extension\.xpi$'
         }
 
+        It "Uses the managed OpenPath API for Firefox release updates when apiUrl is configured" {
+            $script:capturedFirefoxPolicyJson = $null
+
+            Mock Test-Path {
+                param([string]$Path)
+                if ($Path -like '*firefox.exe') {
+                    return $true
+                }
+
+                if ($Path -like '*browser-extension\firefox-release\metadata.json') {
+                    return $true
+                }
+
+                if ($Path -like '*browser-extension\firefox-release\openpath-firefox-extension.xpi') {
+                    return $true
+                }
+
+                return $false
+            } -ModuleName Browser
+
+            Mock New-Item {
+                [PSCustomObject]@{ FullName = 'mock-path' }
+            } -ModuleName Browser
+
+            Mock Get-OpenPathConfig {
+                [PSCustomObject]@{
+                    apiUrl = 'https://school.example/'
+                }
+            } -ModuleName Browser
+
+            Mock Get-Content {
+                param(
+                    [string]$Path,
+                    [switch]$Raw
+                )
+
+                if ($Path -like '*browser-extension\firefox-release\metadata.json') {
+                    return '{"extensionId":"monitor-bloqueos@openpath","version":"2.0.0"}'
+                }
+
+                throw "Unexpected path: $Path"
+            } -ModuleName Browser
+
+            Mock Write-OpenPathUtf8NoBomFile {
+                param(
+                    [string]$Path,
+                    [string]$Value
+                )
+
+                if ($Path -like '*policies.json') {
+                    $script:capturedFirefoxPolicyJson = $Value
+                }
+            } -ModuleName Browser
+
+            Mock Write-OpenPathLog { } -ModuleName Browser
+
+            $result = Set-FirefoxPolicy -BlockedPaths @()
+            $result | Should -BeTrue
+
+            $policy = $script:capturedFirefoxPolicyJson | ConvertFrom-Json
+            $policy.policies.ExtensionSettings.'monitor-bloqueos@openpath'.installation_mode | Should -Be 'force_installed'
+            $policy.policies.ExtensionSettings.'monitor-bloqueos@openpath'.install_url | Should -Be 'https://school.example/api/extensions/firefox/openpath.xpi'
+        }
+
         It "Prefers the staged signed Firefox XPI over metadata installUrl when both exist" {
             $script:capturedFirefoxPolicyJson = $null
 

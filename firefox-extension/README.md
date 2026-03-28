@@ -160,8 +160,10 @@ Opcionalmente puedes fijar la URL gestionada que se escribirá en `metadata.json
 npm run sign:firefox-release -- --install-url https://downloads.example/openpath-firefox-extension.xpi
 ```
 
-Si no pasas `--install-url`, OpenPath usará el XPI firmado copiado localmente mediante
-`file:///` cuando el agente de Windows lo stagee en `C:\OpenPath\browser-extension\firefox-release\`.
+Si no pasas `--install-url`, OpenPath usa por defecto la copia firmada local. En Windows, si
+`apiUrl` está configurada, el agente preferirá la ruta gestionada
+`https://<api>/api/extensions/firefox/openpath.xpi` para facilitar auto-updates; si no hay
+`apiUrl`, seguirá usando el XPI stageado localmente mediante `file:///`.
 
 ## Uso
 

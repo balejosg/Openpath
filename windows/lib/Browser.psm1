@@ -256,8 +256,21 @@ function Get-OpenPathFirefoxManagedExtensionPolicy {
     }
 
     $installUrl = ''
+    $apiBaseUrl = if (
+        $config -and
+        $config.PSObject.Properties['apiUrl'] -and
+        $config.apiUrl
+    ) {
+        ([string]$config.apiUrl).TrimEnd('/')
+    }
+    else {
+        ''
+    }
     $signedXpiPath = Get-OpenPathFirefoxReleaseXpiPath
-    if (Test-Path $signedXpiPath) {
+    if ($apiBaseUrl -and (Test-Path $signedXpiPath)) {
+        $installUrl = "$apiBaseUrl/api/extensions/firefox/openpath.xpi"
+    }
+    elseif (Test-Path $signedXpiPath) {
         $installUrl = ConvertTo-OpenPathFileUrl -Path $signedXpiPath
     }
     elseif ($metadata.PSObject.Properties['installUrl'] -and $metadata.installUrl) {

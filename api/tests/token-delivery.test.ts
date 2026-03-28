@@ -648,6 +648,26 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       assert.ok(manifest.files.some((file) => file.path === 'scripts/OpenPath-NativeHost.cmd'));
     });
 
+    await test('should publish Firefox release XPI endpoint when signed artifacts exist', async () => {
+      mkdirSync(firefoxReleaseBuildRoot, { recursive: true });
+      writeFileSync(
+        firefoxReleaseMetadataPath,
+        JSON.stringify({
+          extensionId: 'monitor-bloqueos@openpath',
+          version: '2.0.0.23002',
+        })
+      );
+      writeFileSync(firefoxReleaseXpiPath, 'fake-firefox-release-xpi');
+
+      const xpiResponse = await fetch(`${API_URL}/api/extensions/firefox/openpath.xpi`);
+      assert.strictEqual(xpiResponse.status, 200);
+      assert.match(
+        xpiResponse.headers.get('content-type') ?? '',
+        /application\/x-xpinstall|application\/x-xpinstall;|application\/octet-stream/
+      );
+      assert.strictEqual(await xpiResponse.text(), 'fake-firefox-release-xpi');
+    });
+
     await test('should publish Chromium managed rollout endpoints when build artifacts exist', async () => {
       mkdirSync(chromiumManagedBuildRoot, { recursive: true });
       writeFileSync(

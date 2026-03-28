@@ -75,7 +75,7 @@ Get-NetFirewallRule -DisplayName "OpenPath-*"
 
 ## Browser Extension Notes
 
-- Firefox Release: OpenPath only force-installs the extension when a signed distribution is available. Supported sources are `firefoxExtensionId` + `firefoxExtensionInstallUrl` in `config.json` (for example an AMO `latest.xpi` URL) or staged signed artifacts under `C:\OpenPath\browser-extension\firefox-release\`.
+- Firefox Release: OpenPath only force-installs the extension when a signed distribution is available. Supported sources are `firefoxExtensionId` + `firefoxExtensionInstallUrl` in `config.json` (for example an AMO `latest.xpi` URL) or staged signed artifacts under `C:\OpenPath\browser-extension\firefox-release\`. When `apiUrl` is configured and signed release artifacts are present, Windows now points Firefox at the OpenPath API route `/api/extensions/firefox/openpath.xpi` so the browser can auto-update against the current signed package; `file:///` remains the fallback when `apiUrl` is not configured.
 - Firefox development assets can still be staged under `C:\OpenPath\browser-extension\firefox`, but they are not used for Firefox Release auto-install because the unpacked bundle is unsigned.
 - If no signed Firefox distribution is configured, OpenPath keeps the browser blocking policies and skips extension auto-install with a warning in `C:\OpenPath\data\logs\openpath.log`.
 - Chrome and Edge: OpenPath now stages managed rollout metadata under `C:\OpenPath\browser-extension\chromium-managed` and can publish a managed `CRX + update manifest` pipeline when `firefox-extension/build/chromium-managed/` exists on the server. Build those artifacts with `npm run build:chromium-managed --workspace=@openpath/firefox-extension`.

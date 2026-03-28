@@ -140,6 +140,11 @@ interface ChromiumManagedMetadata {
   version: string;
 }
 
+interface FirefoxReleaseMetadata {
+  extensionId: string;
+  version: string;
+}
+
 function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
 
@@ -261,6 +266,31 @@ function readChromiumManagedMetadata(): ChromiumManagedMetadata | null {
     logger.warn('Failed to read Chromium managed extension metadata', {
       error: getErrorMessage(error),
       path: CHROMIUM_MANAGED_METADATA_FILE,
+    });
+    return null;
+  }
+}
+
+function readFirefoxReleaseMetadata(): FirefoxReleaseMetadata | null {
+  if (!fs.existsSync(FIREFOX_RELEASE_METADATA_FILE) || !fs.existsSync(FIREFOX_RELEASE_XPI_FILE)) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(FIREFOX_RELEASE_METADATA_FILE, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<FirefoxReleaseMetadata>;
+    if (!parsed.extensionId || !parsed.version) {
+      return null;
+    }
+
+    return {
+      extensionId: parsed.extensionId,
+      version: parsed.version,
+    };
+  } catch (error) {
+    logger.warn('Failed to read Firefox release extension metadata', {
+      error: getErrorMessage(error),
+      path: FIREFOX_RELEASE_METADATA_FILE,
     });
     return null;
   }
@@ -615,6 +645,15 @@ app.get('/api/config', (_req, res) => {
   res.json({
     googleClientId: config.googleClientId,
   });
+});
+
+app.get('/api/extensions/firefox/openpath.xpi', (_req, res) => {
+  if (!readFirefoxReleaseMetadata()) {
+    res.status(404).type('text/plain').send('Firefox release extension package unavailable');
+    return;
+  }
+
+  res.type('application/x-xpinstall').send(fs.readFileSync(FIREFOX_RELEASE_XPI_FILE));
 });
 
 app.get('/api/extensions/chromium/updates.xml', (req: Request, res: Response): void => {
