@@ -1,6 +1,8 @@
 #!/usr/bin/env npx tsx
 
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export interface HarnessCredentials {
   email: string;
@@ -1051,7 +1053,9 @@ async function runCli(argv: string[]): Promise<void> {
   }
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1] ?? ''}`;
+const isMainModule =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
 if (isMainModule) {
   runCli(process.argv.slice(2)).catch((error: unknown) => {
