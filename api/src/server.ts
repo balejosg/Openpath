@@ -45,7 +45,7 @@ import compression from 'compression';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import rateLimit from 'express-rate-limit';
 import 'dotenv/config';
 
@@ -2128,7 +2128,8 @@ const gracefulShutdown = (signal: string): void => {
 };
 
 // Start server when run directly
-const isMainModule = import.meta.url === `file://${process.argv[1] ?? ''}`;
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
   const serverStartTime = new Date();
