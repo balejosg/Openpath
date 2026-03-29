@@ -271,7 +271,7 @@ function Start-TestPostgresProcess {
         -OutputPath (Join-Path $script:ArtifactsRoot 'postgres-initdb.log')
 
     Invoke-ProcessWithTimeout -FilePath $pgCtl `
-        -ArgumentList @('-D', $script:PostgresDataDir, '-l', $script:PostgresLogPath, '-o', "-p $($script:PostgresPort)", '-w', 'start') `
+        -ArgumentList @('start', '-D', $script:PostgresDataDir, '-l', $script:PostgresLogPath, '-o', "-p $($script:PostgresPort)", '-w') `
         -TimeoutMs 120000 `
         -Context 'pg_ctl start' `
         -OutputPath (Join-Path $script:ArtifactsRoot 'postgres-start.log')
@@ -616,7 +616,7 @@ function Cleanup-TestPostgres {
     if ($script:DatabaseMode -eq 'local' -and $script:PostgresBinDir -and $script:PostgresDataDir) {
         $pgCtl = Join-Path $script:PostgresBinDir 'pg_ctl.exe'
         if (Test-Path $pgCtl) {
-            & $pgCtl -D $script:PostgresDataDir -m fast stop | Out-Null
+            & $pgCtl stop -D $script:PostgresDataDir -m fast | Out-Null
         }
 
         if (Test-Path $script:PostgresDataDir) {
