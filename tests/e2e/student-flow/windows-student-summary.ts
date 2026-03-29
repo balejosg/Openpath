@@ -7,6 +7,11 @@ interface BuildWindowsStudentSummaryOptions {
   mode: 'failure' | 'success';
 }
 
+interface SummarySection {
+  fileName: string;
+  excerpt: string;
+}
+
 const SUMMARY_FILES = [
   'windows-student-policy-trace.log',
   'windows-diagnostics.txt',
@@ -44,16 +49,32 @@ function readExcerpt(filePath: string): string {
   return truncated ? `${excerpt}\n... [truncated]` : excerpt;
 }
 
+function buildSections(artifactsDir: string): SummarySection[] {
+  return SUMMARY_FILES.map((fileName) => ({
+    fileName,
+    excerpt: readExcerpt(path.join(artifactsDir, fileName)),
+  }));
+}
+
 export function buildWindowsStudentSummary({
   artifactsDir,
   mode,
 }: BuildWindowsStudentSummaryOptions): string {
-  const sections = SUMMARY_FILES.map((fileName) => {
-    const excerpt = readExcerpt(path.join(artifactsDir, fileName));
+  const sections = buildSections(artifactsDir).map(({ fileName, excerpt }) => {
     return `## ${fileName}\n\n\`\`\`text\n${excerpt}\n\`\`\``;
   });
 
   return [`# Windows Student Policy Diagnostics (${mode})`, '', ...sections, ''].join('\n');
+}
+
+export function buildWindowsStudentAnnotations({
+  artifactsDir,
+  mode,
+}: BuildWindowsStudentSummaryOptions): string[] {
+  return buildSections(artifactsDir).map(({ fileName, excerpt }) => {
+    const payload = `${mode} ${fileName}: ${excerpt.replace(/\r?\n/g, ' | ')}`;
+    return `::error title=Windows Student Policy Diagnostics::${payload}`;
+  });
 }
 
 function getOption(name: string): string {

@@ -72,6 +72,29 @@ function Publish-GitHubStepSummary {
     }
 }
 
+function Publish-GitHubFailureAnnotations {
+    try {
+        $nodeCommand = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+        if (-not $nodeCommand) {
+            Write-DiagnosticNote 'Skipping GitHub failure annotations because node.exe was not found on PATH.'
+            return
+        }
+
+        $annotations = & $nodeCommand --import tsx -e "import { buildWindowsStudentAnnotations } from './tests/e2e/student-flow/windows-student-summary.ts'; const annotations = buildWindowsStudentAnnotations({ artifactsDir: process.argv[1], mode: 'failure' }); process.stdout.write(annotations.join('\n'));" $script:ArtifactsRoot
+        if ($LASTEXITCODE -ne 0) {
+            Write-DiagnosticNote "Failed to build GitHub failure annotations (exit $LASTEXITCODE)."
+            return
+        }
+
+        if ($annotations) {
+            $annotations | Out-Host
+        }
+    }
+    catch {
+        Write-DiagnosticNote "Skipping GitHub failure annotations: $_"
+    }
+}
+
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
     try {
@@ -792,6 +815,7 @@ try {
 catch {
     Write-Host "Windows student-policy runner failed: $_" -ForegroundColor Red
     Invoke-DebugDump
+    Publish-GitHubFailureAnnotations
     Publish-GitHubStepSummary -Mode 'failure'
     throw
 }

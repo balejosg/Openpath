@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { buildWindowsStudentSummary } from './windows-student-summary.js';
+import { buildWindowsStudentAnnotations } from './windows-student-summary.js';
 
 await test('buildWindowsStudentSummary includes trace, config, and stderr excerpts', () => {
   const artifactsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-windows-student-summary-'));
@@ -73,4 +74,29 @@ await test('buildWindowsStudentSummary truncates oversized sections and redacts 
   assert.match(summary, /truncated/);
   assert.doesNotMatch(summary, /real-machine-token/);
   assert.match(summary, /\[redacted\]/);
+});
+
+await test('buildWindowsStudentAnnotations converts redacted diagnostics into bounded GitHub error commands', () => {
+  const artifactsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-windows-student-summary-'));
+
+  fs.writeFileSync(
+    path.join(artifactsDir, 'reconcile-student-scenario.err.log'),
+    'Could not extract machine token from http://127.0.0.1:3201/w/real-machine-token/whitelist.txt\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(artifactsDir, 'windows-student-policy-trace.log'),
+    'trace line 1\ntrace line 2\n',
+    'utf8'
+  );
+
+  const annotations = buildWindowsStudentAnnotations({
+    artifactsDir,
+    mode: 'failure',
+  });
+
+  assert.ok(annotations.length > 0);
+  assert.match(annotations[0] ?? '', /^::error title=Windows Student Policy Diagnostics::/);
+  assert.doesNotMatch(annotations.join('\n'), /real-machine-token/);
+  assert.match(annotations.join('\n'), /\[redacted\]/);
 });
