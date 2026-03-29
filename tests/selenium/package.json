@@ -4,9 +4,9 @@
   "description": "Selenium E2E tests for Firefox extension",
   "scripts": {
     "test": "npx ts-node firefox-extension.e2e.ts",
-    "test:ci": "CI=true npx ts-node firefox-extension.e2e.ts",
+    "test:ci": "npx ts-node firefox-extension.e2e.ts",
     "test:student-policy": "npx ts-node student-policy-flow.e2e.ts",
-    "test:student-policy:ci": "CI=true npx ts-node student-policy-flow.e2e.ts"
+    "test:student-policy:ci": "npx ts-node student-policy-flow.e2e.ts"
   },
   "devDependencies": {
     "@types/selenium-webdriver": "^4.1.22",

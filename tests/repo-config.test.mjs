@@ -192,4 +192,14 @@ describe('repository verification contract', () => {
       'api Dockerfile should cache npm downloads across repeated image builds'
     );
   });
+
+  test('selenium CI scripts use cross-platform environment setup', () => {
+    const seleniumPackage = readJson('tests/selenium/package.json');
+
+    assert.equal(
+      seleniumPackage.scripts['test:student-policy:ci'],
+      'npx ts-node student-policy-flow.e2e.ts'
+    );
+    assert.equal(seleniumPackage.scripts['test:ci'], 'npx ts-node firefox-extension.e2e.ts');
+  });
 });
