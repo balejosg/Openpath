@@ -51,6 +51,45 @@ function Assert-LastExitCode {
     }
 }
 
+function Invoke-ProcessWithTimeout {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)][int]$TimeoutMs,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [string]$WorkingDirectory = $script:RepoRoot
+    )
+
+    $process = Start-Process -FilePath $FilePath `
+        -ArgumentList $ArgumentList `
+        -WorkingDirectory $WorkingDirectory `
+        -NoNewWindow `
+        -RedirectStandardOutput $OutputPath `
+        -RedirectStandardError $OutputPath `
+        -PassThru
+
+    if (-not $process.WaitForExit($TimeoutMs)) {
+        try {
+            $process.Kill($true)
+        }
+        catch {
+            # Best effort.
+        }
+
+        $output = if (Test-Path $OutputPath) { Get-Content $OutputPath -Raw } else { '' }
+        throw "$Context timed out after $TimeoutMs ms. Output:`n$output"
+    }
+
+    if (Test-Path $OutputPath) {
+        Get-Content $OutputPath -Raw | Out-Host
+    }
+
+    if ($process.ExitCode -ne 0) {
+        throw "$Context failed with exit code $($process.ExitCode)"
+    }
+}
+
 function Invoke-WebProbe {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -176,32 +215,11 @@ function Invoke-PostgresSql {
     $psql = Join-Path $script:PostgresBinDir 'psql.exe'
     $outputPath = Join-Path $script:ArtifactsRoot 'psql-last.log'
 
-    $process = Start-Process -FilePath $psql `
+    Invoke-ProcessWithTimeout -FilePath $psql `
         -ArgumentList @('-w', '-h', '127.0.0.1', '-p', [string]$script:PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', $Sql) `
-        -NoNewWindow `
-        -RedirectStandardOutput $outputPath `
-        -RedirectStandardError $outputPath `
-        -PassThru
-
-    if (-not $process.WaitForExit(30000)) {
-        try {
-            $process.Kill($true)
-        }
-        catch {
-            # Best effort.
-        }
-
-        $psqlOutput = if (Test-Path $outputPath) { Get-Content $outputPath -Raw } else { '' }
-        throw "psql timed out after 30s. Output: $psqlOutput"
-    }
-
-    if (Test-Path $outputPath) {
-        Get-Content $outputPath -Raw | Out-Host
-    }
-
-    if ($process.ExitCode -ne 0) {
-        throw "psql failed with exit code $($process.ExitCode)"
-    }
+        -TimeoutMs 30000 `
+        -Context 'psql' `
+        -OutputPath $outputPath
 }
 
 function Start-TestPostgresProcess {
@@ -236,11 +254,17 @@ function Start-TestPostgresProcess {
     $pgCtl = Join-Path $script:PostgresBinDir 'pg_ctl.exe'
     $pgIsReady = Join-Path $script:PostgresBinDir 'pg_isready.exe'
 
-    & $initdb -D $script:PostgresDataDir -U postgres -A trust -E UTF8 | Out-Host
-    Assert-LastExitCode 'initdb'
+    Invoke-ProcessWithTimeout -FilePath $initdb `
+        -ArgumentList @('-D', $script:PostgresDataDir, '-U', 'postgres', '-A', 'trust', '-E', 'UTF8') `
+        -TimeoutMs 120000 `
+        -Context 'initdb' `
+        -OutputPath (Join-Path $script:ArtifactsRoot 'postgres-initdb.log')
 
-    & $pgCtl -D $script:PostgresDataDir -l $script:PostgresLogPath -o "-p $($script:PostgresPort)" -w start | Out-Host
-    Assert-LastExitCode 'pg_ctl start'
+    Invoke-ProcessWithTimeout -FilePath $pgCtl `
+        -ArgumentList @('-D', $script:PostgresDataDir, '-l', $script:PostgresLogPath, '-o', "-p $($script:PostgresPort)", '-w', 'start') `
+        -TimeoutMs 120000 `
+        -Context 'pg_ctl start' `
+        -OutputPath (Join-Path $script:ArtifactsRoot 'postgres-start.log')
 
     Write-Step 'Verifying PostgreSQL readiness and bootstrap SQL...'
     for ($attempt = 1; $attempt -le 30; $attempt += 1) {
