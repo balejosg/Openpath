@@ -17,6 +17,9 @@ $script:FixtureJob = $null
 $script:DatabaseMode = $null
 $script:PostgresServiceName = $null
 $script:PostgresBinDir = $null
+$script:PostgresDataDir = $null
+$script:PostgresLogPath = $null
+$script:PostgresPort = 5432
 
 function Write-Step {
     param(
@@ -172,12 +175,12 @@ function Invoke-PostgresSql {
 
     $psql = Join-Path $script:PostgresBinDir 'psql.exe'
     $env:PGPASSWORD = 'openpath_test'
-    & $psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c $Sql | Out-Host
+    & $psql -h 127.0.0.1 -p $script:PostgresPort -U postgres -d postgres -v ON_ERROR_STOP=1 -c $Sql | Out-Host
     Assert-LastExitCode 'psql'
 }
 
-function Start-TestPostgresLocal {
-    Write-Step 'Starting PostgreSQL via local Windows service...'
+function Start-TestPostgresProcess {
+    Write-Step 'Starting PostgreSQL via local process...'
 
     if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
         throw 'Chocolatey is required to install PostgreSQL on the Windows runner.'
@@ -194,19 +197,28 @@ function Start-TestPostgresLocal {
         throw 'Could not locate PostgreSQL binaries after installation.'
     }
 
-    $service = Get-Service | Where-Object { $_.Name -like 'postgresql*' } | Select-Object -First 1
-    if (-not $service) {
-        throw 'Could not locate PostgreSQL Windows service.'
+    $script:PostgresDataDir = Join-Path $script:ArtifactsRoot 'postgres-data'
+    $script:PostgresLogPath = Join-Path $script:ArtifactsRoot 'postgres.log'
+
+    if (Test-Path $script:PostgresDataDir) {
+        Remove-Item $script:PostgresDataDir -Recurse -Force
     }
 
-    $script:PostgresServiceName = $service.Name
-    Start-Service -Name $script:PostgresServiceName -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $script:PostgresDataDir -Force | Out-Null
+
+    $initdb = Join-Path $script:PostgresBinDir 'initdb.exe'
+    $pgCtl = Join-Path $script:PostgresBinDir 'pg_ctl.exe'
+    $pgIsReady = Join-Path $script:PostgresBinDir 'pg_isready.exe'
+
+    & $initdb -D $script:PostgresDataDir -U postgres -A trust -E UTF8 | Out-Host
+    Assert-LastExitCode 'initdb'
+
+    & $pgCtl -D $script:PostgresDataDir -l $script:PostgresLogPath -o "-p $($script:PostgresPort)" -w start | Out-Host
+    Assert-LastExitCode 'pg_ctl start'
 
     for ($attempt = 1; $attempt -le 30; $attempt += 1) {
         try {
-            $pgIsReady = Join-Path $script:PostgresBinDir 'pg_isready.exe'
-            $env:PGPASSWORD = 'openpath_test'
-            & $pgIsReady -h 127.0.0.1 -p 5432 -U postgres -d postgres | Out-Null
+            & $pgIsReady -h 127.0.0.1 -p $script:PostgresPort -U postgres -d postgres | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 Invoke-PostgresSql -Sql "DO `$`$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openpath') THEN CREATE ROLE openpath LOGIN PASSWORD 'openpath_test'; ELSE ALTER ROLE openpath WITH LOGIN PASSWORD 'openpath_test'; END IF; END `$`$;"
                 Invoke-PostgresSql -Sql "DROP DATABASE IF EXISTS openpath_test WITH (FORCE);"
@@ -220,7 +232,7 @@ function Start-TestPostgresLocal {
         }
     }
 
-    throw 'Local PostgreSQL service did not become ready in time.'
+    throw 'Local PostgreSQL process did not become ready in time.'
 }
 
 function Ensure-TestPostgres {
@@ -237,7 +249,7 @@ function Ensure-TestPostgres {
         Write-Host 'WARN: Docker PostgreSQL bootstrap unavailable; falling back to local PostgreSQL.' -ForegroundColor Yellow
     }
 
-    Start-TestPostgresLocal
+    Start-TestPostgresProcess
 }
 
 function Initialize-TestDatabase {
@@ -251,7 +263,7 @@ function Initialize-TestDatabase {
         $env:DB_PASSWORD = 'openpath_test'
 
         if ($script:DatabaseMode -eq 'local') {
-            $env:DB_PORT = '5432'
+            $env:DB_PORT = [string]$script:PostgresPort
         }
 
         npm run db:setup:e2e --workspace=@openpath/api | Out-Host
@@ -268,15 +280,15 @@ function Start-ApiServer {
     $dataDir = Join-Path $script:ArtifactsRoot 'api-data'
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 
-    $script:ApiJob = Start-Job -ArgumentList $script:RepoRoot, $script:ApiPort, $dataDir, $script:DatabaseMode, $apiLog -ScriptBlock {
-        param($RepoRoot, $ApiPort, $DataDir, $DatabaseMode, $ApiLog)
+    $script:ApiJob = Start-Job -ArgumentList $script:RepoRoot, $script:ApiPort, $dataDir, $script:DatabaseMode, $script:PostgresPort, $apiLog -ScriptBlock {
+        param($RepoRoot, $ApiPort, $DataDir, $DatabaseMode, $PostgresPort, $ApiLog)
 
         Set-Location $RepoRoot
         $env:NODE_ENV = 'test'
         $env:JWT_SECRET = 'openpath-student-policy-secret'
         $env:SHARED_SECRET = 'openpath-student-policy-shared'
         $env:DB_HOST = '127.0.0.1'
-        $env:DB_PORT = if ($DatabaseMode -eq 'local') { '5432' } else { '5433' }
+        $env:DB_PORT = if ($DatabaseMode -eq 'local') { [string]$PostgresPort } else { '5433' }
         $env:DB_NAME = 'openpath_test'
         $env:DB_USER = 'openpath'
         $env:DB_PASSWORD = 'openpath_test'
@@ -478,9 +490,9 @@ function Write-WindowsDiagnostics {
         '=== Resolve-DnsName google.com ==='
         (Resolve-DnsName -Name 'google.com' -Server 127.0.0.1 -DnsOnly -ErrorAction SilentlyContinue | Out-String)
         '=== Whitelist ==='
-        (if (Test-Path $whitelistPath) { Get-Content $whitelistPath -Raw } else { 'Whitelist file missing' })
+        $(if (Test-Path $whitelistPath) { Get-Content $whitelistPath -Raw } else { 'Whitelist file missing' })
         '=== OpenPath Log Tail ==='
-        (if (Test-Path $logPath) { Get-Content $logPath -Tail 200 | Out-String } else { 'OpenPath log missing' })
+        $(if (Test-Path $logPath) { Get-Content $logPath -Tail 200 | Out-String } else { 'OpenPath log missing' })
     ) | Set-Content -Path $diagnosticPath -Encoding UTF8
 }
 
@@ -496,6 +508,13 @@ function Stop-BackgroundJobs {
 function Cleanup-TestPostgres {
     if ($script:DatabaseMode -eq 'docker') {
         docker compose -f "$script:RepoRoot\docker-compose.test.yml" down | Out-Null
+    }
+
+    if ($script:DatabaseMode -eq 'local' -and $script:PostgresBinDir -and $script:PostgresDataDir) {
+        $pgCtl = Join-Path $script:PostgresBinDir 'pg_ctl.exe'
+        if (Test-Path $pgCtl) {
+            & $pgCtl -D $script:PostgresDataDir -m fast stop | Out-Null
+        }
     }
 }
 
