@@ -61,12 +61,14 @@ function Invoke-ProcessWithTimeout {
         [string]$WorkingDirectory = $script:RepoRoot
     )
 
+    $errorPath = "$OutputPath.err"
+
     $process = Start-Process -FilePath $FilePath `
         -ArgumentList $ArgumentList `
         -WorkingDirectory $WorkingDirectory `
         -NoNewWindow `
         -RedirectStandardOutput $OutputPath `
-        -RedirectStandardError $OutputPath `
+        -RedirectStandardError $errorPath `
         -PassThru
 
     if (-not $process.WaitForExit($TimeoutMs)) {
@@ -77,12 +79,20 @@ function Invoke-ProcessWithTimeout {
             # Best effort.
         }
 
-        $output = if (Test-Path $OutputPath) { Get-Content $OutputPath -Raw } else { '' }
-        throw "$Context timed out after $TimeoutMs ms. Output:`n$output"
+        $stdout = if (Test-Path $OutputPath) { Get-Content $OutputPath -Raw } else { '' }
+        $stderr = if (Test-Path $errorPath) { Get-Content $errorPath -Raw } else { '' }
+        throw "$Context timed out after $TimeoutMs ms. STDOUT:`n$stdout`nSTDERR:`n$stderr"
     }
 
     if (Test-Path $OutputPath) {
         Get-Content $OutputPath -Raw | Out-Host
+    }
+
+    if (Test-Path $errorPath) {
+        $stderrContent = Get-Content $errorPath -Raw
+        if ($stderrContent) {
+            $stderrContent | Out-Host
+        }
     }
 
     if ($process.ExitCode -ne 0) {
@@ -520,12 +530,13 @@ function Invoke-SeleniumStudentSuite {
         }
 
         $logPath = Join-Path $script:ArtifactsRoot ("windows-student-policy-$Mode.log")
+        $errorPath = Join-Path $script:ArtifactsRoot ("windows-student-policy-$Mode.err.log")
         $process = Start-Process -FilePath $npmCommand `
             -ArgumentList @('run', 'test:student-policy:ci') `
             -WorkingDirectory (Get-Location).Path `
             -NoNewWindow `
             -RedirectStandardOutput $logPath `
-            -RedirectStandardError $logPath `
+            -RedirectStandardError $errorPath `
             -PassThru
 
         if (-not $process.WaitForExit(1200000)) {
@@ -537,11 +548,19 @@ function Invoke-SeleniumStudentSuite {
             }
 
             $tail = if (Test-Path $logPath) { Get-Content $logPath -Raw } else { '' }
-            throw "Windows student-policy Selenium ($Mode) timed out after 20 minutes. Log output:`n$tail"
+            $errorTail = if (Test-Path $errorPath) { Get-Content $errorPath -Raw } else { '' }
+            throw "Windows student-policy Selenium ($Mode) timed out after 20 minutes. STDOUT:`n$tail`nSTDERR:`n$errorTail"
         }
 
         if (Test-Path $logPath) {
             Get-Content $logPath -Raw | Out-Host
+        }
+
+        if (Test-Path $errorPath) {
+            $stderrContent = Get-Content $errorPath -Raw
+            if ($stderrContent) {
+                $stderrContent | Out-Host
+            }
         }
 
         if ($process.ExitCode -ne 0) {
