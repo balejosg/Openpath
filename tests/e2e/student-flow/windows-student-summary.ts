@@ -1,0 +1,85 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+interface BuildWindowsStudentSummaryOptions {
+  artifactsDir: string;
+  mode: 'failure' | 'success';
+}
+
+const SUMMARY_FILES = [
+  'windows-student-policy-trace.log',
+  'windows-diagnostics.txt',
+  'reconcile-student-scenario.log',
+  'reconcile-student-scenario.err.log',
+  'windows-student-policy-sse.log',
+  'windows-student-policy-sse.err.log',
+  'windows-student-policy-fallback.log',
+  'windows-student-policy-fallback.err.log',
+] as const;
+
+const MAX_LINES_PER_SECTION = 80;
+
+function redactSensitiveValues(content: string): string {
+  return content
+    .replace(/(machineToken"\s*:\s*")([^"]+)(")/g, '$1[redacted]$3')
+    .replace(/(whitelistUrl"\s*:\s*")([^"]*\/w\/)([^/]+)(\/[^"]*")/g, '$1$2[redacted]$4')
+    .replace(/(\/w\/)([^/]+)(\/whitelist\.txt)/g, '$1[redacted]$3');
+}
+
+function readExcerpt(filePath: string): string {
+  if (!fs.existsSync(filePath)) {
+    return `${path.basename(filePath)}: missing`;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8').trim();
+  if (!content) {
+    return `${path.basename(filePath)}: empty`;
+  }
+
+  const lines = redactSensitiveValues(content).split(/\r?\n/);
+  const truncated = lines.length > MAX_LINES_PER_SECTION;
+  const excerpt = (truncated ? lines.slice(-MAX_LINES_PER_SECTION) : lines).join('\n').trim();
+
+  return truncated ? `${excerpt}\n... [truncated]` : excerpt;
+}
+
+export function buildWindowsStudentSummary({
+  artifactsDir,
+  mode,
+}: BuildWindowsStudentSummaryOptions): string {
+  const sections = SUMMARY_FILES.map((fileName) => {
+    const excerpt = readExcerpt(path.join(artifactsDir, fileName));
+    return `## ${fileName}\n\n\`\`\`text\n${excerpt}\n\`\`\``;
+  });
+
+  return [`# Windows Student Policy Diagnostics (${mode})`, '', ...sections, ''].join('\n');
+}
+
+function getOption(name: string): string {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  if (!value) {
+    throw new Error(`Missing required option: ${name}`);
+  }
+
+  return value;
+}
+
+function runCli(): void {
+  const artifactsDir = path.resolve(getOption('--artifacts-dir'));
+  const mode = getOption('--mode');
+  if (mode !== 'failure' && mode !== 'success') {
+    throw new Error(`Unsupported mode: ${mode}`);
+  }
+
+  process.stdout.write(buildWindowsStudentSummary({ artifactsDir, mode }));
+}
+
+const isMainModule =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isMainModule) {
+  runCli();
+}

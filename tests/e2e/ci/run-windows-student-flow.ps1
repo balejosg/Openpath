@@ -30,6 +30,48 @@ function Write-Step {
     Write-Host $Message -ForegroundColor Cyan
 }
 
+function Write-DiagnosticNote {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message
+    )
+
+    $diagnosticTracePath = Join-Path $script:ArtifactsRoot 'windows-student-policy-trace.log'
+    $timestamp = (Get-Date).ToString('o')
+    Add-Content -Path $diagnosticTracePath -Value "$timestamp $Message"
+}
+
+function Publish-GitHubStepSummary {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('failure', 'success')][string]$Mode
+    )
+
+    try {
+        if (-not $env:GITHUB_STEP_SUMMARY) {
+            return
+        }
+
+        $nodeCommand = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+        if (-not $nodeCommand) {
+            Write-DiagnosticNote 'Skipping GITHUB_STEP_SUMMARY publish because node.exe was not found on PATH.'
+            return
+        }
+
+        $summary = & $nodeCommand --import tsx tests/e2e/student-flow/windows-student-summary.ts `
+            --artifacts-dir $script:ArtifactsRoot `
+            --mode $Mode
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-DiagnosticNote "Failed to build GitHub step summary (exit $LASTEXITCODE)."
+            return
+        }
+
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
+    }
+    catch {
+        Write-DiagnosticNote "Skipping GITHUB_STEP_SUMMARY publish: $_"
+    }
+}
+
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
     try {
@@ -529,6 +571,8 @@ function Install-AndEnrollClient {
     }
 
     $enrollmentToken = Get-EnrollmentTicket -Scenario $Scenario
+    Write-DiagnosticNote "Enrollment ticket acquired for classroom $($Scenario.classroom.id); installClient=$InstallClient"
+
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:RepoRoot 'windows\scripts\Enroll-Machine.ps1') `
         -ApiUrl "http://127.0.0.1:$($script:ApiPort)" `
         -ClassroomId $Scenario.classroom.id `
@@ -546,16 +590,33 @@ function Install-AndEnrollClient {
     }
 
     $scenarioPath = Join-Path $script:ArtifactsRoot 'student-scenario.json'
+    if (-not (Test-Path $scenarioPath)) {
+        throw "student-scenario.json missing at $scenarioPath"
+    }
+
     $config = Get-Content 'C:\OpenPath\data\config.json' -Raw | ConvertFrom-Json
+    $configWhitelistUrl = [string]$config.whitelistUrl
+    if (-not $configWhitelistUrl) {
+        throw 'Installed client config is missing whitelistUrl'
+    }
+
+    Write-DiagnosticNote "Installed client config whitelistUrl: $configWhitelistUrl"
+    Write-DiagnosticNote "Scenario file before reconciliation: $(Get-Content $scenarioPath -Raw)"
+
     $nodeCommand = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
     if (-not $nodeCommand) {
         throw 'node.exe was not found on PATH.'
     }
 
+    $reconcileLogPath = Join-Path $script:ArtifactsRoot 'reconcile-student-scenario.log'
+    $reconcileErrPath = Join-Path $script:ArtifactsRoot 'reconcile-student-scenario.err.log'
     & $nodeCommand --import tsx tests/e2e/student-flow/reconcile-student-scenario.ts `
         --scenario-file $scenarioPath `
-        --whitelist-url $config.whitelistUrl
+        --whitelist-url $configWhitelistUrl `
+        1>> $reconcileLogPath 2>> $reconcileErrPath
     Assert-LastExitCode 'student scenario reconciliation'
+
+    Write-DiagnosticNote "Scenario file after reconciliation: $(Get-Content $scenarioPath -Raw)"
 }
 
 function Invoke-SeleniumStudentSuite {
@@ -576,6 +637,9 @@ function Invoke-SeleniumStudentSuite {
         $env:OPENPATH_ENABLE_SSE_COMMAND = 'powershell -NoLogo -Command "Enable-ScheduledTask -TaskName ''OpenPath-SSE'' -ErrorAction SilentlyContinue; Start-ScheduledTask -TaskName ''OpenPath-SSE'' -ErrorAction SilentlyContinue"'
         $env:CI = 'true'
         $env:OPENPATH_STUDENT_MODE = $Mode
+
+        Write-DiagnosticNote "Starting Selenium student-policy suite mode=$Mode scenarioPath=$ScenarioPath extensionPath=$ExtensionArchivePath"
+        Write-DiagnosticNote "Scenario payload at Selenium handoff: $(Get-Content $ScenarioPath -Raw)"
 
         $npmCommand = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
         if (-not $npmCommand) {
@@ -643,6 +707,10 @@ function Write-WindowsDiagnostics {
     @(
         '=== Scheduled Tasks ==='
         (Get-ScheduledTask -TaskName 'OpenPath-*' -ErrorAction SilentlyContinue | Format-List | Out-String)
+        '=== OpenPath Config ==='
+        $(if (Test-Path 'C:\OpenPath\data\config.json') { Get-Content 'C:\OpenPath\data\config.json' -Raw } else { 'Config file missing' })
+        '=== Student Scenario ==='
+        $(if (Test-Path (Join-Path $script:ArtifactsRoot 'student-scenario.json')) { Get-Content (Join-Path $script:ArtifactsRoot 'student-scenario.json') -Raw } else { 'Student scenario missing' })
         '=== Resolve-DnsName google.com ==='
         (Resolve-DnsName -Name 'google.com' -Server 127.0.0.1 -DnsOnly -ErrorAction SilentlyContinue | Out-String)
         '=== Whitelist ==='
@@ -688,7 +756,10 @@ function Invoke-DebugDump {
         (Join-Path $script:ArtifactsRoot 'api.log'),
         (Join-Path $script:ArtifactsRoot 'api.err.log'),
         (Join-Path $script:ArtifactsRoot 'fixture-server.log'),
-        (Join-Path $script:ArtifactsRoot 'fixture-server.err.log')
+        (Join-Path $script:ArtifactsRoot 'fixture-server.err.log'),
+        (Join-Path $script:ArtifactsRoot 'windows-student-policy-trace.log'),
+        (Join-Path $script:ArtifactsRoot 'reconcile-student-scenario.log'),
+        (Join-Path $script:ArtifactsRoot 'reconcile-student-scenario.err.log')
     )) {
         if (Test-Path $logPath) {
             Write-Host "===== $(Split-Path $logPath -Leaf) ====="
@@ -715,11 +786,13 @@ try {
     Install-AndEnrollClient -Scenario $scenario -InstallClient $false
     Invoke-SeleniumStudentSuite -ScenarioPath $scenarioPath -ExtensionArchivePath $extensionArchivePath -Mode 'fallback'
     Write-WindowsDiagnostics
+    Publish-GitHubStepSummary -Mode 'success'
     Write-Host 'Windows student-policy runner completed successfully' -ForegroundColor Green
 }
 catch {
     Write-Host "Windows student-policy runner failed: $_" -ForegroundColor Red
     Invoke-DebugDump
+    Publish-GitHubStepSummary -Mode 'failure'
     throw
 }
 finally {
