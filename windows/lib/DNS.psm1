@@ -105,7 +105,7 @@ function Install-AcrylicDNS {
             }
             catch {
                 $downloadError = $_
-                Write-OpenPathLog "Acrylic download failed from $candidateUrl: $downloadError" -Level WARN
+                Write-OpenPathLog "Acrylic download failed from ${candidateUrl}: $downloadError" -Level WARN
             }
             finally {
                 if ($null -ne $webClient) {
