@@ -234,6 +234,10 @@ function buildPopupUrl(extensionUuid: string): string {
   return `moz-extension://${extensionUuid}/popup/popup.html`;
 }
 
+export function buildWindowsBlockedDnsCommand(hostname: string): string {
+  return `powershell -NoLogo -Command "try { $result = Resolve-DnsName -Name '${hostname}' -Server 127.0.0.1 -DnsOnly -ErrorAction Stop; if ($result) { $result | ForEach-Object { $_.IPAddress } } } catch { if (($_.Exception.Message -like '*DNS name does not exist*') -or ($_.FullyQualifiedErrorId -like '*DNS_ERROR_RCODE_NAME_ERROR*')) { exit 0 } throw }"`;
+}
+
 async function runPlatformCommand(command: string): Promise<string> {
   const { stdout, stderr } = await exec(command);
   return `${stdout}${stderr}`.trim();
@@ -593,7 +597,7 @@ export class StudentPolicyDriver {
 
   public async assertDnsBlocked(hostname: string): Promise<void> {
     const command = isWindows()
-      ? `powershell -NoLogo -Command "$result = Resolve-DnsName -Name '${hostname}' -Server 127.0.0.1 -DnsOnly -ErrorAction SilentlyContinue; if ($result) { $result | ForEach-Object { $_.IPAddress } }"`
+      ? buildWindowsBlockedDnsCommand(hostname)
       : `sh -c "dig @127.0.0.1 ${hostname} +short +time=3 || true"`;
 
     const output = await runPlatformCommand(command);

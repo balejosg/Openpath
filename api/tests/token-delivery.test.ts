@@ -14,7 +14,13 @@ import type { Server } from 'node:http';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getAvailablePort, resetDb, trpcMutate as _trpcMutate, parseTRPC } from './test-utils.js';
+import {
+  bearerAuth,
+  getAvailablePort,
+  resetDb,
+  trpcMutate as _trpcMutate,
+  parseTRPC,
+} from './test-utils.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 
@@ -873,6 +879,55 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
 
       const body = await notModified.text();
       assert.strictEqual(body, '');
+    });
+
+    await test('should reflect blocked subdomain rule changes immediately for machine-token downloads', async () => {
+      const initial = await fetch(`${API_URL}/w/${machineToken}/whitelist.txt`);
+      assert.strictEqual(initial.status, 200);
+      const initialEtag = initial.headers.get('etag');
+      assert.ok(initialEtag, 'Expected initial ETag header');
+      const initialBody = await initial.text();
+      assert.ok(!initialBody.includes('## BLOCKED-SUBDOMAINS'));
+
+      const loginResponse = await trpcMutate('auth.login', {
+        email: adminEmail,
+        password: adminPassword,
+      });
+      assert.strictEqual(loginResponse.status, 200);
+      const loginParsed = await parseTRPC(loginResponse);
+      const loginData = loginParsed.data as { accessToken?: string };
+      assert.ok(loginData.accessToken);
+
+      const createRuleResponse = await _trpcMutate(
+        API_URL,
+        'groups.createRule',
+        {
+          groupId: 'etag-group',
+          type: 'blocked_subdomain',
+          value: 'cdn.token-delivery.example.com',
+          comment: 'Token delivery blocked-subdomain regression',
+        },
+        bearerAuth(loginData.accessToken ?? null)
+      );
+      assert.strictEqual(createRuleResponse.status, 200);
+      const createRuleParsed = await parseTRPC(createRuleResponse);
+      const createRuleData = createRuleParsed.data as { id?: string };
+      assert.ok(createRuleData.id);
+
+      const updated = await fetch(`${API_URL}/w/${machineToken}/whitelist.txt`, {
+        headers: {
+          'If-None-Match': initialEtag,
+        },
+      });
+      assert.strictEqual(updated.status, 200);
+
+      const updatedEtag = updated.headers.get('etag');
+      assert.ok(updatedEtag, 'Expected updated ETag header');
+      assert.notStrictEqual(updatedEtag, initialEtag);
+
+      const updatedBody = await updated.text();
+      assert.ok(updatedBody.includes('## BLOCKED-SUBDOMAINS'));
+      assert.ok(updatedBody.includes('cdn.token-delivery.example.com'));
     });
 
     await test('should return fail-open for invalid token', async () => {

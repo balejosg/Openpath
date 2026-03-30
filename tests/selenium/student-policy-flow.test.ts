@@ -4,7 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { StudentPolicyDriver, type StudentScenario } from './student-policy-flow.e2e';
+import {
+  buildWindowsBlockedDnsCommand,
+  StudentPolicyDriver,
+  type StudentScenario,
+} from './student-policy-flow.e2e';
 
 function createScenario(): StudentScenario {
   return {
@@ -102,4 +106,15 @@ test('assertWhitelistContains accepts Windows whitelist files with BOM and CRLF'
 
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test('buildWindowsBlockedDnsCommand treats NXDOMAIN as a blocked result instead of a command failure', () => {
+  const command = buildWindowsBlockedDnsCommand('cdn.base-only.127.0.0.1.sslip.io');
+
+  assert.match(command, /Resolve-DnsName -Name 'cdn\.base-only\.127\.0\.0\.1\.sslip\.io'/);
+  assert.match(command, /-ErrorAction Stop/);
+  assert.match(command, /DNS name does not exist/);
+  assert.match(command, /DNS_ERROR_RCODE_NAME_ERROR/);
+  assert.match(command, /\bthrow\b/);
+  assert.doesNotMatch(command, /catch \{ exit 0 \}/);
 });
