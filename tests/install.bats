@@ -61,47 +61,59 @@ load 'test_helper'
 }
 
 @test "stable deb publish workflow re-signs existing APT suites before exporting the public key" {
-    run grep -n 'for suite in stable unstable; do' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'uses: ./.github/workflows/reusable-deb-publish.yml' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 
-    run grep -n 'reprepro export "\$suite"' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'for suite in stable unstable; do' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'reprepro export "\$suite"' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
 }
 
 @test "stable deb publish workflow removes the legacy whitelist package before publishing" {
-    run grep -n 'reprepro remove stable whitelist-dnsmasq || true' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'reprepro remove stable whitelist-dnsmasq || true' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'remove-legacy-stable-package: true' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 }
 
 @test "stable deb publish workflow validates the exported Packages metadata" {
-    run grep -n 'Published APT metadata missing openpath-dnsmasq' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'Published APT metadata missing openpath-dnsmasq' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
 
-    run grep -n 'Legacy whitelist package leaked into stable metadata' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'Legacy whitelist package leaked into stable metadata' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'validate-published-metadata: true' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 }
 
 @test "stable deb publish workflow requires a persistent APT signing key" {
-    run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
 
-    run grep -n 'No GPG secret found, creating ephemeral key' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -n 'No GPG secret found, creating ephemeral key' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -ne 0 ]
 }
 
 @test "prerelease deb publish workflow re-signs existing APT suites before exporting the public key" {
-    run grep -n 'for suite in stable unstable; do' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    run grep -n 'uses: ./.github/workflows/reusable-deb-publish.yml' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
     [ "$status" -eq 0 ]
 
-    run grep -n 'reprepro export "\$suite"' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    run grep -n 'for suite in stable unstable; do' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'reprepro export "\$suite"' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
 }
 
 @test "prerelease deb publish workflow requires a persistent APT signing key" {
-    run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
 
-    run grep -n 'No GPG secret found, creating ephemeral key' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    run grep -n 'No GPG secret found, creating ephemeral key' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -ne 0 ]
 }
 
