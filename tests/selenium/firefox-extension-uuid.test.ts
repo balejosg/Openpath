@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { waitForFirefoxExtensionUuid } from './firefox-extension-uuid.js';
+import { waitForFirefoxExtensionUuid } from './firefox-extension-uuid';
 
-await test('waitForFirefoxExtensionUuid tolerates delayed extension UUID registration', async () => {
+test('waitForFirefoxExtensionUuid tolerates delayed extension UUID registration', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-firefox-profile-'));
   const prefsPath = path.join(tempDir, 'prefs.js');
   const extensionId = 'monitor-bloqueos@openpath';
@@ -35,7 +35,7 @@ await test('waitForFirefoxExtensionUuid tolerates delayed extension UUID registr
   assert.equal(extensionUuid, 'expected-uuid');
 });
 
-await test('waitForFirefoxExtensionUuid retries when prefs.js is temporarily malformed', async () => {
+test('waitForFirefoxExtensionUuid retries when prefs.js is temporarily malformed', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-firefox-profile-'));
   const prefsPath = path.join(tempDir, 'prefs.js');
   const extensionId = 'monitor-bloqueos@openpath';
@@ -64,7 +64,7 @@ await test('waitForFirefoxExtensionUuid retries when prefs.js is temporarily mal
   assert.equal(extensionUuid, 'recovered-uuid');
 });
 
-await test('waitForFirefoxExtensionUuid retries until prefs.js is created', async () => {
+test('waitForFirefoxExtensionUuid retries until prefs.js is created', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-firefox-profile-'));
   const prefsPath = path.join(tempDir, 'prefs.js');
   const extensionId = 'monitor-bloqueos@openpath';

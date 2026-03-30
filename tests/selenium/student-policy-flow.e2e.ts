@@ -8,7 +8,7 @@ import assert from 'node:assert';
 import { Builder, By, until, type WebDriver, type WebElement } from 'selenium-webdriver';
 import * as firefox from 'selenium-webdriver/firefox';
 
-import { waitForFirefoxExtensionUuid } from '../e2e/student-flow/firefox-extension-uuid.js';
+import { waitForFirefoxExtensionUuid } from './firefox-extension-uuid';
 
 const exec = promisify(execCallback);
 

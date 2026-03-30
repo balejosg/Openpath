@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -201,5 +201,43 @@ describe('repository verification contract', () => {
       'npx ts-node student-policy-flow.e2e.ts'
     );
     assert.equal(seleniumPackage.scripts['test:ci'], 'npx ts-node firefox-extension.e2e.ts');
+  });
+
+  test('student policy selenium entrypoint keeps the local Firefox UUID helper boundary', () => {
+    const studentPolicyScript = readText('tests/selenium/student-policy-flow.e2e.ts');
+
+    assert.match(
+      studentPolicyScript,
+      /from '\.\/firefox-extension-uuid';/,
+      'student-policy-flow.e2e.ts should import the Firefox UUID helper from the local selenium package'
+    );
+    assert.ok(
+      !studentPolicyScript.includes('../e2e/student-flow/firefox-extension-uuid'),
+      'student-policy-flow.e2e.ts should not import the Firefox UUID helper from tests/e2e'
+    );
+    assert.ok(
+      existsSync(resolve(projectRoot, 'tests/selenium/firefox-extension-uuid.ts')),
+      'tests/selenium/firefox-extension-uuid.ts should exist alongside the student policy entrypoint'
+    );
+    assert.ok(
+      existsSync(resolve(projectRoot, 'tests/selenium/firefox-extension-uuid.test.ts')),
+      'tests/selenium/firefox-extension-uuid.test.ts should cover the colocated helper'
+    );
+  });
+
+  test('student policy runners provision selenium package dependencies before execution', () => {
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+    const linuxStudentDockerfile = readText('tests/e2e/Dockerfile.student');
+
+    assert.match(
+      windowsRunner,
+      /Push-Location \(Join-Path \$script:RepoRoot 'tests\\selenium'\)[\s\S]*npm install \| Out-Host/,
+      'Windows student-policy runner should install tests/selenium dependencies before running the suite'
+    );
+    assert.match(
+      linuxStudentDockerfile,
+      /COPY tests\/selenium\/package\.json \.\/tests\/selenium\/package\.json[\s\S]*RUN cd \/openpath\/tests\/selenium && npm install/,
+      'Linux student-policy image should copy the Selenium package manifests and install its dependencies'
+    );
   });
 });
