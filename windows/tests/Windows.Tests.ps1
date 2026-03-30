@@ -1141,6 +1141,7 @@ Describe "DNS Module" {
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '$installerVersion = "2.2.1"',
+                'https://downloads.sourceforge.net/project/acrylic/Acrylic/$installerVersion/Acrylic-Portable.zip',
                 'https://sourceforge.net/projects/acrylic/files/Acrylic/$installerVersion/Acrylic-Portable.zip/download'
             )
         }

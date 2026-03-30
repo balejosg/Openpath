@@ -71,7 +71,8 @@ function Install-AcrylicDNS {
     # Acrylic 2.2.x improves modern HTTPS query handling in the hosts cache,
     # which the Windows 2022 runner hits during end-to-end installation tests.
     $installerVersion = "2.2.1"
-    $installerUrl = "https://sourceforge.net/projects/acrylic/files/Acrylic/$installerVersion/Acrylic-Portable.zip/download"
+    $installerUrl = "https://downloads.sourceforge.net/project/acrylic/Acrylic/$installerVersion/Acrylic-Portable.zip"
+    $installerFallbackUrl = "https://sourceforge.net/projects/acrylic/files/Acrylic/$installerVersion/Acrylic-Portable.zip/download"
     $tempDir = "$env:TEMP\acrylic-install"
     $installDir = "${env:ProgramFiles(x86)}\Acrylic DNS Proxy"
     
@@ -85,10 +86,37 @@ function Install-AcrylicDNS {
         # Download portable version
         Write-OpenPathLog "Downloading Acrylic..."
         $zipPath = "$tempDir\acrylic.zip"
-        
-        # Use System.Net.WebClient for better compatibility
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($installerUrl, $zipPath)
+
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+
+        $downloadError = $null
+        foreach ($candidateUrl in @($installerUrl, $installerFallbackUrl)) {
+            $webClient = $null
+            try {
+                if (Test-Path $zipPath) {
+                    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+                }
+
+                $webClient = New-Object System.Net.WebClient
+                $webClient.Headers.Add('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenPathInstaller')
+                $webClient.DownloadFile($candidateUrl, $zipPath)
+                $downloadError = $null
+                break
+            }
+            catch {
+                $downloadError = $_
+                Write-OpenPathLog "Acrylic download failed from $candidateUrl: $downloadError" -Level WARN
+            }
+            finally {
+                if ($null -ne $webClient) {
+                    $webClient.Dispose()
+                }
+            }
+        }
+
+        if ($downloadError) {
+            throw $downloadError
+        }
         
         # Extract
         Write-OpenPathLog "Extracting..."
