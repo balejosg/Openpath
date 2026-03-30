@@ -715,7 +715,7 @@ function Ensure-FirefoxAndGeckodriver {
     }
 
     if (-not (Get-FirefoxNightlyBinaryPath)) {
-        choco install firefox-nightly --no-progress -y | Out-Host
+        choco install firefox-nightly --pre --no-progress -y | Out-Host
         Assert-LastExitCode 'choco install firefox-nightly'
     }
 

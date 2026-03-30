@@ -283,6 +283,11 @@ describe('repository verification contract', () => {
       /choco install firefox-nightly/,
       'Windows student-policy runner should provision Firefox Nightly instead of Firefox Release'
     );
+    assert.match(
+      windowsRunner,
+      /choco install firefox-nightly --pre --no-progress -y/,
+      'Windows student-policy runner should install Firefox Nightly as a prerelease Chocolatey package'
+    );
     assert.ok(
       !windowsRunner.includes('choco install firefox --no-progress -y'),
       'Windows student-policy runner should not provision Firefox Release for the unsigned Selenium addon flow'
