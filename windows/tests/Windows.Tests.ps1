@@ -815,7 +815,7 @@ Describe "DNS Module" {
             InModuleScope DNS {
                 $definition = New-AcrylicHostsDefinition `
                     -WhitelistedDomains @('example.com', 'test.com') `
-                    -BlockedSubdomains @('ads.example.com') `
+                    -BlockedSubdomains @('ads.other-example.com') `
                     -DnsSettings ([PSCustomObject]@{
                         PrimaryDNS = '1.1.1.1'
                         SecondaryDNS = '1.0.0.1'
@@ -829,7 +829,7 @@ Describe "DNS Module" {
                     'FW raw.githubusercontent.com',
                     'FW >raw.githubusercontent.com',
                     '# BLOCKED SUBDOMAINS (1)',
-                    'NX >ads.example.com',
+                    'NX >ads.other-example.com',
                     '# WHITELISTED DOMAINS (2)',
                     'FW example.com',
                     'FW >example.com',
@@ -855,6 +855,39 @@ Describe "DNS Module" {
 
                 @($definition.EffectiveWhitelistedDomains).Count | Should -Be 2
                 $definition.WasTruncated | Should -BeFalse
+            }
+        }
+
+        It "Keeps blocked descendants ahead of a whitelisted parent wildcard" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('example.com') `
+                    -BlockedSubdomains @('ads.example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+                $lines = @($content -split "`n")
+                $regexForwardRules = @(
+                    $lines | Where-Object {
+                        $_.StartsWith('FW /^') -and
+                        $_.Contains('ads\.example\.com') -and
+                        $_.Contains('example\.com$')
+                    }
+                )
+                $regexRule = $regexForwardRules[0]
+                $regexPattern = $regexRule.Substring(4)
+
+                $content.Contains('FW example.com') | Should -BeTrue
+                $content.Contains('NX >ads.example.com') | Should -BeTrue
+                $content.Contains('FW >example.com') | Should -BeFalse
+                $regexForwardRules.Count | Should -Be 1
+                'www.example.com' | Should -Match $regexPattern
+                'ads.example.com' | Should -Not -Match $regexPattern
+                'cdn.ads.example.com' | Should -Not -Match $regexPattern
             }
         }
 

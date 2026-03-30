@@ -196,7 +196,9 @@ function Get-AcrylicForwardRules {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Domain
+        [string]$Domain,
+
+        [string[]]$BlockedSubdomains = @()
     )
 
     $normalizedDomain = $Domain.Trim()
@@ -204,9 +206,38 @@ function Get-AcrylicForwardRules {
         return @()
     }
 
+    $blockedDescendants = @(
+        foreach ($subdomain in @($BlockedSubdomains)) {
+            $normalizedSubdomain = ([string]$subdomain).Trim().Trim('.')
+            if (-not $normalizedSubdomain) {
+                continue
+            }
+
+            if ($normalizedSubdomain.Length -le ($normalizedDomain.Length + 1)) {
+                continue
+            }
+
+            if (-not $normalizedSubdomain.EndsWith(".$normalizedDomain", [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            [regex]::Escape($normalizedSubdomain)
+        }
+    )
+
+    if ($blockedDescendants.Count -eq 0) {
+        return @(
+            "FW $normalizedDomain",
+            "FW >$normalizedDomain"
+        )
+    }
+
+    $escapedDomain = [regex]::Escape($normalizedDomain)
+    $escapedBlockedPattern = ($blockedDescendants -join '|')
+
     return @(
         "FW $normalizedDomain",
-        "FW >$normalizedDomain"
+        "FW /^(?!(?:.*\\.)?(?:$escapedBlockedPattern)$).*\\.$escapedDomain$"
     )
 }
 
@@ -331,7 +362,7 @@ function New-AcrylicHostsDefinition {
 
     $whitelistLines = @(
         foreach ($domain in $effectiveWhitelistedDomains) {
-            @(Get-AcrylicForwardRules -Domain $domain)
+            @(Get-AcrylicForwardRules -Domain $domain -BlockedSubdomains $BlockedSubdomains)
         }
     )
 

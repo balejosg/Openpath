@@ -433,4 +433,69 @@ describe('repository verification contract', () => {
       'Windows student-policy runner should publish success only after cleanup succeeds'
     );
   });
+
+  test('windows DNS renderer avoids wildcard FW rules that override blocked descendants', () => {
+    const dnsModule = readText('windows/lib/DNS.psm1');
+
+    assert.match(
+      dnsModule,
+      /function Get-AcrylicForwardRules/,
+      'windows/lib/DNS.psm1 should keep Acrylic wildcard forward generation in a dedicated helper'
+    );
+    assert.match(
+      dnsModule,
+      /Get-AcrylicForwardRules -Domain \$domain -BlockedSubdomains \$BlockedSubdomains/,
+      'New-AcrylicHostsDefinition should pass blocked subdomains into wildcard forward generation'
+    );
+    assert.match(
+      dnsModule,
+      /\[string\[\]\]\$BlockedSubdomains = @\(\)/,
+      'Get-AcrylicForwardRules should accept the blocked subdomain list'
+    );
+    assert.match(
+      dnsModule,
+      /FW >\$normalizedDomain/,
+      'Get-AcrylicForwardRules should still emit FW >domain when no blocked descendants exist'
+    );
+    assert.match(
+      dnsModule,
+      /\$escapedBlockedPattern = \(\$blockedDescendants -join '\\|'\)/,
+      'Get-AcrylicForwardRules should combine blocked descendants into a single negative-lookahead pattern'
+    );
+    assert.match(
+      dnsModule,
+      /\$escapedDomain = \[regex\]::Escape\(\$normalizedDomain\)/,
+      'Get-AcrylicForwardRules should escape the forwarded parent domain before building the regex rule'
+    );
+    assert.match(
+      dnsModule,
+      /\"FW \/\^\(\?!.*\$escapedBlockedPattern.*\$escapedDomain\$\"/,
+      'Get-AcrylicForwardRules should emit a regex-based FW rule that excludes blocked descendants when needed'
+    );
+    assert.ok(
+      !dnsModule.includes('"FW /^(?!(?:.*\\.)?(?:$escapedBlockedPattern)$).*\\.$escapedDomain$/"'),
+      'Get-AcrylicForwardRules should not emit a trailing slash in Acrylic regex rules'
+    );
+    assert.match(
+      dnsModule,
+      /if \(\$blockedDescendants\.Count -eq 0\) \{[\s\S]*?"FW >\$normalizedDomain"[\s\S]*?\}/,
+      'Get-AcrylicForwardRules should keep the wildcard FW shortcut only for domains without blocked descendants'
+    );
+  });
+
+  test('windows DNS renderer keeps essential domains on unconditional wildcard forwarding', () => {
+    const dnsModule = readText('windows/lib/DNS.psm1');
+
+    assert.match(
+      dnsModule,
+      /\$essentialLines \+= @\(Get-AcrylicForwardRules -Domain \$domain\)/,
+      'Essential control-plane domains should keep unconditional wildcard FW rules'
+    );
+    assert.ok(
+      !dnsModule.includes(
+        '$essentialLines += @(Get-AcrylicForwardRules -Domain $domain -BlockedSubdomains $BlockedSubdomains)'
+      ),
+      'Essential control-plane domains should not inherit classroom blocked-subdomain overrides'
+    );
+  });
 });
