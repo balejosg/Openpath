@@ -165,10 +165,11 @@ export async function getClassroomById(id: string): Promise<DBClassroom | null> 
 }
 
 export async function getClassroomByName(name: string): Promise<DBClassroom | null> {
+  const normalizedName = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
   const result = await db
     .select()
     .from(classrooms)
-    .where(sql`LOWER(${classrooms.name}) = LOWER(${name})`)
+    .where(eq(classrooms.name, normalizedName))
     .limit(1);
 
   return result[0] ?? null;
@@ -298,10 +299,11 @@ export async function getMachinesByClassroom(classroomId: string): Promise<DBMac
 }
 
 export async function getMachineByHostname(hostname: string): Promise<DBMachine | null> {
+  const normalizedHostname = hostname.toLowerCase().trim();
   const result = await db
     .select()
     .from(machines)
-    .where(sql`LOWER(${machines.hostname}) = LOWER(${hostname})`)
+    .where(eq(machines.hostname, normalizedHostname))
     .limit(1);
 
   return result[0] ?? null;
@@ -382,10 +384,11 @@ export async function updateMachineLastSeen(hostname: string): Promise<DBMachine
  * Get the machine record by hostname
  */
 export async function getMachineOnlyByHostname(hostname: string): Promise<DBMachine | null> {
+  const normalizedHostname = hostname.toLowerCase().trim();
   const result = await db
     .select()
     .from(machines)
-    .where(sql`LOWER(${machines.hostname}) = LOWER(${hostname})`)
+    .where(eq(machines.hostname, normalizedHostname))
     .limit(1);
 
   return result[0] ?? null;

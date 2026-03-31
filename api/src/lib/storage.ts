@@ -179,10 +179,11 @@ export async function getRequestById(id: string): Promise<DomainRequest | null> 
 }
 
 export async function hasPendingRequest(domain: string): Promise<boolean> {
+  const normalizedDomain = normalize.domain(domain);
   const result = await db
     .select({ id: requests.id })
     .from(requests)
-    .where(and(sql`LOWER(${requests.domain}) = LOWER(${domain})`, eq(requests.status, 'pending')))
+    .where(and(eq(requests.domain, normalizedDomain), eq(requests.status, 'pending')))
     .limit(1);
 
   return result.length > 0;

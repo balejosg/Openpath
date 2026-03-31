@@ -183,6 +183,31 @@ export async function resetDb(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
     `)
   );
+
+  const baselineGroups = [
+    ['default', 'default', 'Default Group'],
+    ['group-a', 'group-a', 'Group A'],
+    ['group-b', 'group-b', 'Group B'],
+    ['group-c', 'group-c', 'Group C'],
+    ['group-db', 'group-db', 'Group DB'],
+    ['group-z', 'group-z', 'Group Z'],
+    ['group1', 'group1', 'Group 1'],
+    ['test-group', 'test-group', 'Test Group'],
+    ['ciencias-3eso', 'ciencias-3eso', 'Ciencias 3 ESO'],
+    ['matematicas-4eso', 'matematicas-4eso', 'Matematicas 4 ESO'],
+    ['fisica-4eso', 'fisica-4eso', 'Fisica 4 ESO'],
+    ['google-linked-group', 'google-linked-group', 'Google Linked Group'],
+  ] as const;
+
+  for (const [id, name, displayName] of baselineGroups) {
+    await db.execute(
+      sql.raw(`
+        INSERT INTO whitelist_groups (id, name, display_name, enabled)
+        VALUES ('${id}', '${name}', '${displayName}', 1)
+        ON CONFLICT (id) DO NOTHING
+      `)
+    );
+  }
 }
 
 // Unique identifier for this test run - used for email generation

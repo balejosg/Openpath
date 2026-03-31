@@ -2,9 +2,10 @@ import type { Express, Request, Response } from 'express';
 
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
-import { touchGroupAndEmitWhitelistChanged } from '../lib/rule-events.js';
+import { emitWhitelistChanged } from '../lib/rule-events.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
+import { withTransaction } from '../db/index.js';
 import RequestService from '../services/request.service.js';
 import { normalizeHostInput } from '../lib/machine-proof.js';
 import { hashMachineToken } from '../lib/machine-download-token.js';
@@ -129,12 +130,15 @@ export function registerPublicRequestRoutes(app: Express): void {
         ? `Auto-approved via Firefox extension (${body.originPageRaw.slice(0, 300)})${reasonText ? ` - ${reasonText}` : ''}`
         : `Auto-approved via Firefox extension${reasonText ? ` - ${reasonText}` : ''}`;
 
-      const created = await groupsStorage.createRule(
-        targetGroupId,
-        'whitelist',
-        domainParse.domain,
-        sourceComment,
-        'auto_extension'
+      const created = await withTransaction(async (tx) =>
+        groupsStorage.createRule(
+          targetGroupId,
+          'whitelist',
+          domainParse.domain,
+          sourceComment,
+          'auto_extension',
+          tx
+        )
       );
 
       if (!created.success && created.error !== 'Rule already exists') {
@@ -154,9 +158,16 @@ export function registerPublicRequestRoutes(app: Express): void {
       });
 
       if (created.error !== 'Rule already exists') {
-        await touchGroupAndEmitWhitelistChanged(targetGroupId);
+        emitWhitelistChanged(targetGroupId);
       }
-    })();
+    })().catch((error: unknown) => {
+      logger.error('Auto request route failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    });
   });
 
   app.post('/api/requests/submit', (req: Request, res: Response): void => {
@@ -231,6 +242,13 @@ export function registerPublicRequestRoutes(app: Express): void {
         domain: domainParse.domain,
         source: 'firefox-extension',
       });
-    })();
+    })().catch((error: unknown) => {
+      logger.error('Request submit route failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    });
   });
 }

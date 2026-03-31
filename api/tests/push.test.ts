@@ -215,6 +215,23 @@ await describe('Push Notifications API Tests (tRPC)', { timeout: 45000 }, async 
     assert.ok(data.groupIds?.includes('ciencias-3eso') === true);
   });
 
+  await test('push.subscribe - rejects unknown groups', async (): Promise<void> => {
+    const token = teacherToken ?? '';
+    const response = await trpcMutate(
+      'push.subscribe',
+      {
+        subscription: {
+          ...mockSubscription,
+          endpoint: `${mockSubscription.endpoint}-invalid-group`,
+        },
+        groupIds: ['missing-group-id'],
+      },
+      { Authorization: `Bearer ${token}` }
+    );
+
+    assert.strictEqual(response.status, 400);
+  });
+
   await test('push.getStatus - gets current status', async (): Promise<void> => {
     const token = teacherToken ?? '';
     const response = await trpcQuery('push.getStatus', undefined, {

@@ -7,7 +7,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { eq, sql, and, count, inArray } from 'drizzle-orm';
-import { db, roles } from '../db/index.js';
+import { db, roles, whitelistGroups } from '../db/index.js';
 import type { DbExecutor } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
@@ -67,6 +67,29 @@ function getDbRoleValues(role: UserRole): string[] {
     case 'student':
       return ['student', 'user', 'viewer'];
   }
+}
+
+async function normalizeAndValidateRoleGroupIds(groupIds: string[]): Promise<string[]> {
+  const normalizedGroupIds = [
+    ...new Set(groupIds.map((groupId) => groupId.trim()).filter(Boolean)),
+  ];
+
+  if (normalizedGroupIds.length === 0) {
+    return [];
+  }
+
+  const existingGroups = await db
+    .select({ id: whitelistGroups.id })
+    .from(whitelistGroups)
+    .where(inArray(whitelistGroups.id, normalizedGroupIds));
+  const existingIds = new Set(existingGroups.map((group) => group.id));
+  const missingIds = normalizedGroupIds.filter((groupId) => !existingIds.has(groupId));
+
+  if (missingIds.length > 0) {
+    throw new Error(`Unknown group IDs: ${missingIds.join(', ')}`);
+  }
+
+  return normalizedGroupIds;
 }
 
 // =============================================================================
@@ -158,7 +181,7 @@ export async function canApproveForGroup(userId: string, groupId: string): Promi
       and(
         eq(roles.userId, userId),
         eq(roles.role, 'teacher'),
-        sql`${groupId} = ANY(${roles.groupIds})`
+        sql`${roles.groupIds} @> ARRAY[${groupId}]::text[]`
       )
     )
     .limit(1);
@@ -195,6 +218,7 @@ export async function assignRole(
   executor: DbExecutor = db
 ): Promise<DBRole> {
   const { userId, role, groupIds, createdBy } = roleData;
+  const validatedGroupIds = await normalizeAndValidateRoleGroupIds(groupIds);
 
   // DB schema enforces UNIQUE(user_id) on roles, meaning a user can only have
   // one role row at a time. Treat assignment as an upsert by userId.
@@ -204,7 +228,7 @@ export async function assignRole(
     const updateValues: Partial<typeof roles.$inferInsert> = {
       // Self-heal legacy DB roles by rewriting to canonical value.
       role,
-      groupIds,
+      groupIds: validatedGroupIds,
     };
 
     if (createdBy !== undefined) {
@@ -232,7 +256,7 @@ export async function assignRole(
       id,
       userId,
       role,
-      groupIds: groupIds,
+      groupIds: validatedGroupIds,
       createdBy: createdBy ?? null,
     })
     .returning();
@@ -244,9 +268,10 @@ export async function assignRole(
 }
 
 export async function updateRoleGroups(roleId: string, groupIds: string[]): Promise<DBRole | null> {
+  const validatedGroupIds = await normalizeAndValidateRoleGroupIds(groupIds);
   const [result] = await db
     .update(roles)
-    .set({ groupIds: groupIds })
+    .set({ groupIds: validatedGroupIds })
     .where(eq(roles.id, roleId))
     .returning();
 
@@ -295,7 +320,7 @@ export async function removeGroupFromAllRoles(groupId: string): Promise<number> 
   const rolesWithGroup = await db
     .select()
     .from(roles)
-    .where(sql`${groupId} = ANY(${roles.groupIds})`);
+    .where(sql`${roles.groupIds} @> ARRAY[${groupId}]::text[]`);
 
   let updated = 0;
   for (const role of rolesWithGroup) {
@@ -327,7 +352,7 @@ export async function updateRole(roleId: string, data: Partial<Role>): Promise<R
   const updateValues: Partial<typeof roles.$inferInsert> = {};
 
   if (data.groupIds !== undefined) {
-    updateValues.groupIds = data.groupIds;
+    updateValues.groupIds = await normalizeAndValidateRoleGroupIds(data.groupIds);
   }
 
   if (Object.keys(updateValues).length === 0) {

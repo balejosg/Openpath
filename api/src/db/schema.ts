@@ -47,38 +47,52 @@ export const roles = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: varchar('role', { length: 20 }).notNull(), // 'admin' | 'teacher' | 'student'
+    // Deferred normalization: IDs are validated on write until these arrays are replaced by join tables.
     groupIds: text('group_ids').array(),
     createdBy: varchar('created_by', { length: 50 }).references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
   },
-  (table) => [unique('roles_user_id_key').on(table.userId)]
+  (table) => [
+    unique('roles_user_id_key').on(table.userId),
+    index('roles_role_idx').on(table.role),
+    index('roles_group_ids_gin_idx').using('gin', table.groupIds),
+  ]
 );
 
 // =============================================================================
 // Requests Table
 // =============================================================================
 
-export const requests = pgTable('requests', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  domain: varchar('domain', { length: 255 }).notNull(),
-  reason: text('reason'),
-  requesterEmail: varchar('requester_email', { length: 255 }),
-  groupId: varchar('group_id', { length: 100 }).notNull(),
-  source: varchar('source', { length: 50 }).default('unknown'),
-  machineHostname: varchar('machine_hostname', { length: 255 }),
-  originHost: varchar('origin_host', { length: 255 }),
-  originPage: text('origin_page'),
-  clientVersion: varchar('client_version', { length: 50 }),
-  errorType: varchar('error_type', { length: 100 }),
-  status: varchar('status', { length: 20 }).default('pending'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-  resolvedBy: varchar('resolved_by', { length: 255 }),
-  resolutionNote: text('resolution_note'),
-});
+export const requests = pgTable(
+  'requests',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    domain: varchar('domain', { length: 255 }).notNull(),
+    reason: text('reason'),
+    requesterEmail: varchar('requester_email', { length: 255 }),
+    groupId: varchar('group_id', { length: 50 })
+      .notNull()
+      .references(() => whitelistGroups.id, { onDelete: 'cascade' }),
+    source: varchar('source', { length: 50 }).default('unknown'),
+    machineHostname: varchar('machine_hostname', { length: 255 }),
+    originHost: varchar('origin_host', { length: 255 }),
+    originPage: text('origin_page'),
+    clientVersion: varchar('client_version', { length: 50 }),
+    errorType: varchar('error_type', { length: 100 }),
+    status: varchar('status', { length: 20 }).default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: varchar('resolved_by', { length: 255 }),
+    resolutionNote: text('resolution_note'),
+  },
+  (table) => [
+    index('requests_group_created_idx').on(table.groupId, table.createdAt),
+    index('requests_status_created_idx').on(table.status, table.createdAt),
+  ]
+);
 
 // =============================================================================
 // Classrooms Table
@@ -88,8 +102,12 @@ export const classrooms = pgTable('classrooms', {
   id: varchar('id', { length: 50 }).primaryKey(),
   name: varchar('name', { length: 100 }).unique().notNull(),
   displayName: varchar('display_name', { length: 255 }).notNull(),
-  defaultGroupId: varchar('default_group_id', { length: 100 }),
-  activeGroupId: varchar('active_group_id', { length: 100 }),
+  defaultGroupId: varchar('default_group_id', { length: 50 }).references(() => whitelistGroups.id, {
+    onDelete: 'set null',
+  }),
+  activeGroupId: varchar('active_group_id', { length: 50 }).references(() => whitelistGroups.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -98,20 +116,24 @@ export const classrooms = pgTable('classrooms', {
 // Machines Table
 // =============================================================================
 
-export const machines = pgTable('machines', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  hostname: varchar('hostname', { length: 255 }).unique().notNull(),
-  reportedHostname: varchar('reported_hostname', { length: 255 }),
-  classroomId: varchar('classroom_id', { length: 50 }).references(() => classrooms.id, {
-    onDelete: 'cascade',
-  }),
-  version: varchar('version', { length: 50 }).default('unknown'),
-  lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
-  downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
-  downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+export const machines = pgTable(
+  'machines',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    hostname: varchar('hostname', { length: 255 }).unique().notNull(),
+    reportedHostname: varchar('reported_hostname', { length: 255 }),
+    classroomId: varchar('classroom_id', { length: 50 }).references(() => classrooms.id, {
+      onDelete: 'cascade',
+    }),
+    version: varchar('version', { length: 50 }).default('unknown'),
+    lastSeen: timestamp('last_seen', { withTimezone: true }).defaultNow(),
+    downloadTokenHash: varchar('download_token_hash', { length: 64 }).unique(),
+    downloadTokenLastRotatedAt: timestamp('download_token_last_rotated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('machines_classroom_created_idx').on(table.classroomId, table.createdAt)]
+);
 
 // =============================================================================
 // Schedules Table
@@ -127,7 +149,9 @@ export const schedules = pgTable(
     teacherId: varchar('teacher_id', { length: 50 })
       .notNull()
       .references(() => users.id),
-    groupId: varchar('group_id', { length: 100 }).notNull(),
+    groupId: varchar('group_id', { length: 50 })
+      .notNull()
+      .references(() => whitelistGroups.id, { onDelete: 'cascade' }),
 
     // Weekly scheduling (Mon-Fri). Null for one-off schedules.
     dayOfWeek: integer('day_of_week'),
@@ -186,15 +210,19 @@ export const machineExemptions = pgTable(
 // Tokens Table (Refresh Token Blacklist)
 // =============================================================================
 
-export const tokens = pgTable('tokens', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  userId: varchar('user_id', { length: 50 })
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: varchar('token_hash', { length: 255 }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+export const tokens = pgTable(
+  'tokens',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    userId: varchar('user_id', { length: 50 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('tokens_expires_at_idx').on(table.expiresAt)]
+);
 
 // =============================================================================
 // Settings Table
@@ -211,58 +239,78 @@ export const settings = pgTable('settings', {
 // Password Reset Tokens Table
 // =============================================================================
 
-export const passwordResetTokens = pgTable('password_reset_tokens', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  userId: varchar('user_id', { length: 50 })
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: varchar('token_hash', { length: 255 }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+export const passwordResetTokens = pgTable(
+  'password_reset_tokens',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    userId: varchar('user_id', { length: 50 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('password_reset_tokens_user_expires_idx').on(table.userId, table.expiresAt)]
+);
 
-export const emailVerificationTokens = pgTable('email_verification_tokens', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  userId: varchar('user_id', { length: 50 })
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: varchar('token_hash', { length: 255 }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+export const emailVerificationTokens = pgTable(
+  'email_verification_tokens',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    userId: varchar('user_id', { length: 50 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('email_verification_tokens_user_expires_idx').on(table.userId, table.expiresAt)]
+);
 
 // =============================================================================
 // Push Subscriptions Table
 // =============================================================================
 
-export const pushSubscriptions = pgTable('push_subscriptions', {
-  id: varchar('id', { length: 50 }).primaryKey(),
-  userId: varchar('user_id', { length: 50 })
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  groupIds: text('group_ids').array().notNull(),
-  endpoint: text('endpoint').unique().notNull(),
-  p256dh: text('p256dh').notNull(),
-  auth: text('auth').notNull(),
-  userAgent: text('user_agent'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: varchar('id', { length: 50 }).primaryKey(),
+    userId: varchar('user_id', { length: 50 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // Deferred normalization: values are validated on write; '*' remains a deliberate wildcard sentinel.
+    groupIds: text('group_ids').array().notNull(),
+    endpoint: text('endpoint').unique().notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index('push_subscriptions_user_id_idx').on(table.userId),
+    index('push_subscriptions_group_ids_gin_idx').using('gin', table.groupIds),
+  ]
+);
 
 // =============================================================================
 // Health Reports Table
 // =============================================================================
 
-export const healthReports = pgTable('health_reports', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  hostname: varchar('hostname', { length: 255 }).notNull(),
-  status: varchar('status', { length: 50 }).notNull(),
-  dnsmasqRunning: integer('dnsmasq_running'), // 1=true, 0=false, null=unknown
-  dnsResolving: integer('dns_resolving'), // 1=true, 0=false, null=unknown
-  failCount: integer('fail_count').default(0),
-  actions: text('actions'),
-  version: varchar('version', { length: 50 }),
-  reportedAt: timestamp('reported_at', { withTimezone: true }).defaultNow(),
-});
+export const healthReports = pgTable(
+  'health_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    hostname: varchar('hostname', { length: 255 }).notNull(),
+    status: varchar('status', { length: 50 }).notNull(),
+    dnsmasqRunning: integer('dnsmasq_running'), // 1=true, 0=false, null=unknown
+    dnsResolving: integer('dns_resolving'), // 1=true, 0=false, null=unknown
+    failCount: integer('fail_count').default(0),
+    actions: text('actions'),
+    version: varchar('version', { length: 50 }),
+    reportedAt: timestamp('reported_at', { withTimezone: true }).defaultNow(),
+  },
+  (table) => [index('health_reports_hostname_reported_at_idx').on(table.hostname, table.reportedAt)]
+);
 
 // =============================================================================
 // Whitelist Groups Table (Dashboard)

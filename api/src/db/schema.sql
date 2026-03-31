@@ -2,8 +2,8 @@ CREATE TABLE IF NOT EXISTS "classrooms" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"name" varchar(100) NOT NULL,
 	"display_name" varchar(255) NOT NULL,
-	"default_group_id" varchar(100),
-	"active_group_id" varchar(100),
+	"default_group_id" varchar(50),
+	"active_group_id" varchar(50),
 	"created_at" timestamp with time zone DEFAULT now(),
 	"updated_at" timestamp with time zone DEFAULT now(),
 	CONSTRAINT "classrooms_name_unique" UNIQUE("name")
@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS "health_reports" (
 	"reported_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "health_reports_hostname_reported_at_idx" ON "health_reports" ("hostname","reported_at");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "machines" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"hostname" varchar(255) NOT NULL,
@@ -45,6 +47,8 @@ CREATE TABLE IF NOT EXISTS "machines" (
 	CONSTRAINT "machines_download_token_hash_unique" UNIQUE("download_token_hash")
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "machines_classroom_created_idx" ON "machines" ("classroom_id","created_at");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "push_subscriptions" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"user_id" varchar(50) NOT NULL,
@@ -57,12 +61,16 @@ CREATE TABLE IF NOT EXISTS "push_subscriptions" (
 	CONSTRAINT "push_subscriptions_endpoint_unique" UNIQUE("endpoint")
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "push_subscriptions_user_id_idx" ON "push_subscriptions" ("user_id");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "push_subscriptions_group_ids_gin_idx" ON "push_subscriptions" USING gin ("group_ids");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "requests" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"domain" varchar(255) NOT NULL,
 	"reason" text,
 	"requester_email" varchar(255),
-	"group_id" varchar(100) NOT NULL,
+	"group_id" varchar(50) NOT NULL,
 	"source" varchar(50) DEFAULT 'unknown',
 	"machine_hostname" varchar(255),
 	"origin_host" varchar(255),
@@ -78,6 +86,10 @@ CREATE TABLE IF NOT EXISTS "requests" (
 	"resolution_note" text
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "requests_group_created_idx" ON "requests" ("group_id","created_at");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "requests_status_created_idx" ON "requests" ("status","created_at");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "roles" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"user_id" varchar(50) NOT NULL,
@@ -90,11 +102,15 @@ CREATE TABLE IF NOT EXISTS "roles" (
 	CONSTRAINT "roles_user_id_key" UNIQUE("user_id")
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "roles_role_idx" ON "roles" ("role");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "roles_group_ids_gin_idx" ON "roles" USING gin ("group_ids");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "schedules" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"classroom_id" varchar(50) NOT NULL,
 	"teacher_id" varchar(50) NOT NULL,
-	"group_id" varchar(100) NOT NULL,
+	"group_id" varchar(50) NOT NULL,
 	"day_of_week" integer NOT NULL,
 	"start_time" time NOT NULL,
 	"end_time" time NOT NULL,
@@ -133,6 +149,8 @@ CREATE TABLE IF NOT EXISTS "tokens" (
 	"expires_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now()
 );
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tokens_expires_at_idx" ON "tokens" ("expires_at");
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "users" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
@@ -180,6 +198,8 @@ CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
 );
 
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_expires_idx" ON "password_reset_tokens" ("user_id","expires_at");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
 	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"user_id" varchar(50) NOT NULL,
@@ -188,6 +208,8 @@ CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
 	"created_at" timestamp with time zone DEFAULT now()
 );
 
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "email_verification_tokens_user_expires_idx" ON "email_verification_tokens" ("user_id","expires_at");
 --> statement-breakpoint
 DO $$ BEGIN
     ALTER TABLE "machines" ADD CONSTRAINT "machines_classroom_id_classrooms_id_fk" FOREIGN KEY ("classroom_id") REFERENCES "public"."classrooms"("id") ON DELETE cascade ON UPDATE no action;
@@ -244,7 +266,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+	ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_default_group_id_whitelist_groups_id_fk" FOREIGN KEY ("default_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_active_group_id_whitelist_groups_id_fk" FOREIGN KEY ("active_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
 	ALTER TABLE "machine_exemptions" ADD CONSTRAINT "machine_exemptions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "requests" ADD CONSTRAINT "requests_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "schedules" ADD CONSTRAINT "schedules_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
 	WHEN duplicate_object THEN NULL;
 END $$;

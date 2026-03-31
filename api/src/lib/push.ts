@@ -7,11 +7,11 @@
  * Storage: PostgreSQL via Drizzle ORM
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import webPush from 'web-push';
 import { db } from '../db/index.js';
-import { pushSubscriptions } from '../db/schema.js';
+import { pushSubscriptions, whitelistGroups } from '../db/schema.js';
 import { logger } from './logger.js';
 import { config } from '../config.js';
 import type { DomainRequest } from '../types/index.js';
@@ -57,6 +57,36 @@ interface NotificationResult {
   disabled?: boolean;
   noSubscriptions?: boolean;
   total?: number;
+}
+
+async function normalizeAndValidateSubscriptionGroupIds(groupIds: string[]): Promise<string[]> {
+  const normalizedGroupIds = [
+    ...new Set(groupIds.map((groupId) => groupId.trim()).filter(Boolean)),
+  ];
+
+  if (normalizedGroupIds.length === 0) {
+    return [];
+  }
+
+  const wildcardGroupIds = normalizedGroupIds.filter((groupId) => groupId === '*');
+  const concreteGroupIds = normalizedGroupIds.filter((groupId) => groupId !== '*');
+
+  if (concreteGroupIds.length === 0) {
+    return wildcardGroupIds;
+  }
+
+  const existingGroups = await db
+    .select({ id: whitelistGroups.id })
+    .from(whitelistGroups)
+    .where(inArray(whitelistGroups.id, concreteGroupIds));
+  const existingIds = new Set(existingGroups.map((group) => group.id));
+  const missingIds = concreteGroupIds.filter((groupId) => !existingIds.has(groupId));
+
+  if (missingIds.length > 0) {
+    throw new Error(`Unknown group IDs: ${missingIds.join(', ')}`);
+  }
+
+  return [...wildcardGroupIds, ...concreteGroupIds];
 }
 
 // =============================================================================
@@ -117,13 +147,15 @@ export async function saveSubscription(
   subscription: PushSubscriptionData,
   userAgent = ''
 ): Promise<SubscriptionRecord> {
+  const validatedGroupIds = await normalizeAndValidateSubscriptionGroupIds(groupIds);
+
   // Remove existing subscription with same endpoint (upsert behavior)
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, subscription.endpoint));
 
   const record = {
     id: `push_${uuidv4().slice(0, 8)}`,
     userId,
-    groupIds,
+    groupIds: validatedGroupIds,
     endpoint: subscription.endpoint,
     p256dh: subscription.keys.p256dh,
     auth: subscription.keys.auth,
@@ -135,7 +167,7 @@ export async function saveSubscription(
   return {
     id: record.id,
     userId,
-    groupIds,
+    groupIds: validatedGroupIds,
     subscription,
     userAgent,
     createdAt: new Date().toISOString(),
@@ -150,9 +182,14 @@ export async function saveSubscription(
  * @returns Promise resolving to array of subscriptions
  */
 export async function getSubscriptionsForGroup(groupId: string): Promise<SubscriptionRecord[]> {
-  const rows = await db.select().from(pushSubscriptions);
-  // Filter by groupId (array contains)
-  return rows.filter((row) => row.groupIds.includes(groupId)).map(dbRowToRecord);
+  const rows = await db
+    .select()
+    .from(pushSubscriptions)
+    .where(
+      sql`${pushSubscriptions.groupIds} @> ARRAY[${groupId}]::text[] OR ${pushSubscriptions.groupIds} @> ARRAY['*']::text[]`
+    );
+
+  return rows.map(dbRowToRecord);
 }
 
 /**

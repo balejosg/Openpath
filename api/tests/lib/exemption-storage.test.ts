@@ -27,6 +27,17 @@ await describe('exemption-storage', async () => {
 
     await db.execute(
       sql.raw(
+        `INSERT INTO whitelist_groups (id, name, display_name, enabled)
+         VALUES
+           ('default-group', 'default-group', 'Default Group', 1),
+           ('group-scheduled', 'group-scheduled', 'Scheduled Group', 1),
+           ('group-one-off', 'group-one-off', 'One Off Group', 1)
+         ON CONFLICT (id) DO NOTHING`
+      )
+    );
+
+    await db.execute(
+      sql.raw(
         `CREATE TABLE IF NOT EXISTS "machine_exemptions" (
           "id" varchar(50) PRIMARY KEY NOT NULL,
           "machine_id" varchar(50) NOT NULL,

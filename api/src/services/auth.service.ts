@@ -343,8 +343,10 @@ export async function logout(
   accessToken?: string,
   refreshToken?: string
 ): Promise<AuthResult<{ success: boolean }>> {
-  if (accessToken) await auth.blacklistToken(accessToken);
-  if (refreshToken) await auth.blacklistToken(refreshToken);
+  await withTransaction(async (tx) => {
+    if (accessToken) await auth.blacklistToken(accessToken, tx);
+    if (refreshToken) await auth.blacklistToken(refreshToken, tx);
+  });
   return { ok: true, data: { success: true } };
 }
 
@@ -395,7 +397,7 @@ export async function generateEmailVerificationToken(
 
     return {
       ok: true,
-      data: await issueEmailVerificationToken(user),
+      data: await withTransaction(async (tx) => issueEmailVerificationToken(user, tx)),
     };
   } catch (error) {
     logger.error('auth.generateEmailVerificationToken error', {
@@ -625,12 +627,15 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult<Login
       logger.info('auth.loginWithGoogle: user not found by googleId, checking email');
       user = await userStorage.getUserByEmail(payload.email);
       if (user) {
+        const existingUser = user;
         logger.info('auth.loginWithGoogle: found user by email, linking googleId');
-        await userStorage.linkGoogleId(user.id, payload.sub);
-        if (!user.emailVerified) {
-          await userStorage.verifyEmail(user.id);
-        }
-        user = await userStorage.getUserById(user.id);
+        await withTransaction(async (tx) => {
+          await userStorage.linkGoogleId(existingUser.id, payload.sub, tx);
+          if (!existingUser.emailVerified) {
+            await userStorage.verifyEmail(existingUser.id, tx);
+          }
+        });
+        user = await userStorage.getUserById(existingUser.id);
       } else {
         logger.warn('auth.loginWithGoogle: rejected unknown Google account', {
           email: payload.email,

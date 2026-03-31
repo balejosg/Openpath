@@ -211,6 +211,21 @@ await describe('Role Management E2E Tests (tRPC)', { timeout: 45000 }, async () 
     assert.strictEqual(response.status, 400);
   });
 
+  await test('should reject teacher role assignment for unknown groups', async (): Promise<void> => {
+    const token = adminToken ?? '';
+    const response = await trpcMutate(
+      'users.assignRole',
+      {
+        userId: String(teacherUserId),
+        role: 'teacher',
+        groupIds: ['missing-group-id'],
+      },
+      { Authorization: `Bearer ${token}` }
+    );
+
+    assert.strictEqual(response.status, 400);
+  });
+
   await test('users.get - Get User with Roles', async (): Promise<void> => {
     const token = adminToken ?? '';
     const response = await trpcQuery(

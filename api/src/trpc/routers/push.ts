@@ -82,11 +82,20 @@ export const pushRouter = router({
           groupIds: record.groupIds,
         };
       } catch (error) {
+        const message = getErrorMessage(error);
         logger.error('Error saving subscription', {
-          error: getErrorMessage(error),
+          error: message,
           userId: ctx.user.sub,
           endpoint: input.subscription.endpoint.substring(0, 50),
         });
+
+        if (message.startsWith('Unknown group IDs:')) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message,
+          });
+        }
+
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to save subscription',

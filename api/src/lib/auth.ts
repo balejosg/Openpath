@@ -8,8 +8,9 @@
 
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import crypto from 'node:crypto';
-import { getTokenStore } from './token-store.js';
+import { blacklistToken as persistBlacklistedToken, getTokenStore } from './token-store.js';
 import { config } from '../config.js';
+import type { DbExecutor } from '../db/index.js';
 import type { User, JWTPayload, RoleInfo } from '../types/index.js';
 import { normalizeUserRoleString } from '@openpath/shared/roles';
 
@@ -181,12 +182,12 @@ export async function verifyRefreshToken(token: string): Promise<JWTPayload | nu
 /**
  * Blacklist a token (logout)
  */
-export async function blacklistToken(token: string): Promise<boolean> {
+export async function blacklistToken(token: string, executor?: DbExecutor): Promise<boolean> {
   const decoded = await verifyToken(token);
   const expiresAt = decoded?.exp
     ? new Date(decoded.exp * 1000)
     : new Date(Date.now() + 24 * 60 * 60 * 1000);
-  await tokenStore.blacklist(token, expiresAt);
+  await persistBlacklistedToken(token, expiresAt, executor);
   return true;
 }
 

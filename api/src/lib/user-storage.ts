@@ -92,20 +92,18 @@ export async function getUserById(id: string): Promise<User | null> {
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const result = await db
-    .select()
-    .from(users)
-    .where(sql`LOWER(${users.email}) = LOWER(${email})`)
-    .limit(1);
+  const normalizedEmail = normalize.email(email);
+  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
 
   return result[0] ? toUserType(result[0]) : null;
 }
 
 export async function emailExists(email: string): Promise<boolean> {
+  const normalizedEmail = normalize.email(email);
   const result = await db
     .select({ id: users.id })
     .from(users)
-    .where(sql`LOWER(${users.email}) = LOWER(${email})`)
+    .where(eq(users.email, normalizedEmail))
     .limit(1);
 
   return result.length > 0;
@@ -158,10 +156,17 @@ export async function createGoogleUser(userData: CreateGoogleUserData): Promise<
   };
 }
 
-export async function linkGoogleId(userId: string, googleId: string): Promise<boolean> {
+export async function linkGoogleId(
+  userId: string,
+  googleId: string,
+  executor: DbExecutor = db
+): Promise<boolean> {
   return (
     getRowCount(
-      await db.update(users).set({ googleId, updatedAt: new Date() }).where(eq(users.id, userId))
+      await executor
+        .update(users)
+        .set({ googleId, updatedAt: new Date() })
+        .where(eq(users.id, userId))
     ) > 0
   );
 }
@@ -316,11 +321,8 @@ export async function verifyPasswordByEmail(
   email: string,
   password: string
 ): Promise<StoredUserResult | null> {
-  const result = await db
-    .select()
-    .from(users)
-    .where(sql`LOWER(${users.email}) = LOWER(${email})`)
-    .limit(1);
+  const normalizedEmail = normalize.email(email);
+  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
 
   const user = result[0];
   if (!user?.passwordHash) {

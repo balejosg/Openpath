@@ -100,8 +100,17 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
     process.env.SHARED_SECRET = process.env.SHARED_SECRET ?? 'test-shared-secret';
+    process.env.DEFAULT_GROUP = process.env.DEFAULT_GROUP ?? 'default';
 
     await ensureTestSchema();
+
+    await db.execute(
+      sql.raw(
+        `INSERT INTO whitelist_groups (id, name, display_name, enabled)
+         VALUES ('${process.env.DEFAULT_GROUP}', '${process.env.DEFAULT_GROUP}', 'Default Group', 1)
+         ON CONFLICT (id) DO NOTHING`
+      )
+    );
 
     const { app } = await import('../src/server.js');
 

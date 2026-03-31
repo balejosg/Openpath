@@ -186,8 +186,8 @@ export interface IGroupsStorage {
     comment?: string | null,
     source?: RuleSource
   ): Promise<CreateRuleResult>;
-  updateRule(input: UpdateRuleInput): Promise<Rule | null>;
-  deleteRule(id: string): Promise<boolean>;
+  updateRule(input: UpdateRuleInput, executor?: DbExecutor): Promise<Rule | null>;
+  deleteRule(id: string, executor?: DbExecutor): Promise<boolean>;
   bulkCreateRules(
     groupId: string,
     type: RuleType,
@@ -631,11 +631,14 @@ export async function getRulesByIds(ids: string[]): Promise<Rule[]> {
 /**
  * Update a rule's value and/or comment.
  */
-export async function updateRule(input: UpdateRuleInput): Promise<Rule | null> {
+export async function updateRule(
+  input: UpdateRuleInput,
+  executor: DbExecutor = db
+): Promise<Rule | null> {
   const { id, value, comment } = input;
 
   // Get existing rule
-  const [existing] = await db.select().from(whitelistRules).where(eq(whitelistRules.id, id));
+  const [existing] = await executor.select().from(whitelistRules).where(eq(whitelistRules.id, id));
   if (!existing) return null;
 
   // Build update object
@@ -646,7 +649,7 @@ export async function updateRule(input: UpdateRuleInput): Promise<Rule | null> {
       existing.type === 'blocked_path' ? value.trim() : normalize.domain(value);
 
     // Check for duplicates if changing value
-    const [duplicate] = await db
+    const [duplicate] = await executor
       .select()
       .from(whitelistRules)
       .where(
@@ -671,8 +674,8 @@ export async function updateRule(input: UpdateRuleInput): Promise<Rule | null> {
 
   // Only update if there's something to update
   if (Object.keys(updates).length > 0) {
-    await db.update(whitelistRules).set(updates).where(eq(whitelistRules.id, id));
-    await touchGroupUpdatedAt(existing.groupId);
+    await executor.update(whitelistRules).set(updates).where(eq(whitelistRules.id, id));
+    await touchGroupUpdatedAt(existing.groupId, executor);
     logger.debug('Updated rule', { id, ...updates });
   }
 
@@ -728,11 +731,12 @@ export async function createRule(
 /**
  * Delete a rule by ID.
  */
-export async function deleteRule(id: string): Promise<boolean> {
-  const existing = await getRuleById(id);
-  const deleted = getRowCount(await db.delete(whitelistRules).where(eq(whitelistRules.id, id))) > 0;
+export async function deleteRule(id: string, executor: DbExecutor = db): Promise<boolean> {
+  const [existing] = await executor.select().from(whitelistRules).where(eq(whitelistRules.id, id));
+  const deleted =
+    getRowCount(await executor.delete(whitelistRules).where(eq(whitelistRules.id, id))) > 0;
   if (deleted && existing) {
-    await touchGroupUpdatedAt(existing.groupId);
+    await touchGroupUpdatedAt(existing.groupId, executor);
   }
   return deleted;
 }

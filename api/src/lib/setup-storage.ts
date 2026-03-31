@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { inArray } from 'drizzle-orm';
 import { db, settings } from '../db/index.js';
 import type { DbExecutor } from '../db/index.js';
+import { withTransaction } from '../db/index.js';
 import { logger } from './logger.js';
 
 // =============================================================================
@@ -105,7 +106,7 @@ export async function regenerateRegistrationToken(): Promise<string | null> {
 
   const newToken = generateRegistrationToken();
   data.registrationToken = newToken;
-  await saveSetupData(data);
+  await withTransaction(async (tx) => saveSetupData(data, tx));
 
   return newToken;
 }

@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
 import { db, tokens } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
 import type { ITokenStore } from '../types/storage.js';
@@ -33,7 +34,11 @@ function hashToken(token: string): string {
 // Token Store Implementation
 // =============================================================================
 
-export async function blacklistToken(token: string, expiresAt: Date): Promise<void> {
+export async function blacklistToken(
+  token: string,
+  expiresAt: Date,
+  executor: DbExecutor = db
+): Promise<void> {
   const decoded = jwt.decode(token) as (DecodedTokenBase & { sub?: string }) | null;
   const userId = decoded?.sub ?? 'unknown';
 
@@ -43,7 +48,7 @@ export async function blacklistToken(token: string, expiresAt: Date): Promise<vo
 
   logger.debug('Blacklisting token', { userId, tokenId: id });
 
-  await db
+  await executor
     .insert(tokens)
     .values({
       id,

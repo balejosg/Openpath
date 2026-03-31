@@ -21,11 +21,7 @@ import type {
   ListRulesGroupedOptions,
 } from '../lib/groups-storage.js';
 import { validateRuleValue, cleanRuleValue, sanitizeSlug } from '@openpath/shared';
-import {
-  emitAllWhitelistsChanged,
-  emitWhitelistChanged,
-  touchGroupAndEmitWhitelistChanged,
-} from '../lib/rule-events.js';
+import { emitAllWhitelistsChanged, emitWhitelistChanged } from '../lib/rule-events.js';
 
 // =============================================================================
 // Types
@@ -366,11 +362,15 @@ export async function createRule(input: CreateRuleInput): Promise<GroupsResult<{
     return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
   }
 
-  const result = await groupsStorage.createRule(
-    input.groupId,
-    input.type,
-    cleanedValue,
-    input.comment ?? null
+  const result = await withTransaction(async (tx) =>
+    groupsStorage.createRule(
+      input.groupId,
+      input.type,
+      cleanedValue,
+      input.comment ?? null,
+      'manual',
+      tx
+    )
   );
 
   if (!result.success) {
@@ -387,7 +387,7 @@ export async function createRule(input: CreateRuleInput): Promise<GroupsResult<{
     };
   }
 
-  await touchGroupAndEmitWhitelistChanged(input.groupId);
+  emitWhitelistChanged(input.groupId);
   return { ok: true, data: { id: result.id } };
 }
 
@@ -405,10 +405,10 @@ export async function deleteRule(
     ruleGroupId = rule?.groupId;
   }
 
-  const deleted = await groupsStorage.deleteRule(id);
+  const deleted = await withTransaction(async (tx) => groupsStorage.deleteRule(id, tx));
 
   if (deleted && ruleGroupId) {
-    await touchGroupAndEmitWhitelistChanged(ruleGroupId);
+    emitWhitelistChanged(ruleGroupId);
   }
 
   return { ok: true, data: { deleted } };
@@ -484,11 +484,16 @@ export async function updateRule(input: UpdateRuleInput): Promise<GroupsResult<R
     }
   }
 
-  const updated = await groupsStorage.updateRule({
-    id: input.id,
-    value: cleanedValue,
-    comment: input.comment,
-  });
+  const updated = await withTransaction(async (tx) =>
+    groupsStorage.updateRule(
+      {
+        id: input.id,
+        value: cleanedValue,
+        comment: input.comment,
+      },
+      tx
+    )
+  );
 
   if (!updated) {
     return {
@@ -498,7 +503,7 @@ export async function updateRule(input: UpdateRuleInput): Promise<GroupsResult<R
   }
 
   if (didChangeExport) {
-    await touchGroupAndEmitWhitelistChanged(input.groupId);
+    emitWhitelistChanged(input.groupId);
   }
   return { ok: true, data: updated };
 }
