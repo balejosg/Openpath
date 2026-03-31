@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
 /**
@@ -26,6 +27,29 @@ const isCI = !!process.env.CI;
 // Locally, Vite runs on 5173, API on 3001
 const apiPort = isCI ? 3000 : 3001;
 const baseURL = process.env.BASE_URL || `http://localhost:${apiPort}/`;
+
+function resolveChromiumExecutablePath(): string | undefined {
+  const explicitPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+  if (explicitPath) {
+    return explicitPath;
+  }
+
+  const bundledExecutable =
+    '/datos_nvme/run0/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell';
+  if (fs.existsSync(bundledExecutable)) {
+    return undefined;
+  }
+
+  for (const candidate of ['/usr/bin/google-chrome-stable', '/usr/bin/google-chrome']) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+const chromiumExecutablePath = resolveChromiumExecutablePath();
 
 export default defineConfig({
   testDir: './e2e',
@@ -78,18 +102,33 @@ export default defineConfig({
     /* Default: Chromium for speed */
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
     },
     /* Mobile viewport for responsive tests - use Pixel 5 (chromium-based) */
     {
       name: 'mobile',
-      use: { ...devices['Pixel 5'] },
+      use: {
+        ...devices['Pixel 5'],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
       grep: /@responsive|@mobile/,
     },
     /* Tablet viewport - use Galaxy Tab S4 (chromium-based) */
     {
       name: 'tablet',
-      use: { ...devices['Galaxy Tab S4'] },
+      use: {
+        ...devices['Galaxy Tab S4'],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
       grep: /@responsive|@tablet/,
     },
   ],
