@@ -13,7 +13,7 @@ import * as classroomStorage from '../../lib/classroom-storage.js';
 import * as auth from '../../lib/auth.js';
 import { stripUndefined } from '../../lib/utils.js';
 import { logger } from '../../lib/logger.js';
-import { ClassroomService } from '../../services/index.js';
+import ClassroomService from '../../services/classroom.service.js';
 import {
   generateMachineToken,
   hashMachineToken,

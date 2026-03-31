@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, publicProcedure, adminProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import { CreateUserDTOSchema } from '../../types/index.js';
-import { SetupService } from '../../services/index.js';
+import SetupService from '../../services/setup.service.js';
 
 export const setupRouter = router({
   status: publicProcedure.query(async () => {

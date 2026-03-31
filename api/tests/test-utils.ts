@@ -391,7 +391,7 @@ export async function registerAndVerifyUser(
 
   let verificationToken = data?.verificationToken;
   if (!verificationToken) {
-    const { AuthService } = await import('../src/services/index.js');
+    const { default: AuthService } = await import('../src/services/auth.service.js');
     const internalResult = await AuthService.generateEmailVerificationToken(input.email);
     if (!internalResult.ok) {
       return data ? { registerResponse, registerData: data } : { registerResponse };

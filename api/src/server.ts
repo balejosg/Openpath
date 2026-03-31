@@ -845,7 +845,8 @@ app.get('/export/:name.txt', (req: Request, res: Response): void => {
 // Setup REST Endpoints (for SPA compatibility)
 // =============================================================================
 
-import { SetupService, ClassroomService } from './services/index.js';
+import SetupService from './services/setup.service.js';
+import ClassroomService from './services/classroom.service.js';
 
 // Get setup status
 app.get('/api/setup/status', (_req: Request, res: Response): void => {

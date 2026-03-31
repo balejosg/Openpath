@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, adminProcedure } from '../trpc.js';
 import { UserRoleSchema, CreateUserDTOSchema } from '../../types/index.js';
 import { TRPCError } from '@trpc/server';
-import { UserService } from '../../services/index.js';
+import UserService from '../../services/user.service.js';
 import * as roleStorage from '../../lib/role-storage.js';
 
 export const usersRouter = router({

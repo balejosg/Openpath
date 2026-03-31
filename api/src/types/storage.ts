@@ -19,16 +19,12 @@ import type {
   CreateRequestDTO,
   CreateUserDTO,
   CreateClassroomDTO,
-  CreateScheduleDTO,
-  CreatePushSubscriptionDTO,
 } from './index.js';
 
 // Local type aliases for internal use (resolves scope errors)
 export type CreateRequestData = CreateRequestDTO;
 export type CreateUserData = CreateUserDTO;
 export type CreateClassroomData = CreateClassroomDTO;
-export type CreateScheduleData = CreateScheduleDTO;
-export type CreatePushSubscriptionData = CreatePushSubscriptionDTO;
 
 // Re-export all types as named exports for external consumers
 export type {
@@ -167,51 +163,6 @@ export interface IClassroomStorage {
 }
 
 // =============================================================================
-// Schedule Storage
-// =============================================================================
-
-/**
- * Data for updating a schedule
- */
-export interface UpdateScheduleData {
-  dayOfWeek?: 1 | 2 | 3 | 4 | 5;
-  startTime?: string;
-  endTime?: string;
-  groupId?: string;
-  subject?: string;
-  active?: boolean;
-}
-
-/**
- * Schedule conflict info
- */
-export interface ScheduleConflict {
-  conflictingSchedule: Schedule;
-  reason: string;
-}
-
-/**
- * Schedule storage interface
- */
-export interface IScheduleStorage {
-  getAllSchedules(): Promise<Schedule[]>;
-  getScheduleById(id: string): Promise<Schedule | null>;
-  getSchedulesByClassroom(classroomId: string): Promise<Schedule[]>;
-  getSchedulesByTeacher(teacherId: string): Promise<Schedule[]>;
-  createSchedule(data: CreateScheduleData): Promise<Schedule>;
-  updateSchedule(id: string, data: UpdateScheduleData): Promise<Schedule | null>;
-  deleteSchedule(id: string): Promise<boolean>;
-  getCurrentSchedule(classroomId: string): Promise<Schedule | null>;
-  checkConflict(
-    classroomId: string,
-    dayOfWeek: number,
-    startTime: string,
-    endTime: string,
-    excludeId?: string
-  ): Promise<ScheduleConflict | null>;
-}
-
-// =============================================================================
 // Token Store
 // =============================================================================
 
@@ -222,24 +173,4 @@ export interface ITokenStore {
   blacklist(token: string, expiresAt: Date): Promise<void>;
   isBlacklisted(token: string): Promise<boolean>;
   cleanup(): Promise<number>;
-}
-
-// =============================================================================
-// Push Subscription Storage
-// =============================================================================
-
-/**
- * Data for creating a push subscription
- */
-
-/**
- * Push subscription storage interface
- */
-export interface IPushStorage {
-  getSubscriptionsByUser(userId: string): PushSubscription[];
-  getSubscriptionsByGroup(groupId: string): PushSubscription[];
-  getAllSubscriptions(): PushSubscription[];
-  createSubscription(data: CreatePushSubscriptionData): PushSubscription;
-  deleteSubscription(endpoint: string): boolean;
-  deleteUserSubscriptions(userId: string): number;
 }

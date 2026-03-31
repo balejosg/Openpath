@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
 import { LoginDTOSchema, CreateUserDTOSchema } from '../../types/index.js';
-import { AuthService } from '../../services/index.js';
+import AuthService from '../../services/auth.service.js';
 import {
   readAccessTokenFromRequest,
   clearSessionCookies,

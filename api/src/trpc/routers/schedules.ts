@@ -6,7 +6,7 @@ import {
   CreateOneOffScheduleDTOSchema,
   UpdateOneOffScheduleDTOSchema,
 } from '../../types/index.js';
-import { ScheduleService } from '../../services/index.js';
+import ScheduleService from '../../services/schedule.service.js';
 
 export const schedulesRouter = router({
   getByClassroom: protectedProcedure

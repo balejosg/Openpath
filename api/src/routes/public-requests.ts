@@ -5,7 +5,7 @@ import { logger } from '../lib/logger.js';
 import { touchGroupAndEmitWhitelistChanged } from '../lib/rule-events.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
-import { RequestService } from '../services/index.js';
+import RequestService from '../services/request.service.js';
 import { normalizeHostInput } from '../lib/machine-proof.js';
 import { hashMachineToken } from '../lib/machine-download-token.js';
 import {

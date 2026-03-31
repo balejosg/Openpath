@@ -12,7 +12,7 @@ import { CreateRequestData } from '../../types/storage.js';
 import * as storage from '../../lib/storage.js';
 import * as groupsStorage from '../../lib/groups-storage.js';
 import { stripUndefined } from '../../lib/utils.js';
-import { RequestService } from '../../services/index.js';
+import RequestService from '../../services/request.service.js';
 
 export const requestsRouter = router({
   /**
