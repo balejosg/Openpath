@@ -74,12 +74,6 @@ async function assertCanViewGroupId(user: JWTPayload, groupId: string): Promise<
   throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this group' });
 }
 
-function getInputStringField(input: unknown, key: string): string | null {
-  if (typeof input !== 'object' || input === null) return null;
-  const value = (input as Record<string, unknown>)[key];
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
 async function addGroupToTeacherRole(params: {
   userId: string;
   groupId: string;
@@ -107,7 +101,11 @@ const teacherGroupIdProcedure = <TSchema extends z.ZodType>(
   schema: TSchema
 ): ReturnType<typeof teacherProcedure.input<TSchema>> => {
   return teacherProcedure.input(schema).use(async ({ ctx, input, next }) => {
-    const groupId = getInputStringField(input, 'groupId');
+    const inputRecord = input as Record<string, unknown>;
+    const groupId =
+      typeof input === 'object' && input !== null && typeof inputRecord.groupId === 'string'
+        ? inputRecord.groupId
+        : null;
     if (!groupId) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'groupId is required' });
     }
@@ -120,7 +118,11 @@ const teacherGroupByIdProcedure = <TSchema extends z.ZodType>(
   schema: TSchema
 ): ReturnType<typeof teacherProcedure.input<TSchema>> => {
   return teacherProcedure.input(schema).use(async ({ ctx, input, next }) => {
-    const groupId = getInputStringField(input, 'id');
+    const inputRecord = input as Record<string, unknown>;
+    const groupId =
+      typeof input === 'object' && input !== null && typeof inputRecord.id === 'string'
+        ? inputRecord.id
+        : null;
     if (!groupId) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'id is required' });
     }
@@ -133,7 +135,11 @@ const teacherViewGroupIdProcedure = <TSchema extends z.ZodType>(
   schema: TSchema
 ): ReturnType<typeof teacherProcedure.input<TSchema>> => {
   return teacherProcedure.input(schema).use(async ({ ctx, input, next }) => {
-    const groupId = getInputStringField(input, 'groupId');
+    const inputRecord = input as Record<string, unknown>;
+    const groupId =
+      typeof input === 'object' && input !== null && typeof inputRecord.groupId === 'string'
+        ? inputRecord.groupId
+        : null;
     if (!groupId) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: 'groupId is required' });
     }
