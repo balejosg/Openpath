@@ -7,18 +7,7 @@
  * Provides a wrapper around tRPC calls for the Dashboard.
  * This module replaces direct database access with API calls.
  *
- * NOTE: This file uses type assertions because the tRPC types are inferred
- * from the API package which needs to be rebuilt after adding the groups router.
- * The unsafe type operations are intentional and will be properly typed
- * after running `npm run build --workspace=@openpath/api`.
  */
-
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/require-await */
 
 import { createTRPCWithAuth, createTRPCPublic, getTRPCErrorMessage, API_URL } from './trpc.js';
 import { logger } from './lib/logger.js';
@@ -124,13 +113,12 @@ export function createApiClient(token: string): ApiClient {
   return {
     // Groups
     async getAllGroups(): Promise<Group[]> {
-      // Type assertion needed until API is rebuilt with new router
-      return (trpc as any).groups.list.query();
+      return trpc.groups.list.query();
     },
 
     async getGroupById(id: string): Promise<Group | null> {
       try {
-        return await (trpc as any).groups.getById.query({ id });
+        return await trpc.groups.getById.query({ id });
       } catch {
         return null;
       }
@@ -138,28 +126,28 @@ export function createApiClient(token: string): ApiClient {
 
     async getGroupByName(name: string): Promise<Group | null> {
       try {
-        return await (trpc as any).groups.getByName.query({ name });
+        return await trpc.groups.getByName.query({ name });
       } catch {
         return null;
       }
     },
 
     async createGroup(name: string, displayName: string): Promise<{ id: string; name: string }> {
-      return (trpc as any).groups.create.mutate({ name, displayName });
+      return trpc.groups.create.mutate({ name, displayName });
     },
 
     async updateGroup(id: string, displayName: string, enabled: boolean): Promise<Group> {
-      return (trpc as any).groups.update.mutate({ id, displayName, enabled });
+      return trpc.groups.update.mutate({ id, displayName, enabled });
     },
 
     async deleteGroup(id: string): Promise<boolean> {
-      const result = await (trpc as any).groups.delete.mutate({ id });
+      const result = await trpc.groups.delete.mutate({ id });
       return result.deleted;
     },
 
     // Rules
     async getRulesByGroup(groupId: string, type?: RuleType): Promise<Rule[]> {
-      return (trpc as any).groups.listRules.query({ groupId, type });
+      return trpc.groups.listRules.query({ groupId, type });
     },
 
     async createRule(
@@ -168,39 +156,39 @@ export function createApiClient(token: string): ApiClient {
       value: string,
       comment?: string
     ): Promise<{ id: string }> {
-      return (trpc as any).groups.createRule.mutate({ groupId, type, value, comment });
+      return trpc.groups.createRule.mutate({ groupId, type, value, comment });
     },
 
     async deleteRule(id: string): Promise<boolean> {
-      const result = await (trpc as any).groups.deleteRule.mutate({ id });
+      const result = await trpc.groups.deleteRule.mutate({ id });
       return result.deleted;
     },
 
     async bulkCreateRules(groupId: string, type: RuleType, values: string[]): Promise<number> {
-      const result = await (trpc as any).groups.bulkCreateRules.mutate({ groupId, type, values });
+      const result = await trpc.groups.bulkCreateRules.mutate({ groupId, type, values });
       return result.count;
     },
 
     // Stats
     async getStats(): Promise<GroupStats> {
-      return (trpc as any).groups.stats.query();
+      return trpc.groups.stats.query();
     },
 
     async getSystemStatus(): Promise<SystemStatus> {
-      return (trpc as any).groups.systemStatus.query();
+      return trpc.groups.systemStatus.query();
     },
 
     async toggleSystemStatus(enable: boolean): Promise<SystemStatus> {
-      return (trpc as any).groups.toggleSystem.mutate({ enable });
+      return trpc.groups.toggleSystem.mutate({ enable });
     },
 
     // Export
     async exportGroup(groupId: string): Promise<{ name: string; content: string }> {
-      return (trpc as any).groups.export.query({ groupId });
+      return trpc.groups.export.query({ groupId });
     },
 
     async exportAllGroups(): Promise<{ name: string; content: string }[]> {
-      return (trpc as any).groups.exportAll.query();
+      return trpc.groups.exportAll.query();
     },
   };
 }
@@ -222,22 +210,16 @@ export async function login(username: string, password: string): Promise<LoginRe
   const email = username.includes('@') ? username : `${username}@dashboard.local`;
 
   try {
-    const result = await (trpc as any).auth.login.mutate({ email, password });
+    const result = await trpc.auth.login.mutate({ email, password });
 
     return {
       success: true,
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       user: {
-        id:
-          (result as unknown as { user?: { id: string; email: string; name: string } }).user?.id ??
-          '',
-        email:
-          (result as unknown as { user?: { id: string; email: string; name: string } }).user
-            ?.email ?? email,
-        name:
-          (result as unknown as { user?: { id: string; email: string; name: string } }).user
-            ?.name ?? username,
+        id: result.user?.id ?? '',
+        email: result.user?.email ?? email,
+        name: result.user?.name ?? username,
       },
     };
   } catch (error) {
@@ -256,7 +238,7 @@ export async function refreshToken(refreshTokenValue: string): Promise<LoginResu
   const trpc = createTRPCPublic();
 
   try {
-    const result = await (trpc as any).auth.refresh.mutate({ refreshToken: refreshTokenValue });
+    const result = await trpc.auth.refresh.mutate({ refreshToken: refreshTokenValue });
 
     return {
       success: true,
@@ -279,7 +261,7 @@ export async function logout(accessToken: string, refreshTokenValue: string): Pr
   const trpc = createTRPCWithAuth(accessToken);
 
   try {
-    await (trpc as any).auth.logout.mutate({ refreshToken: refreshTokenValue });
+    await trpc.auth.logout.mutate({ refreshToken: refreshTokenValue });
     return true;
   } catch (error) {
     logger.error('Logout failed', { error: getTRPCErrorMessage(error) });
@@ -299,7 +281,7 @@ export async function changePassword(
   const trpc = createTRPCWithAuth(accessToken);
 
   try {
-    await (trpc as any).auth.changePassword.mutate({
+    await trpc.auth.changePassword.mutate({
       currentPassword,
       newPassword,
     });

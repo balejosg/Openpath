@@ -8,7 +8,7 @@
  */
 
 import { createTRPCClient, httpBatchLink, TRPCClientError } from '@trpc/client';
-import type { AnyRouter } from '@trpc/server';
+import type { AppRouter } from '@openpath/api';
 
 // =============================================================================
 // Configuration
@@ -20,7 +20,8 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3000';
 // Client Factory
 // =============================================================================
 
-type DashboardRouter = AnyRouter;
+type DashboardRouter = AppRouter;
+type DashboardTRPCClient = ReturnType<typeof createTRPCClient<DashboardRouter>>;
 
 /**
  * Create a tRPC client with the provided authentication token.
@@ -28,9 +29,7 @@ type DashboardRouter = AnyRouter;
  * @param token - JWT access token for authentication
  * @returns Configured tRPC client
  */
-export function createTRPCWithAuth(
-  token: string
-): ReturnType<typeof createTRPCClient<DashboardRouter>> {
+export function createTRPCWithAuth(token: string): DashboardTRPCClient {
   return createTRPCClient<DashboardRouter>({
     links: [
       httpBatchLink({
@@ -47,7 +46,7 @@ export function createTRPCWithAuth(
  * Create an unauthenticated tRPC client.
  * Used for login and other public endpoints.
  */
-export function createTRPCPublic(): ReturnType<typeof createTRPCClient<DashboardRouter>> {
+export function createTRPCPublic(): DashboardTRPCClient {
   return createTRPCClient<DashboardRouter>({
     links: [
       httpBatchLink({
@@ -117,4 +116,4 @@ export function getTRPCErrorStatus(error: unknown): number {
 // =============================================================================
 
 export { API_URL };
-export type { DashboardRouter };
+export type { DashboardRouter, DashboardTRPCClient };
