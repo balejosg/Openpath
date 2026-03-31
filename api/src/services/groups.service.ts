@@ -6,6 +6,7 @@
  */
 
 import * as groupsStorage from '../lib/groups-storage.js';
+import { withTransaction } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   GroupWithCounts,
@@ -21,8 +22,8 @@ import type {
 } from '../lib/groups-storage.js';
 import { validateRuleValue, cleanRuleValue, sanitizeSlug } from '@openpath/shared';
 import {
-  emitWhitelistChanged,
   emitAllWhitelistsChanged,
+  emitWhitelistChanged,
   touchGroupAndEmitWhitelistChanged,
 } from '../lib/rule-events.js';
 
@@ -242,13 +243,27 @@ export async function cloneGroup(
   const name = await findAvailableGroupName(baseName);
 
   try {
-    const id = await groupsStorage.createGroup(name, input.displayName, {
-      visibility: 'private',
-      ownerUserId: input.ownerUserId,
+    const id = await withTransaction(async (tx) => {
+      const createdGroupId = await groupsStorage.createGroup(
+        name,
+        input.displayName,
+        {
+          visibility: 'private',
+          ownerUserId: input.ownerUserId,
+        },
+        tx
+      );
+
+      await groupsStorage.copyRulesToGroup(
+        { fromGroupId: source.id, toGroupId: createdGroupId },
+        tx
+      );
+
+      await groupsStorage.touchGroupUpdatedAt(createdGroupId, tx);
+      return createdGroupId;
     });
 
-    await groupsStorage.copyRulesToGroup({ fromGroupId: source.id, toGroupId: id });
-    await touchGroupAndEmitWhitelistChanged(id);
+    emitWhitelistChanged(id);
 
     return { ok: true, data: { id, name } };
   } catch (err) {
@@ -413,13 +428,13 @@ export async function bulkDeleteRules(
   // Get the rules before deleting (for undo functionality + SSE notification)
   const rules = options?.rules ?? (await groupsStorage.getRulesByIds(ids));
 
-  const deleted = await groupsStorage.bulkDeleteRules(ids);
+  const deleted = await withTransaction(async (tx) => groupsStorage.bulkDeleteRules(ids, tx));
 
   // Notify affected groups
   if (deleted > 0) {
     const affectedGroups = new Set(rules.map((r) => r.groupId));
     for (const gid of affectedGroups) {
-      await touchGroupAndEmitWhitelistChanged(gid);
+      emitWhitelistChanged(gid);
     }
   }
 
@@ -504,10 +519,12 @@ export async function bulkCreateRules(
   const preservePath = input.type === 'blocked_path';
   const cleanedValues = input.values.map((v) => cleanRuleValue(v, preservePath));
 
-  const count = await groupsStorage.bulkCreateRules(input.groupId, input.type, cleanedValues);
+  const count = await withTransaction(async (tx) =>
+    groupsStorage.bulkCreateRules(input.groupId, input.type, cleanedValues, 'manual', tx)
+  );
 
   if (count > 0) {
-    await touchGroupAndEmitWhitelistChanged(input.groupId);
+    emitWhitelistChanged(input.groupId);
   }
 
   return { ok: true, data: { count } };

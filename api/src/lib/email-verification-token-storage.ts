@@ -8,11 +8,13 @@ import bcrypt from 'bcrypt';
 
 import { config } from '../config.js';
 import { db, emailVerificationTokens } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 
 export async function createEmailVerificationToken(
-  userId: string
+  userId: string,
+  executor: DbExecutor = db
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = uuidv4().replace(/-/g, '').slice(0, 12);
   const tokenHash = await bcrypt.hash(token, config.bcryptRounds);
@@ -20,9 +22,9 @@ export async function createEmailVerificationToken(
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + EMAIL_VERIFICATION_TTL_HOURS);
 
-  await deleteUserEmailVerificationTokens(userId);
+  await deleteUserEmailVerificationTokens(userId, executor);
 
-  await db.insert(emailVerificationTokens).values({
+  await executor.insert(emailVerificationTokens).values({
     id,
     userId,
     tokenHash,
@@ -34,9 +36,10 @@ export async function createEmailVerificationToken(
 
 export async function verifyEmailVerificationToken(
   userId: string,
-  token: string
+  token: string,
+  executor: DbExecutor = db
 ): Promise<boolean> {
-  const results = await db
+  const results = await executor
     .select()
     .from(emailVerificationTokens)
     .where(
@@ -48,7 +51,7 @@ export async function verifyEmailVerificationToken(
 
   for (const row of results) {
     if (await bcrypt.compare(token, row.tokenHash)) {
-      await deleteUserEmailVerificationTokens(userId);
+      await deleteUserEmailVerificationTokens(userId, executor);
       return true;
     }
   }
@@ -56,6 +59,9 @@ export async function verifyEmailVerificationToken(
   return false;
 }
 
-export async function deleteUserEmailVerificationTokens(userId: string): Promise<void> {
-  await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
+export async function deleteUserEmailVerificationTokens(
+  userId: string,
+  executor: DbExecutor = db
+): Promise<void> {
+  await executor.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
 }

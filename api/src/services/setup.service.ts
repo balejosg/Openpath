@@ -11,6 +11,7 @@
 import * as roleStorage from '../lib/role-storage.js';
 import * as userStorage from '../lib/user-storage.js';
 import * as setupStorage from '../lib/setup-storage.js';
+import { withTransaction } from '../db/index.js';
 import { logger } from '../lib/logger.js';
 
 // =============================================================================
@@ -103,23 +104,31 @@ export async function createFirstAdmin(
     };
   }
 
-  // Create the user
-  const user = await userStorage.createUser(input, { emailVerified: true });
-
-  // Assign admin role
-  await roleStorage.assignRole({
-    userId: user.id,
-    role: 'admin',
-    groupIds: [],
-    createdBy: user.id,
-  });
-
-  // Generate registration token and save setup data
   const registrationToken = setupStorage.generateRegistrationToken();
-  await setupStorage.saveSetupData({
-    registrationToken,
-    setupCompletedAt: new Date().toISOString(),
-    setupByUserId: user.id,
+
+  const user = await withTransaction(async (tx) => {
+    const createdUser = await userStorage.createUser(input, { emailVerified: true }, tx);
+
+    await roleStorage.assignRole(
+      {
+        userId: createdUser.id,
+        role: 'admin',
+        groupIds: [],
+        createdBy: createdUser.id,
+      },
+      tx
+    );
+
+    await setupStorage.saveSetupData(
+      {
+        registrationToken,
+        setupCompletedAt: new Date().toISOString(),
+        setupByUserId: createdUser.id,
+      },
+      tx
+    );
+
+    return createdUser;
   });
 
   return {

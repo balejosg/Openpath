@@ -5,10 +5,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import { eq, and, gt } from 'drizzle-orm';
 import { db, passwordResetTokens } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import bcrypt from 'bcrypt';
 import { config } from '../config.js';
 
-export async function createResetToken(userId: string): Promise<string> {
+export async function createResetToken(userId: string, executor: DbExecutor = db): Promise<string> {
   const token = uuidv4().replace(/-/g, '').slice(0, 12); // Short, human-readable-ish token
   const tokenHash = await bcrypt.hash(token, config.bcryptRounds);
   const id = `reset_${uuidv4().slice(0, 8)}`;
@@ -17,7 +18,7 @@ export async function createResetToken(userId: string): Promise<string> {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 1);
 
-  await db.insert(passwordResetTokens).values({
+  await executor.insert(passwordResetTokens).values({
     id,
     userId,
     tokenHash,
@@ -27,8 +28,12 @@ export async function createResetToken(userId: string): Promise<string> {
   return token;
 }
 
-export async function verifyToken(userId: string, token: string): Promise<boolean> {
-  const results = await db
+export async function verifyToken(
+  userId: string,
+  token: string,
+  executor: DbExecutor = db
+): Promise<boolean> {
+  const results = await executor
     .select()
     .from(passwordResetTokens)
     .where(
@@ -38,7 +43,7 @@ export async function verifyToken(userId: string, token: string): Promise<boolea
   for (const row of results) {
     if (await bcrypt.compare(token, row.tokenHash)) {
       // Delete all tokens for this user once verified (or just this one)
-      await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+      await executor.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
       return true;
     }
   }
@@ -46,6 +51,6 @@ export async function verifyToken(userId: string, token: string): Promise<boolea
   return false;
 }
 
-export async function deleteUserTokens(userId: string): Promise<void> {
-  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+export async function deleteUserTokens(userId: string, executor: DbExecutor = db): Promise<void> {
+  await executor.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
 }

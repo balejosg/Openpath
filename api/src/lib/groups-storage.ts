@@ -10,6 +10,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { normalize, getRootDomain } from '@openpath/shared';
 import type { GroupVisibility } from '@openpath/shared';
 import { db, whitelistGroups, whitelistRules } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
 import type { WhitelistGroup, WhitelistRule } from '../db/schema.js';
@@ -311,8 +312,11 @@ export async function getGroupMetaByName(name: string): Promise<GroupMeta | null
 /**
  * Touch a group's updatedAt to reflect export-relevant changes.
  */
-export async function touchGroupUpdatedAt(id: string): Promise<void> {
-  await db.update(whitelistGroups).set({ updatedAt: new Date() }).where(eq(whitelistGroups.id, id));
+export async function touchGroupUpdatedAt(id: string, executor: DbExecutor = db): Promise<void> {
+  await executor
+    .update(whitelistGroups)
+    .set({ updatedAt: new Date() })
+    .where(eq(whitelistGroups.id, id));
 }
 
 /**
@@ -346,7 +350,8 @@ export async function createGroup(
     enabled?: boolean;
     visibility?: GroupVisibility;
     ownerUserId?: string | null;
-  }
+  },
+  executor: DbExecutor = db
 ): Promise<string> {
   const existing = await getGroupByName(name);
   if (existing) {
@@ -358,7 +363,7 @@ export async function createGroup(
   const visibility = opts?.visibility ?? 'private';
   const ownerUserId = opts?.ownerUserId ?? null;
 
-  await db.insert(whitelistGroups).values({
+  await executor.insert(whitelistGroups).values({
     id,
     name,
     displayName,
@@ -410,11 +415,14 @@ export async function deleteGroup(id: string): Promise<boolean> {
  *
  * Note: destination group should be empty to avoid unique constraint conflicts.
  */
-export async function copyRulesToGroup(params: {
-  fromGroupId: string;
-  toGroupId: string;
-}): Promise<number> {
-  const source = await db
+export async function copyRulesToGroup(
+  params: {
+    fromGroupId: string;
+    toGroupId: string;
+  },
+  executor: DbExecutor = db
+): Promise<number> {
+  const source = await executor
     .select()
     .from(whitelistRules)
     .where(eq(whitelistRules.groupId, params.fromGroupId));
@@ -433,7 +441,7 @@ export async function copyRulesToGroup(params: {
       comment: r.comment ?? null,
     }));
 
-    await db.insert(whitelistRules).values(batch);
+    await executor.insert(whitelistRules).values(batch);
     inserted += batch.length;
   }
 
@@ -680,12 +688,13 @@ export async function createRule(
   type: RuleType,
   value: string,
   comment: string | null = null,
-  source: RuleSource = 'manual'
+  source: RuleSource = 'manual',
+  executor: DbExecutor = db
 ): Promise<CreateRuleResult> {
   const normalizedValue = type === 'blocked_path' ? value.trim() : normalize.domain(value);
 
   // Check for existing rule
-  const [existing] = await db
+  const [existing] = await executor
     .select()
     .from(whitelistRules)
     .where(
@@ -701,7 +710,7 @@ export async function createRule(
   }
 
   const id = uuidv4();
-  await db.insert(whitelistRules).values({
+  await executor.insert(whitelistRules).values({
     id,
     groupId,
     type,
@@ -710,7 +719,7 @@ export async function createRule(
     comment,
   });
 
-  await touchGroupUpdatedAt(groupId);
+  await touchGroupUpdatedAt(groupId, executor);
 
   logger.debug('Created rule', { id, groupId, type, value: normalizedValue, source });
   return { success: true, id };
@@ -734,20 +743,22 @@ export async function deleteRule(id: string): Promise<boolean> {
  * @param ids - Array of rule IDs to delete
  * @returns Number of rules deleted
  */
-export async function bulkDeleteRules(ids: string[]): Promise<number> {
+export async function bulkDeleteRules(ids: string[], executor: DbExecutor = db): Promise<number> {
   if (ids.length === 0) return 0;
 
   const uniqueIds = Array.from(new Set(ids));
-  const existingRules = await db
+  const existingRules = await executor
     .select({ groupId: whitelistRules.groupId })
     .from(whitelistRules)
     .where(inArray(whitelistRules.id, uniqueIds));
   const deletedCount = getRowCount(
-    await db.delete(whitelistRules).where(inArray(whitelistRules.id, uniqueIds))
+    await executor.delete(whitelistRules).where(inArray(whitelistRules.id, uniqueIds))
   );
   if (deletedCount > 0) {
     const affectedGroupIds = new Set(existingRules.map((rule) => rule.groupId));
-    await Promise.all(Array.from(affectedGroupIds, (groupId) => touchGroupUpdatedAt(groupId)));
+    await Promise.all(
+      Array.from(affectedGroupIds, (groupId) => touchGroupUpdatedAt(groupId, executor))
+    );
   }
   logger.debug('Bulk deleted rules', { count: deletedCount, requested: ids.length });
   return deletedCount;
@@ -762,13 +773,14 @@ export async function bulkCreateRules(
   groupId: string,
   type: RuleType,
   values: string[],
-  source: RuleSource = 'manual'
+  source: RuleSource = 'manual',
+  executor: DbExecutor = db
 ): Promise<number> {
   let count = 0;
   for (const value of values) {
     const trimmed = normalize.domain(value);
     if (trimmed) {
-      const result = await createRule(groupId, type, trimmed, null, source);
+      const result = await createRule(groupId, type, trimmed, null, source, executor);
       if (result.success) count++;
     }
   }

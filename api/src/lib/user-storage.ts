@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { eq, sql, count } from 'drizzle-orm';
 import { normalize } from '@openpath/shared';
 import { db, users } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import type { User, SafeUser } from '../types/index.js';
 import type { IUserStorage, CreateUserData, UpdateUserData } from '../types/storage.js';
@@ -174,13 +175,14 @@ export async function linkGoogleId(userId: string, googleId: string): Promise<bo
  */
 export async function createUser(
   userData: CreateUserData,
-  options: CreateUserOptions = {}
+  options: CreateUserOptions = {},
+  executor: DbExecutor = db
 ): Promise<SafeUser> {
   const passwordHash = await bcrypt.hash(userData.password, config.bcryptRounds);
   const id = `user_${uuidv4().slice(0, 8)}`;
   const emailVerified = options.emailVerified ?? false;
 
-  const [result] = await db
+  const [result] = await executor
     .insert(users)
     .values({
       id,
@@ -213,7 +215,11 @@ export async function createUser(
   };
 }
 
-export async function updateUser(id: string, updates: UpdateUserData): Promise<SafeUser | null> {
+export async function updateUser(
+  id: string,
+  updates: UpdateUserData,
+  executor: DbExecutor = db
+): Promise<SafeUser | null> {
   const updateValues: Partial<typeof users.$inferInsert> = {};
 
   if (updates.email !== undefined) {
@@ -228,7 +234,7 @@ export async function updateUser(id: string, updates: UpdateUserData): Promise<S
 
   if (Object.keys(updateValues).length === 0) {
     // No updates, just return existing user
-    const existing = await db
+    const existing = await executor
       .select({
         id: users.id,
         email: users.email,
@@ -252,13 +258,17 @@ export async function updateUser(id: string, updates: UpdateUserData): Promise<S
       : null;
   }
 
-  const [result] = await db.update(users).set(updateValues).where(eq(users.id, id)).returning({
-    id: users.id,
-    email: users.email,
-    name: users.name,
-    createdAt: users.createdAt,
-    updatedAt: users.updatedAt,
-  });
+  const [result] = await executor
+    .update(users)
+    .set(updateValues)
+    .where(eq(users.id, id))
+    .returning({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    });
 
   return result
     ? {
@@ -276,14 +286,14 @@ export async function updateLastLogin(id: string): Promise<void> {
   await db.update(users).set({ updatedAt: new Date() }).where(eq(users.id, id));
 }
 
-export async function deleteUser(id: string): Promise<boolean> {
-  return getRowCount(await db.delete(users).where(eq(users.id, id))) > 0;
+export async function deleteUser(id: string, executor: DbExecutor = db): Promise<boolean> {
+  return getRowCount(await executor.delete(users).where(eq(users.id, id))) > 0;
 }
 
-export async function verifyEmail(id: string): Promise<boolean> {
+export async function verifyEmail(id: string, executor: DbExecutor = db): Promise<boolean> {
   return (
     getRowCount(
-      await db
+      await executor
         .update(users)
         .set({ emailVerified: true, updatedAt: new Date() })
         .where(eq(users.id, id))

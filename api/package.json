@@ -53,6 +53,7 @@
     "drizzle:generate": "drizzle-kit generate",
     "drizzle:push": "drizzle-kit push",
     "drizzle:studio": "drizzle-kit studio",
+    "verify:migrations": "tsx scripts/verify-migrations.ts",
     "verify:schema": "tsx scripts/verify-schema.ts"
   },
   "engines": {

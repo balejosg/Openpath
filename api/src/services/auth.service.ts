@@ -9,6 +9,8 @@ import * as roleStorage from '../lib/role-storage.js';
 import * as auth from '../lib/auth.js';
 import * as resetTokenStorage from '../lib/reset-token-storage.js';
 import * as emailVerificationTokenStorage from '../lib/email-verification-token-storage.js';
+import type { DbExecutor } from '../db/index.js';
+import { withTransaction } from '../db/index.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import type { AuthUser, LoginResponse, RoleInfo } from '../types/index.js';
@@ -184,12 +186,16 @@ function buildLoginResponse(
   };
 }
 
-async function issueEmailVerificationToken(user: {
-  id: string;
-  email: string;
-}): Promise<EmailVerificationTokenResponse> {
+async function issueEmailVerificationToken(
+  user: {
+    id: string;
+    email: string;
+  },
+  executor?: DbExecutor
+): Promise<EmailVerificationTokenResponse> {
   const { token, expiresAt } = await emailVerificationTokenStorage.createEmailVerificationToken(
-    user.id
+    user.id,
+    executor
   );
 
   return {
@@ -216,7 +222,15 @@ export async function register(input: CreateUserData): Promise<AuthResult<Regist
       };
     }
 
-    const user = await userStorage.createUser(input, { emailVerified: false });
+    const { user, verification } = await withTransaction(async (tx) => {
+      const createdUser = await userStorage.createUser(input, { emailVerified: false }, tx);
+      const createdVerification = await issueEmailVerificationToken(createdUser, tx);
+
+      return {
+        user: createdUser,
+        verification: createdVerification,
+      };
+    });
 
     const roles = await roleStorage.getUserRoles(user.id);
     const roleInfo: RoleInfo[] = roles
@@ -226,8 +240,6 @@ export async function register(input: CreateUserData): Promise<AuthResult<Regist
         return { role, groupIds: r.groupIds ?? [] };
       })
       .filter((r): r is RoleInfo => r !== null);
-
-    const verification = await issueEmailVerificationToken(user);
 
     return {
       ok: true,
@@ -410,18 +422,26 @@ export async function verifyEmail(
       return { ok: true, data: { success: true } };
     }
 
-    const isValid = await emailVerificationTokenStorage.verifyEmailVerificationToken(
-      user.id,
-      token
-    );
-    if (!isValid) {
+    const verified = await withTransaction(async (tx) => {
+      const isValid = await emailVerificationTokenStorage.verifyEmailVerificationToken(
+        user.id,
+        token,
+        tx
+      );
+      if (!isValid) {
+        return false;
+      }
+
+      return await userStorage.verifyEmail(user.id, tx);
+    });
+
+    if (!verified) {
       return {
         ok: false,
         error: { code: 'BAD_REQUEST', message: 'Invalid or expired verification token' },
       };
     }
 
-    await userStorage.verifyEmail(user.id);
     return { ok: true, data: { success: true } };
   } catch (error) {
     logger.error('auth.verifyEmail error', { error: getErrorMessage(error) });
@@ -467,12 +487,20 @@ export async function resetPassword(
       return { ok: false, error: { code: 'NOT_FOUND', message: 'User not found' } };
     }
 
-    const isValid = await resetTokenStorage.verifyToken(user.id, token);
-    if (!isValid) {
+    const reset = await withTransaction(async (tx) => {
+      const isValid = await resetTokenStorage.verifyToken(user.id, token, tx);
+      if (!isValid) {
+        return false;
+      }
+
+      const updated = await userStorage.updateUser(user.id, { password: newPassword }, tx);
+      return updated !== null;
+    });
+
+    if (!reset) {
       return { ok: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } };
     }
 
-    await userStorage.updateUser(user.id, { password: newPassword });
     return { ok: true, data: { success: true } };
   } catch (error) {
     logger.error('auth.resetPassword error', { error: getErrorMessage(error) });

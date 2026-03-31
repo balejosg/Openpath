@@ -6,8 +6,9 @@ import * as storage from '../lib/storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
 import * as push from '../lib/push.js';
 import * as auth from '../lib/auth.js';
+import { withTransaction } from '../db/index.js';
 import { logger } from '../lib/logger.js';
-import { touchGroupAndEmitWhitelistChanged } from '../lib/rule-events.js';
+import { emitWhitelistChanged } from '../lib/rule-events.js';
 import type { JWTPayload } from '../lib/auth.js';
 import type { CreateRequestData } from '../types/storage.js';
 import type { DomainRequest, RequestStatus } from '../types/index.js';
@@ -144,35 +145,49 @@ export async function approveRequest(
   }
 
   try {
-    const ruleResult = await groupsStorage.createRule(
-      resolvedTarget.id,
-      'whitelist',
-      request.domain
-    );
-    if (!ruleResult.success) {
-      if (ruleResult.error === 'Rule already exists') {
-        // Domain already whitelisted - still mark request as approved
-      } else {
+    const approval = await withTransaction(async (tx) => {
+      const ruleResult = await groupsStorage.createRule(
+        resolvedTarget.id,
+        'whitelist',
+        request.domain,
+        null,
+        'manual',
+        tx
+      );
+
+      if (!ruleResult.success && ruleResult.error !== 'Rule already exists') {
         throw new Error(ruleResult.error ?? 'Failed to add domain to whitelist');
       }
-    } else {
-      await touchGroupAndEmitWhitelistChanged(resolvedTarget.id);
-    }
-    const updated = await storage.updateRequestStatus(
-      request.id,
-      'approved',
-      user.name,
-      `Added to ${resolvedTarget.name}`
-    );
 
-    if (!updated) {
+      const updated = await storage.updateRequestStatus(
+        request.id,
+        'approved',
+        user.name,
+        `Added to ${resolvedTarget.name}`,
+        {
+          executor: tx,
+          expectedStatus: 'pending',
+        }
+      );
+
+      return {
+        updated,
+        createdRule: ruleResult.success,
+      };
+    });
+
+    if (approval.createdRule) {
+      emitWhitelistChanged(resolvedTarget.id);
+    }
+
+    if (!approval.updated) {
       return {
         ok: false,
-        error: { code: 'NOT_FOUND', message: 'Failed to update request status' },
+        error: { code: 'BAD_REQUEST', message: 'Request is no longer pending' },
       };
     }
 
-    return { ok: true, data: updated };
+    return { ok: true, data: approval.updated };
   } catch (error) {
     return {
       ok: false,

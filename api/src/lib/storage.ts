@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { eq, desc, and, sql, count } from 'drizzle-orm';
 import { normalize } from '@openpath/shared';
 import { db, requests } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { getRowCount, getRows } from './utils.js';
 import type { DomainRequest, RequestStatus } from '../types/index.js';
 import type { IRequestStorage, CreateRequestData, RequestStats } from '../types/storage.js';
@@ -241,8 +242,13 @@ export async function updateRequestStatus(
   id: string,
   status: 'approved' | 'rejected',
   resolvedBy = 'admin',
-  note: string | null = null
+  note: string | null = null,
+  options?: {
+    executor?: DbExecutor;
+    expectedStatus?: RequestStatus;
+  }
 ): Promise<DomainRequest | null> {
+  const executor = options?.executor ?? db;
   const updateValues: Partial<typeof requests.$inferInsert> = {
     status,
     resolvedBy,
@@ -253,10 +259,15 @@ export async function updateRequestStatus(
     updateValues.resolutionNote = note;
   }
 
-  const [result] = await db
+  const conditions = [eq(requests.id, id)];
+  if (options?.expectedStatus !== undefined) {
+    conditions.push(eq(requests.status, options.expectedStatus));
+  }
+
+  const [result] = await executor
     .update(requests)
     .set(updateValues)
-    .where(eq(requests.id, id))
+    .where(conditions.length === 1 ? conditions[0] : and(...conditions))
     .returning();
 
   return result ? toStorageType(result) : null;

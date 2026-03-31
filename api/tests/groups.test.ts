@@ -816,6 +816,76 @@ await describe('Groups Router (tRPC)', { timeout: 30000 }, async () => {
     });
   });
 
+  await describe('Clone Operations', async () => {
+    await test('should clone a group and copy its rules', async () => {
+      const sourceName = uniqueGroupName('clone-source');
+      const cloneName = uniqueGroupName('clone-copy');
+
+      const createGroupResp = await trpcMutate(
+        API_URL,
+        'groups.create',
+        {
+          name: sourceName,
+          displayName: 'Clone Source Group',
+        },
+        bearerAuth(ADMIN_TOKEN)
+      );
+      assertStatus(createGroupResp, 200);
+
+      const { data: createdGroup } = (await parseTRPC(createGroupResp)) as {
+        data?: CreateGroupResult;
+      };
+      const sourceGroupId = createdGroup?.id ?? '';
+      assert.ok(sourceGroupId);
+
+      const seedRulesResp = await trpcMutate(
+        API_URL,
+        'groups.bulkCreateRules',
+        {
+          groupId: sourceGroupId,
+          type: 'whitelist',
+          values: ['clone-source-a.example.com', 'clone-source-b.example.com'],
+        },
+        bearerAuth(ADMIN_TOKEN)
+      );
+      assertStatus(seedRulesResp, 200);
+
+      const cloneResp = await trpcMutate(
+        API_URL,
+        'groups.clone',
+        {
+          sourceGroupId,
+          name: cloneName,
+          displayName: 'Clone Copy Group',
+        },
+        bearerAuth(ADMIN_TOKEN)
+      );
+      assertStatus(cloneResp, 200);
+
+      const { data: clonedGroup } = (await parseTRPC(cloneResp)) as {
+        data?: CreateGroupResult;
+      };
+      const clonedGroupId = clonedGroup?.id ?? '';
+      assert.ok(clonedGroupId);
+      assert.notStrictEqual(clonedGroupId, sourceGroupId);
+
+      const listClonedRulesResp = await trpcQuery(
+        API_URL,
+        'groups.listRules',
+        { groupId: clonedGroupId },
+        bearerAuth(ADMIN_TOKEN)
+      );
+      assertStatus(listClonedRulesResp, 200);
+
+      const { data: clonedRules } = (await parseTRPC(listClonedRulesResp)) as { data?: Rule[] };
+      assert.ok(Array.isArray(clonedRules));
+      assert.strictEqual(clonedRules.length, 2);
+      assert.ok(clonedRules.some((rule) => rule.value === 'clone-source-a.example.com'));
+      assert.ok(clonedRules.some((rule) => rule.value === 'clone-source-b.example.com'));
+      assert.ok(clonedRules.every((rule) => rule.groupId === clonedGroupId));
+    });
+  });
+
   // =========================================================================
   // Statistics and Status Tests
   // =========================================================================

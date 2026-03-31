@@ -8,6 +8,7 @@
 import crypto from 'node:crypto';
 import { inArray } from 'drizzle-orm';
 import { db, settings } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { logger } from './logger.js';
 
 // =============================================================================
@@ -50,9 +51,9 @@ export async function getSetupData(): Promise<SetupData | null> {
   };
 }
 
-export async function saveSetupData(data: SetupData): Promise<void> {
+export async function saveSetupData(data: SetupData, executor: DbExecutor = db): Promise<void> {
   // Save registration token
-  await db
+  await executor
     .insert(settings)
     .values({ key: 'registration_token', value: data.registrationToken })
     .onConflictDoUpdate({
@@ -61,7 +62,7 @@ export async function saveSetupData(data: SetupData): Promise<void> {
     });
 
   // Save setup completed timestamp
-  await db
+  await executor
     .insert(settings)
     .values({ key: 'setup_completed_at', value: data.setupCompletedAt })
     .onConflictDoUpdate({
@@ -70,7 +71,7 @@ export async function saveSetupData(data: SetupData): Promise<void> {
     });
 
   // Save setup user ID
-  await db
+  await executor
     .insert(settings)
     .values({ key: 'setup_by_user_id', value: data.setupByUserId })
     .onConflictDoUpdate({

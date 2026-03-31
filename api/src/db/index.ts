@@ -46,6 +46,12 @@ export const db = drizzle(pool, {
   schema: { ...schema, ...relations },
 });
 
+export type DbExecutor = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
+
+export async function withTransaction<T>(operation: (tx: DbExecutor) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => operation(tx));
+}
+
 // =============================================================================
 // Re-export Schema and Types
 // =============================================================================

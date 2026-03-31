@@ -8,6 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { eq, sql, and, count, inArray } from 'drizzle-orm';
 import { db, roles } from '../db/index.js';
+import type { DbExecutor } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
 import type { UserRole } from '../types/index.js';
@@ -190,13 +191,14 @@ export async function getApprovalGroups(userId: string): Promise<string[] | 'all
  * @returns Promise resolving to the created or updated role
  */
 export async function assignRole(
-  roleData: AssignRoleData & { createdBy?: string }
+  roleData: AssignRoleData & { createdBy?: string },
+  executor: DbExecutor = db
 ): Promise<DBRole> {
   const { userId, role, groupIds, createdBy } = roleData;
 
   // DB schema enforces UNIQUE(user_id) on roles, meaning a user can only have
   // one role row at a time. Treat assignment as an upsert by userId.
-  const existing = await db.select().from(roles).where(eq(roles.userId, userId)).limit(1);
+  const existing = await executor.select().from(roles).where(eq(roles.userId, userId)).limit(1);
 
   if (existing[0]) {
     const updateValues: Partial<typeof roles.$inferInsert> = {
@@ -210,7 +212,7 @@ export async function assignRole(
     }
 
     // Update existing role with new role + groups
-    const [updated] = await db
+    const [updated] = await executor
       .update(roles)
       .set(updateValues)
       .where(eq(roles.id, existing[0].id))
@@ -224,7 +226,7 @@ export async function assignRole(
 
   // Create new role
   const id = `role_${uuidv4().slice(0, 8)}`;
-  const [created] = await db
+  const [created] = await executor
     .insert(roles)
     .values({
       id,
@@ -280,8 +282,12 @@ export async function revokeRole(roleId: string, _revokedBy?: string): Promise<b
   return getRowCount(await db.delete(roles).where(eq(roles.id, roleId))) > 0;
 }
 
-export async function revokeAllUserRoles(userId: string, _revokedBy?: string): Promise<number> {
-  return getRowCount(await db.delete(roles).where(eq(roles.userId, userId)));
+export async function revokeAllUserRoles(
+  userId: string,
+  _revokedBy?: string,
+  executor: DbExecutor = db
+): Promise<number> {
+  return getRowCount(await executor.delete(roles).where(eq(roles.userId, userId)));
 }
 
 export async function removeGroupFromAllRoles(groupId: string): Promise<number> {

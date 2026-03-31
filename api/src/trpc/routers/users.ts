@@ -30,14 +30,11 @@ export const usersRouter = router({
       const check = await UserService.getUserByEmail(input.email);
       if (check) throw new TRPCError({ code: 'CONFLICT', message: 'Email exists' });
 
-      const result = await UserService.register(input);
+      const result = await UserService.createUserWithRole(input, input.role, input.groupIds ?? []);
       if (!result.ok)
         throw new TRPCError({ code: result.error.code, message: result.error.message });
 
       const user = result.data.user;
-      if (input.role) {
-        await UserService.assignRole(user.id, input.role, input.groupIds ?? []);
-      }
 
       const final = await UserService.getUser(user.id);
       if (!final.ok) throw new TRPCError({ code: final.error.code, message: final.error.message });

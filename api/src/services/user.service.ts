@@ -4,6 +4,7 @@
 
 import * as userStorage from '../lib/user-storage.js';
 import * as roleStorage from '../lib/role-storage.js';
+import { withTransaction } from '../db/index.js';
 import type { User, SafeUser, UserRole, Role } from '../types/index.js';
 import type { UpdateUserData, CreateUserData } from '../types/storage.js';
 import { getErrorMessage } from '@openpath/shared';
@@ -134,8 +135,10 @@ export async function deleteUser(id: string): Promise<UserResult<{ success: bool
     return { ok: false, error: { code: 'NOT_FOUND', message: 'User not found' } };
   }
 
-  await roleStorage.revokeAllUserRoles(id);
-  await userStorage.deleteUser(id);
+  await withTransaction(async (tx) => {
+    await roleStorage.revokeAllUserRoles(id, undefined, tx);
+    await userStorage.deleteUser(id, tx);
+  });
 
   return { ok: true, data: { success: true } };
 }
@@ -160,6 +163,38 @@ export async function assignRole(
       groupIds,
     });
     return { ok: true, data: mapDBRoleToRole(assignedRole) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: { code: 'BAD_REQUEST', message: getErrorMessage(error) },
+    };
+  }
+}
+
+export async function createUserWithRole(
+  input: CreateUserData,
+  role?: UserRole,
+  groupIds: string[] = []
+): Promise<UserResult<{ user: SafeUser }>> {
+  try {
+    const user = await withTransaction(async (tx) => {
+      const createdUser = await userStorage.createUser(input, { emailVerified: true }, tx);
+
+      if (role) {
+        await roleStorage.assignRole(
+          {
+            userId: createdUser.id,
+            role,
+            groupIds,
+          },
+          tx
+        );
+      }
+
+      return createdUser;
+    });
+
+    return { ok: true, data: { user } };
   } catch (error) {
     return {
       ok: false,
@@ -212,6 +247,7 @@ export default {
   getUser,
   getUserByEmail,
   register,
+  createUserWithRole,
   updateUser,
   deleteUser,
   assignRole,
