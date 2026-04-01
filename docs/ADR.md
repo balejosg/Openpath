@@ -10,6 +10,11 @@
 
 Sistema integral de control de acceso a internet diseñado para entornos educativos. Utiliza un enfoque de "denegación por defecto" donde todo el tráfico DNS se bloquea excepto los dominios explícitamente permitidos (whitelist).
 
+ADR recientes relacionados con la arquitectura actual del API y la SPA:
+
+- [`docs/adr/0009-transactional-service-writes.md`](adr/0009-transactional-service-writes.md)
+- [`docs/adr/0010-public-spa-extension-surface.md`](adr/0010-public-spa-extension-surface.md)
+
 ```mermaid
 graph TB
     subgraph "Capa de Administración"

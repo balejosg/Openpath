@@ -14,6 +14,19 @@ Firefox Extension → OpenPath API (PostgreSQL) → GitHub Repository
                     Admin Dashboard (SPA)
 ```
 
+Current service shape:
+
+```text
+Routers (tRPC / Express) -> Services -> Storage helpers -> Drizzle / PostgreSQL
+```
+
+Important current invariants:
+
+- multi-write flows are being moved behind explicit transaction boundaries
+- DB writes happen inside the transaction; external side effects (for example whitelist-change events) run after commit
+- request, classroom, and schedule group links are enforced with hard foreign keys
+- new writes to deferred array references (`roles.groupIds`, `pushSubscriptions.groupIds`) are validated on write
+
 ## Quick Start
 
 ### 1. Install dependencies
@@ -91,6 +104,12 @@ The server exposes two types of interfaces:
 
 1. **REST API**: For standard HTTP requests, webhooks, and legacy clients.
 2. **tRPC API**: For type-safe communication with the SPA dashboard.
+
+Both interfaces now share the same structured error boundary:
+
+- server-side logs include a request id
+- tRPC error payloads surface that request id to clients
+- malformed or rejected browser-session mutations fail closed when the request origin is not trusted
 
 ### Setup Endpoints (First-time Configuration)
 

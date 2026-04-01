@@ -41,8 +41,16 @@ foundation for environments where trust and explainability matter.
 1. **The User** tries to access `blocked-site.com`. Access is denied.
 2. **The Request**: User submits an unblock request via the portal.
 3. **The Decision**: Admin reviews the request in the Dashboard and clicks "Approve".
-4. **The Magic**: The system commits the change to the GitHub repository.
+4. **The Write**: The API applies the rule change and request status update atomically in PostgreSQL.
 5. **The Sync**: All connected endpoints pull the new whitelist within minutes.
+
+## Current Core Guarantees
+
+- **Transactional multi-write flows**: high-risk API flows now commit related writes together instead of leaving partial state behind.
+- **Hard group-linked foreign keys**: requests, classroom group pointers, and schedules now enforce group integrity at the schema level.
+- **Query-backed indexing**: the API schema includes indexes for the request, token, machine, role, and health-report paths used by the current code.
+- **Explicit deferred array normalization**: `roles.groupIds` and `pushSubscriptions.groupIds` remain arrays for now, but new writes validate and dedupe them so inconsistent references do not keep growing.
+- **Stable public SPA surface**: downstream consumers should use the exported public React SPA entrypoints instead of deep-importing private files.
 
 ## Common Use Cases
 
@@ -162,6 +170,13 @@ Optional but recommended:
 | `PORT`              | `3000`  | Server port            |
 | `VAPID_PUBLIC_KEY`  | -       | For push notifications |
 | `VAPID_PRIVATE_KEY` | -       | For push notifications |
+
+Security-related behavior in the current API:
+
+- production rejects `CORS_ORIGINS=*`
+- cookie-authenticated state-changing requests enforce trusted `Origin`/`Referer` checks
+- bearer-token clients are not subject to the cookie-session CSRF check
+- tRPC errors include a request id to improve correlation with server-side logs
 
 See `api/.env.example` for a complete list.
 
