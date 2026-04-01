@@ -90,6 +90,27 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "deb publish workflow serializes apt repository updates across suites" {
+    run grep -n 'group: openpath-apt-publish' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "deb publish workflow syncs deployed apt state back to gh-pages" {
+    run grep -n 'git -C gh-pages add -A' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'git -C gh-pages push origin HEAD:gh-pages' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "deb publish workflow validates carried-forward stable metadata on every publish" {
+    run grep -n 'Existing stable metadata missing openpath-dnsmasq' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'Existing stable metadata leaked whitelist-dnsmasq' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+}
+
 @test "stable deb publish workflow requires a persistent APT signing key" {
     run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]

@@ -47,6 +47,9 @@ jobs:
   publish:
     name: Publish to APT Repository (${{ inputs.suite }})
     runs-on: ubuntu-latest
+    concurrency:
+      group: openpath-apt-publish
+      cancel-in-progress: false
     permissions:
       contents: write
       pages: write
@@ -156,6 +159,7 @@ jobs:
         working-directory: gh-pages/apt
         run: |
           packages_file="dists/$SUITE/main/binary-amd64/Packages"
+          stable_packages_file="dists/stable/main/binary-amd64/Packages"
 
           if [ ! -f "$packages_file" ]; then
             echo "::error title=Published APT metadata missing Packages index::Expected $packages_file after publishing."
@@ -172,6 +176,20 @@ jobs:
             echo "::error title=Legacy whitelist package leaked into stable metadata::Stable metadata must not advertise whitelist-dnsmasq."
             cat "$packages_file"
             exit 1
+          fi
+
+          if [ -f "$stable_packages_file" ]; then
+            if ! grep -q '^Package: openpath-dnsmasq$' "$stable_packages_file"; then
+              echo "::error title=Existing stable metadata missing openpath-dnsmasq::Expected $stable_packages_file to advertise openpath-dnsmasq before publishing $SUITE."
+              cat "$stable_packages_file"
+              exit 1
+            fi
+
+            if grep -q '^Package: whitelist-dnsmasq$' "$stable_packages_file"; then
+              echo "::error title=Existing stable metadata leaked whitelist-dnsmasq::Expected $stable_packages_file to stop advertising whitelist-dnsmasq before publishing $SUITE."
+              cat "$stable_packages_file"
+              exit 1
+            fi
           fi
 
       - name: Export GPG public key
@@ -223,6 +241,25 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Sync deployed Pages source back to gh-pages
+        run: |
+          if ! git -C gh-pages rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            echo "::error title=Missing gh-pages checkout::Expected gh-pages checkout before syncing the deployed Pages source."
+            exit 1
+          fi
+
+          git -C gh-pages config user.name "github-actions[bot]"
+          git -C gh-pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C gh-pages add -A
+
+          if git -C gh-pages diff --cached --quiet; then
+            echo "gh-pages already matches the deployed Pages artifact."
+            exit 0
+          fi
+
+          git -C gh-pages commit -m "chore(apt): sync Pages source ($SUITE ${{ inputs.version }})"
+          git -C gh-pages push origin HEAD:gh-pages
 
       - name: Summary
         run: |
