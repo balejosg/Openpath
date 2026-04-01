@@ -1,25 +1,53 @@
 #!/bin/bash
 ################################################################################
-# apt-setup.sh - Set up Whitelist System APT repository on a client machine
+# apt-setup.sh - Set up OpenPath System APT repository on a client machine
 #
 # Usage (one-liner install):
-#   curl -fsSL https://lasencinas.github.io/whitelist/apt/apt-setup.sh | sudo bash
+#   # Stable (recommended):
+#   curl -fsSL https://balejosg.github.io/openpath/apt/apt-setup.sh | sudo bash
+#
+#   # Unstable (development builds):
+#   curl -fsSL https://balejosg.github.io/openpath/apt/apt-setup.sh | sudo bash -s -- --unstable
 #
 # After running:
-#   sudo apt install whitelist-dnsmasq
+#   sudo apt install openpath-dnsmasq
 ################################################################################
 
 set -e
 
 # Configuration
-REPO_URL="https://balejosg.github.io/whitelist/apt"
+REPO_URL="https://balejosg.github.io/openpath/apt"
 GPG_KEY_URL="$REPO_URL/pubkey.gpg"
-KEYRING_PATH="/usr/share/keyrings/whitelist-system.gpg"
-SOURCES_PATH="/etc/apt/sources.list.d/whitelist-system.list"
+KEYRING_PATH="/usr/share/keyrings/openpath.gpg"
+SOURCES_PATH="/etc/apt/sources.list.d/openpath.list"
+
+# Default to stable suite
+SUITE="stable"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --unstable)
+            SUITE="unstable"
+            shift
+            ;;
+        --stable)
+            SUITE="stable"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--stable|--unstable]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "=============================================="
-echo "  Whitelist System APT Repository Setup"
+echo "  OpenPath System APT Repository Setup"
 echo "=============================================="
+echo ""
+echo "  Suite: $SUITE"
 echo ""
 
 # Check if running as root
@@ -42,11 +70,12 @@ chmod 644 "$KEYRING_PATH"
 echo "  ✓ GPG key installed"
 
 # Step 2: Add repository to sources.list
-echo "[2/3] Adding repository..."
+echo "[2/3] Adding repository ($SUITE)..."
 cat > "$SOURCES_PATH" << EOF
-# Whitelist System APT Repository
-# https://github.com/LasEncinasIT/Whitelist-por-aula
-deb [signed-by=$KEYRING_PATH] $REPO_URL stable main
+# OpenPath System APT Repository
+# https://github.com/balejosg/openpath
+# Suite: $SUITE
+deb [signed-by=$KEYRING_PATH] $REPO_URL $SUITE main
 EOF
 echo "  ✓ Repository added"
 
@@ -59,10 +88,16 @@ echo "=============================================="
 echo "  ✓ Repository configured successfully!"
 echo "=============================================="
 echo ""
-echo "To install the whitelist system:"
-echo "  sudo apt install whitelist-dnsmasq"
+echo "To install the openpath system:"
+echo "  sudo apt install openpath-dnsmasq"
 echo ""
+if [ "$SUITE" = "unstable" ]; then
+    echo "⚠️  You are using the UNSTABLE track."
+    echo "   Development builds may contain bugs."
+    echo "   To switch to stable: re-run with --stable"
+    echo ""
+fi
 echo "To remove:"
-echo "  sudo apt remove whitelist-dnsmasq     # Keep configuration"
-echo "  sudo apt purge whitelist-dnsmasq      # Remove everything"
+echo "  sudo apt remove openpath-dnsmasq     # Keep configuration"
+echo "  sudo apt purge openpath-dnsmasq      # Remove everything"
 echo ""

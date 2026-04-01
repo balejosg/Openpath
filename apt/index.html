@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html>
-<head><title>Whitelist System APT Repository</title></head>
+<head><title>OpenPath System APT Repository</title></head>
 <body>
-<h1>Whitelist System APT Repository</h1>
+<h1>OpenPath System APT Repository</h1>
 <h2>Quick Install</h2>
-<pre>curl -fsSL https://balejosg.github.io/whitelist/apt/apt-setup.sh | sudo bash
-sudo apt install whitelist-dnsmasq</pre>
+<pre>curl -fsSL https://balejosg.github.io/openpath/apt/apt-bootstrap.sh | sudo bash</pre>
+<p>Manual install (advanced):</p>
+<pre>curl -fsSL https://balejosg.github.io/openpath/apt/apt-setup.sh | sudo bash
+sudo apt install openpath-dnsmasq
+sudo openpath setup</pre>
 <h2>Files</h2>
 <ul>
+  <li><a href="apt-bootstrap.sh">apt-bootstrap.sh</a> - One-liner install + classroom setup</li>
   <li><a href="apt-setup.sh">apt-setup.sh</a> - Setup script</li>
   <li><a href="pubkey.gpg">pubkey.gpg</a> - GPG public key</li>
   <li><a href="dists/">dists/</a> - Distribution metadata</li>

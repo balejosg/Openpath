@@ -1,8 +1,17 @@
-Origin: Whitelist System
-Label: Whitelist System
+Origin: OpenPath System
+Label: OpenPath System
 Suite: stable
 Codename: stable
 Architectures: amd64
 Components: main
-Description: DNS Whitelist System for Educational Environments
-SignWith: B91EC2E7
+Description: OpenPath DNS System - Stable releases
+SignWith: 27E5057C7CB8B03647CAFB44CB2172D589B78E39
+
+Origin: OpenPath System
+Label: OpenPath System
+Suite: unstable
+Codename: unstable
+Architectures: amd64
+Components: main
+Description: OpenPath DNS System - Development builds
+SignWith: 27E5057C7CB8B03647CAFB44CB2172D589B78E39
