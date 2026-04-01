@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import express from 'express';
 
 function getRegisteredRoutes(app: express.Express): string[] {
-  return (app.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[])
+  return (
+    app.router.stack as unknown as {
+      route?: { path: string; methods: Record<string, boolean> };
+    }[]
+  )
     .filter((layer) => layer.route)
     .flatMap((layer) =>
       Object.keys(layer.route?.methods ?? {}).map(

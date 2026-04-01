@@ -6,7 +6,11 @@ process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret';
 
 function getRegisteredRoutes(app: express.Express): string[] {
-  return (app.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[])
+  return (
+    app.router.stack as unknown as {
+      route?: { path: string; methods: Record<string, boolean> };
+    }[]
+  )
     .filter((layer) => layer.route)
     .flatMap((layer) =>
       Object.keys(layer.route?.methods ?? {}).map(
