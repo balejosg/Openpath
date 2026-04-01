@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { eq, desc, and, sql, count } from 'drizzle-orm';
 import { normalize } from '@openpath/shared';
-import { db, requests } from '../db/index.js';
+import { db, requests, whitelistGroups } from '../db/index.js';
 import type { DbExecutor } from '../db/index.js';
 import { getRowCount, getRows } from './utils.js';
 import type { DomainRequest, RequestStatus } from '../types/index.js';
@@ -84,6 +84,62 @@ function legacyRowToStorageType(row: LegacyRequestRow): DomainRequest {
     resolvedBy: row.resolved_by ?? null,
     resolutionNote: row.resolution_note ?? '',
   };
+}
+
+async function findExistingGroupId(rawGroup: string): Promise<string | null> {
+  const trimmed = rawGroup.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const [groupById] = await db
+    .select({ id: whitelistGroups.id })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.id, trimmed))
+    .limit(1);
+  if (groupById) {
+    return groupById.id;
+  }
+
+  const normalizedName = trimmed.endsWith('.txt') ? trimmed.slice(0, -4) : trimmed;
+  const [groupByName] = await db
+    .select({ id: whitelistGroups.id })
+    .from(whitelistGroups)
+    .where(eq(whitelistGroups.name, normalizedName))
+    .limit(1);
+
+  return groupByName?.id ?? null;
+}
+
+async function resolveRequestGroupId(requestData: CreateRequestData): Promise<string> {
+  const requestedGroup = requestData.groupId?.trim();
+  if (requestedGroup) {
+    const resolvedGroupId = await findExistingGroupId(requestedGroup);
+    if (resolvedGroupId) {
+      return resolvedGroupId;
+    }
+
+    throw new Error(`Request group "${requestedGroup}" does not exist`);
+  }
+
+  const configuredDefaultGroup = process.env.DEFAULT_GROUP?.trim();
+  if (configuredDefaultGroup) {
+    const resolvedGroupId = await findExistingGroupId(configuredDefaultGroup);
+    if (resolvedGroupId) {
+      return resolvedGroupId;
+    }
+
+    throw new Error(`DEFAULT_GROUP "${configuredDefaultGroup}" does not exist`);
+  }
+
+  const legacyDefaultGroupId = await findExistingGroupId('default');
+  if (legacyDefaultGroupId) {
+    return legacyDefaultGroupId;
+  }
+
+  throw new Error(
+    'No request group is available. Provide groupId or configure DEFAULT_GROUP to an existing whitelist group.'
+  );
 }
 
 let metadataColumnCheck: boolean | null = null;
@@ -191,6 +247,7 @@ export async function hasPendingRequest(domain: string): Promise<boolean> {
 
 export async function createRequest(requestData: CreateRequestData): Promise<DomainRequest> {
   const id = `req_${uuidv4().slice(0, 8)}`;
+  const groupId = await resolveRequestGroupId(requestData);
 
   if (!(await hasRequestMetadataColumns())) {
     const row = getRows<LegacyRequestRow>(
@@ -201,7 +258,7 @@ export async function createRequest(requestData: CreateRequestData): Promise<Dom
         ${normalize.domain(requestData.domain)},
         ${requestData.reason ?? ''},
         ${requestData.requesterEmail ?? 'anonymous'},
-        ${requestData.groupId ?? process.env.DEFAULT_GROUP ?? 'default'},
+        ${groupId},
         'pending'
       )
       RETURNING id, domain, reason, requester_email, group_id, status,
@@ -221,7 +278,7 @@ export async function createRequest(requestData: CreateRequestData): Promise<Dom
       domain: normalize.domain(requestData.domain),
       reason: requestData.reason ?? '',
       requesterEmail: requestData.requesterEmail ?? 'anonymous',
-      groupId: requestData.groupId ?? process.env.DEFAULT_GROUP ?? 'default',
+      groupId,
       source: requestData.source ?? 'unknown',
       machineHostname: requestData.machineHostname ?? null,
       originHost: requestData.originHost ?? null,
