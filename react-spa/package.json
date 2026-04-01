@@ -3,6 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "exports": {
+    "./openpath.css": "./openpath.css",
+    "./public-auth": "./public-auth.ts",
+    "./public-google": "./public-google.ts",
+    "./public-shell": "./public-shell.ts",
+    "./public-ui": "./public-ui.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
