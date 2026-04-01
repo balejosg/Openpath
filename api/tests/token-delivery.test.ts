@@ -14,6 +14,7 @@ import type { Server } from 'node:http';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sanitizeSlug } from '@openpath/shared';
 import {
   bearerAuth,
   getAvailablePort,
@@ -97,10 +98,11 @@ async function ensureGroupExists(groupId: string): Promise<void> {
 async function createTestClassroom(name: string, groupId: string): Promise<string> {
   await ensureGroupExists(groupId);
   const id = `classroom-${String(Date.now())}`;
+  const slug = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
   await db.execute(
     sql.raw(`
         INSERT INTO classrooms (id, name, display_name, default_group_id, active_group_id)
-        VALUES ('${id}', '${name}', '${name}', '${groupId}', '${groupId}')
+        VALUES ('${id}', '${slug}', '${name}', '${groupId}', '${groupId}')
     `)
   );
   return id;
