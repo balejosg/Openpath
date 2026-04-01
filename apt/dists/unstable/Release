@@ -1,0 +1,20 @@
+Origin: OpenPath System
+Label: OpenPath System
+Suite: unstable
+Codename: unstable
+Date: Wed, 01 Apr 2026 17:44:41 UTC
+Architectures: amd64
+Components: main
+Description: OpenPath DNS System - Development builds
+MD5Sum:
+ 823668fe6a9baf5685acc93089d5fb00 1031 main/binary-amd64/Packages
+ 224b2c065bff7038bd7a39e1c7c9ba08 661 main/binary-amd64/Packages.gz
+ d6054e0107a6982827e92325c9781d09 155 main/binary-amd64/Release
+SHA1:
+ 04d44b189594da9352d98e3485d01abfaeca886f 1031 main/binary-amd64/Packages
+ 6dceb05d5ae2c176d84f0c44bd533ba68fb477e0 661 main/binary-amd64/Packages.gz
+ 52f070fe31179f6d2e52e2c3ea87a3095bbceba9 155 main/binary-amd64/Release
+SHA256:
+ 5ff664bc06d1a695357d4e144ae0e4a09f45847592dced98ad9c6ff0e4330f6f 1031 main/binary-amd64/Packages
+ 6a9c6405f1c4a5b9b08d2dceabc992bd77efc4e78def1928d8bc61294f4d20de 661 main/binary-amd64/Packages.gz
+ 71e87adafa9b7d129f5d3ef48f264e8d05cef5056c432ea57068cc65a0d2e23d 155 main/binary-amd64/Release
