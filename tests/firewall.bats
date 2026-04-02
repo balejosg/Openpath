@@ -110,6 +110,37 @@ EOF
     [ "$output" = "active" ]
 }
 
+@test "check_firewall_status detects active firewall from canonical iptables spec output" {
+    iptables() {
+        if [ "$1" = "-S" ] && [ "$2" = "OUTPUT" ]; then
+            cat << 'EOF'
+-P OUTPUT ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+-A OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 53 -j ACCEPT
+-A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 53 -j ACCEPT
+-A OUTPUT -p udp -m udp --dport 53 -j DROP
+-A OUTPUT -p tcp -m tcp --dport 53 -j DROP
+-A OUTPUT -j DROP
+EOF
+            return 0
+        fi
+
+        cat << 'EOF'
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source    destination
+DROP       all  --  0.0.0.0/0  0.0.0.0/0
+EOF
+        return 0
+    }
+    export -f iptables
+
+    source "$PROJECT_DIR/linux/lib/firewall.sh"
+
+    run check_firewall_status
+    [ "$output" = "active" ]
+}
+
 # ============== Tests de flush_dns_cache ==============
 
 @test "flush_dns_cache runs without errors when dnsmasq is active" {
@@ -687,6 +718,43 @@ ACCEPT     udp  --  anywhere  8.8.8.8     udp dpt:53
 DROP       udp  --  anywhere  anywhere    udp dpt:53
 DROP       tcp  --  anywhere  anywhere    tcp dpt:53
 DROP       all  --  anywhere  anywhere
+EOF
+        return 0
+    }
+    export -f iptables
+
+    source "$PROJECT_DIR/linux/lib/firewall.sh"
+
+    run verify_firewall_rules
+    [ "$status" -eq 0 ]
+}
+
+@test "verify_firewall_rules accepts canonical iptables spec output when list output is lossy" {
+    iptables() {
+        if [ "$1" = "-S" ] && [ "$2" = "OUTPUT" ]; then
+            cat << 'EOF'
+-P OUTPUT ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+-A OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 53 -j ACCEPT
+-A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 53 -j ACCEPT
+-A OUTPUT -d 8.8.8.8/32 -p udp -m udp --dport 53 -j ACCEPT
+-A OUTPUT -d 8.8.8.8/32 -p tcp -m tcp --dport 53 -j ACCEPT
+-A OUTPUT -p udp -m udp --dport 53 -j DROP
+-A OUTPUT -p tcp -m tcp --dport 53 -j DROP
+-A OUTPUT -j DROP
+EOF
+            return 0
+        fi
+
+        cat << 'EOF'
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source    destination
+ACCEPT     udp  --  0.0.0.0/0  127.0.0.1   udp dpt:53
+ACCEPT     tcp  --  0.0.0.0/0  127.0.0.1   tcp dpt:53
+DROP       udp  --  0.0.0.0/0  0.0.0.0/0   udp dpt:53
+DROP       tcp  --  0.0.0.0/0  0.0.0.0/0   tcp dpt:53
+DROP       all  --  0.0.0.0/0  0.0.0.0/0
 EOF
         return 0
     }

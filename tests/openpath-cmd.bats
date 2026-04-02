@@ -245,6 +245,15 @@ DROP       tcp  --  anywhere  anywhere    tcp dpt:53
 RULES
 }
 
+check_firewall_status() {
+    echo "active"
+    return 0
+}
+
+has_firewall_loopback_rule() {
+    return 0
+}
+
 verify_firewall_rules() {
     return 1
 }
@@ -270,6 +279,89 @@ EOF
 
     [ "$status" -eq 1 ]
     [[ "$output" == *"ISSUES DETECTED"* ]]
+}
+
+@test "health uses firewall helpers instead of parsing iptables list output directly" {
+    local helper_script="$TEST_TMP_DIR/run-health-firewall-helpers.sh"
+    local whitelist_file="$CONFIG_DIR/whitelist.txt"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -uo pipefail
+
+project_dir="$1"
+state_dir="$2"
+whitelist_file="$3"
+extracted_script="$state_dir/cmd-health.sh"
+
+export VERSION="test"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export WHITELIST_FILE="$whitelist_file"
+export FIREFOX_POLICIES="$state_dir/firefox-policies.json"
+touch "$FIREFOX_POLICIES"
+
+GREEN=""
+RED=""
+YELLOW=""
+BLUE=""
+NC=""
+
+timeout() {
+    shift
+    "$@"
+}
+
+dig() {
+    case "$2" in
+        google.com)
+            echo "142.250.184.14"
+            ;;
+        blocked-test.invalid)
+            return 0
+            ;;
+    esac
+}
+
+iptables() {
+    printf "Chain OUTPUT (policy ACCEPT)\n"
+}
+
+check_firewall_status() {
+    echo "active"
+    return 0
+}
+
+has_firewall_loopback_rule() {
+    return 0
+}
+
+verify_firewall_rules() {
+    return 0
+}
+
+systemctl() {
+    [ "$1" = "is-active" ] && return 0
+    return 1
+}
+
+find() {
+    return 1
+}
+
+awk '/^cmd_health\(\) \{/,/^}/' \
+    "$project_dir/linux/scripts/runtime/openpath-cmd.sh" > "$extracted_script"
+source "$extracted_script"
+
+cmd_health
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$TEST_TMP_DIR" "$whitelist_file"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"DNS blocking rules: ✓ active"* ]]
+    [[ "$output" == *"Loopback rule: ✓ present"* ]]
+    [[ "$output" != *"ISSUES DETECTED"* ]]
 }
 
 @test "reset_cached_whitelist_state clears cached whitelist and remote-disabled markers" {

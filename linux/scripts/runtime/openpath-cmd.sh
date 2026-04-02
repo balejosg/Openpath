@@ -352,14 +352,14 @@ cmd_health() {
         echo -e "  DNS blocking rules: ${YELLOW}⚠ bypassed (system disabled remotely)${NC}"
         echo -e "  Loopback rule: ${YELLOW}⚠ bypassed (system disabled remotely)${NC}"
     else
-        if iptables -L OUTPUT -n 2>/dev/null | grep -q "dpt:53"; then
+        if check_firewall_status >/dev/null 2>&1; then
             echo -e "  DNS blocking rules: ${GREEN}✓ active${NC}"
         else
             echo -e "  DNS blocking rules: ${RED}✗ MISSING${NC}"
             failed=1
         fi
 
-        if iptables -L OUTPUT -n 2>/dev/null | grep -q "ACCEPT.*lo"; then
+        if has_firewall_loopback_rule >/dev/null 2>&1; then
             echo -e "  Loopback rule: ${GREEN}✓ present${NC}"
         else
             echo -e "  Loopback rule: ${YELLOW}⚠ not found${NC}"
