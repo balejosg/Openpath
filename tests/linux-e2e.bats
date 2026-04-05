@@ -164,12 +164,10 @@ EOF
 }
 
 @test "linux debian postinst treats firefox extension installation as best effort" {
-    run grep -nF 'install_firefox_extension /usr/share/openpath/firefox-extension /usr/share/openpath/firefox-release || echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    run grep -nF 'install_browser_integrations \' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
     [ "$status" -eq 0 ]
-}
 
-@test "linux debian postinst treats chromium extension installation as best effort" {
-    run grep -nF 'install_chromium_extension /usr/share/openpath/firefox-extension || echo "⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    run grep -nF 'true \' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
     [ "$status" -eq 0 ]
 }
 

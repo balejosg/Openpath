@@ -213,33 +213,13 @@ cleanup_system() {
     
     # Limpiar firewall
     log "Desactivando firewall..."
-    deactivate_firewall
-    
-    # Limpiar políticas de navegadores
     log "Limpiando políticas de navegadores..."
-    cleanup_browser_policies
-    
-    # dnsmasq en modo passthrough
     log "Configurando dnsmasq en modo passthrough..."
-    cat > "$DNSMASQ_CONF" << EOF
-# MODO FAIL-OPEN - Sin restricciones
-no-resolv
-resolv-file=/run/dnsmasq/resolv.conf
-listen-address=127.0.0.1
-bind-interfaces
-server=$PRIMARY_DNS
-EOF
-    
-    # CRÍTICO: Borrar hashes para forzar regeneración cuando se reactive
-    rm -f "$DNSMASQ_CONF_HASH" 2>/dev/null || true
-    rm -f "$BROWSER_POLICIES_HASH" 2>/dev/null || true
-    
-    log "Reiniciando dnsmasq..."
-    systemctl restart dnsmasq 2>/dev/null || true
 
+    log "Reiniciando dnsmasq..."
     # Limpiar conexiones
     log "Limpiando conexiones..."
-    flush_connections
+    enter_fail_open_mode "$PRIMARY_DNS"
 
     log "=== Sistema en modo fail-open ==="
 }
@@ -398,8 +378,12 @@ EOF
         echo "$new_policies_hash" > "$BROWSER_POLICIES_HASH"
     fi
     
+    local dns_config_changed=false
+    local dns_healthy=false
+
     # Aplicar cambios de dnsmasq si es necesario
     if has_config_changed; then
+        dns_config_changed=true
         log "Detectados cambios en configuración DNS - aplicando..."
         
         if restart_dnsmasq; then
@@ -408,14 +392,10 @@ EOF
             
             # Verificar DNS
             if verify_dns; then
+                dns_healthy=true
                 log "✓ DNS funcional"
-                if ! activate_firewall; then
-                    log "⚠ Fallo al activar firewall restrictivo - manteniendo modo permisivo"
-                    deactivate_firewall
-                fi
             else
                 log "⚠ DNS no funcional - modo permisivo"
-                deactivate_firewall
             fi
         else
             log "ERROR: Fallo al reiniciar dnsmasq"
@@ -425,28 +405,19 @@ EOF
     else
         # Sin cambios en DNS, pero verificar firewall
         if verify_dns; then
-            if [ "$firewall_was_inactive" = true ]; then
-                log "Reactivando firewall..."
-                if ! activate_firewall; then
-                    log "⚠ Fallo al reactivar firewall restrictivo - manteniendo modo permisivo"
-                    deactivate_firewall
-                fi
-            fi
+            dns_healthy=true
         else
             log "⚠ DNS no funcional - manteniendo firewall permisivo"
-            deactivate_firewall
         fi
     fi
-    
-    # Aplicar cambios de red sin cerrar navegadores.
-    # El bloqueo por rutas se aplica en caliente desde la extension.
-    if [ "$policies_changed" = true ]; then
-        log "Cambio en políticas detectado (sin cierre de navegadores)"
-        flush_connections
-    elif [ "$firewall_was_inactive" = true ]; then
-        log "Sistema reactivado (sin cierre de navegadores)"
-        flush_connections
-    fi
+
+    # shellcheck disable=SC1090,SC2154
+    eval "$(build_runtime_reconciliation_plan "$dns_config_changed" "$dns_healthy" "$firewall_was_inactive" "$policies_changed")"
+    apply_runtime_reconciliation_plan \
+        "$FIREWALL_ACTION" \
+        "$FLUSH_CONNECTIONS" \
+        "$FLUSH_REASON" \
+        "$ACTIVATION_CONTEXT"
     
     log "=== Actualización completada ==="
 }

@@ -101,6 +101,11 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
+@test "cmd_disable reuses shared disabled-mode transition helper" {
+    run grep -n "enter_disabled_mode" "$PROJECT_DIR/linux/scripts/runtime/openpath-cmd.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "enroll soporta token por archivo o stdin" {
     run grep -n -- "--token-file" "$PROJECT_DIR/linux/scripts/runtime/openpath-cmd.sh"
     [ "$status" -eq 0 ]

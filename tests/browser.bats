@@ -181,6 +181,36 @@ teardown() {
     [ ! -f "$CHROMIUM_POLICIES_BASE/openpath.json" ]
 }
 
+@test "cleanup_browser_policies preserves Firefox managed extension installation" {
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run add_extension_to_policies "monitor-bloqueos@openpath" "$TEST_TMP_DIR/extensions/monitor-bloqueos@openpath"
+    [ "$status" -eq 0 ]
+
+    BLOCKED_PATHS=("example.com/ads")
+
+    run cleanup_browser_policies
+    [ "$status" -eq 0 ]
+
+    run generate_firefox_policies
+    [ "$status" -eq 0 ]
+
+    run apply_search_engine_policies
+    [ "$status" -eq 0 ]
+
+    python3 - <<PYEOF
+import json
+
+with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
+    policies = json.load(fh)
+
+extension_settings = policies["policies"].get("ExtensionSettings", {})
+assert "monitor-bloqueos@openpath" in extension_settings, extension_settings
+assert "Extensions" in policies["policies"], policies["policies"]
+assert "monitor-bloqueos@openpath" in policies["policies"]["Extensions"].get("Locked", [])
+PYEOF
+}
+
 # ============== Tests de apply_search_engine_policies ==============
 
 @test "apply_search_engine_policies adds SearchEngines" {
@@ -418,6 +448,55 @@ EOF
     [ "$status" -eq 1 ]
 }
 
+@test "install_browser_integrations keeps Chromium best-effort while wiring native host with extension id" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$ext_dir" "$release_dir"
+    export OPENPATH_CHROMIUM_EXTENSION_DIR="$TEST_TMP_DIR/browser-extension"
+    mkdir -p "$OPENPATH_CHROMIUM_EXTENSION_DIR"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    install_firefox_extension() {
+        echo "install_firefox_extension $1 $2"
+        return 0
+    }
+    install_chromium_extension() {
+        echo "install_chromium_extension $1"
+        printf '%s\n' "abcdefghijklmnopabcdefghijklmnop" > "$(get_chromium_extension_id_file)"
+        return 0
+    }
+    install_native_host() {
+        echo "install_native_host $1 $2"
+        return 0
+    }
+    export -f install_firefox_extension install_chromium_extension install_native_host
+
+    run install_browser_integrations "$ext_dir" "$release_dir" true false true false
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"install_firefox_extension $ext_dir $release_dir"* ]]
+    [[ "$output" == *"install_chromium_extension $ext_dir"* ]]
+    [[ "$output" == *"install_native_host $ext_dir/native abcdefghijklmnopabcdefghijklmnop"* ]]
+}
+
+@test "install_browser_integrations warns and continues when Chromium install is best-effort" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$ext_dir" "$release_dir"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    install_firefox_extension() { return 0; }
+    install_chromium_extension() { return 1; }
+    install_native_host() { echo "install_native_host $1 $2"; return 0; }
+    export -f install_firefox_extension install_chromium_extension install_native_host
+
+    run install_browser_integrations "$ext_dir" "$release_dir" true false true true
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"* ]]
+    [[ "$output" == *"install_native_host $ext_dir/native"* ]]
+}
+
 # ============== Tests de add_extension_to_policies ==============
 
 @test "add_extension_to_policies adds ExtensionSettings" {
@@ -622,6 +701,36 @@ EOF
     
     [ ! -f "$native_manifest" ]
     [ ! -f "$native_script" ]
+}
+
+@test "remove_firefox_extension removes managed install entry without clearing dynamic policies" {
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run add_extension_to_policies \
+        "monitor-bloqueos@openpath" \
+        "$TEST_TMP_DIR/openpath.xpi" \
+        "https://downloads.example/openpath-managed.xpi"
+    [ "$status" -eq 0 ]
+
+    run apply_search_engine_policies
+    [ "$status" -eq 0 ]
+
+    run remove_firefox_extension
+    [ "$status" -eq 0 ]
+
+    python3 - <<PYEOF
+import json
+
+with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
+    policies = json.load(fh)
+
+policy_root = policies["policies"]
+assert "monitor-bloqueos@openpath" not in policy_root.get("ExtensionSettings", {})
+assert "https://downloads.example/openpath-managed.xpi" not in policy_root.get("Extensions", {}).get("Install", [])
+assert "monitor-bloqueos@openpath" not in policy_root.get("Extensions", {}).get("Locked", [])
+assert "SearchEngines" in policy_root
+assert "DNSOverHTTPS" in policy_root
+PYEOF
 }
 
 @test "remove_firefox_extension removes Chromium and Edge descriptors" {

@@ -774,21 +774,8 @@ cmd_disable() {
     
     systemctl stop openpath-dnsmasq.timer
     systemctl stop dnsmasq-watchdog.timer
-    
-    deactivate_firewall
-    cleanup_browser_policies
-    
-    # dnsmasq passthrough
-    cat > "$DNSMASQ_CONF" << EOF
-no-resolv
-resolv-file=/run/dnsmasq/resolv.conf
-listen-address=127.0.0.1
-bind-interfaces
-server=$(head -1 "$ORIGINAL_DNS_FILE" 2>/dev/null || echo "8.8.8.8")
-EOF
-    
-    systemctl restart dnsmasq
-    force_browser_close
+
+    enter_disabled_mode "$(head -1 "$ORIGINAL_DNS_FILE" 2>/dev/null || echo "8.8.8.8")"
     
     echo -e "${GREEN}✓ Sistema deshabilitado${NC}"
 }

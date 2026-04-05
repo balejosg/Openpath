@@ -27,6 +27,222 @@ _browser_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_browser_lib_dir/firefox-extension-assets.sh"
 unset _browser_lib_dir
 
+FIREFOX_MANAGED_EXTENSION_ID="monitor-bloqueos@openpath"
+
+ensure_firefox_policies_dir() {
+    mkdir -p "$(dirname "$FIREFOX_POLICIES")"
+}
+
+mutate_firefox_policies() {
+    local action="$1"
+    local ext_id="${2:-}"
+    local install_entry="${3:-}"
+    local install_url="${4:-}"
+
+    ensure_firefox_policies_dir
+
+    FIREFOX_POLICY_ACTION="$action" \
+    FIREFOX_POLICY_EXTENSION_ID="$ext_id" \
+    FIREFOX_POLICY_INSTALL_ENTRY="$install_entry" \
+    FIREFOX_POLICY_INSTALL_URL="$install_url" \
+    FIREFOX_POLICY_BLOCKED_PATHS="$(printf '%s\n' "${BLOCKED_PATHS[@]}")" \
+    python3 << 'PYEOF'
+import json
+import os
+import sys
+
+policies_file = os.environ["FIREFOX_POLICIES"]
+action = os.environ["FIREFOX_POLICY_ACTION"]
+ext_id = os.environ.get("FIREFOX_POLICY_EXTENSION_ID", "").strip()
+install_entry = os.environ.get("FIREFOX_POLICY_INSTALL_ENTRY", "").strip()
+install_url = os.environ.get("FIREFOX_POLICY_INSTALL_URL", "").strip()
+blocked_paths = [
+    line.strip()
+    for line in os.environ.get("FIREFOX_POLICY_BLOCKED_PATHS", "").splitlines()
+    if line.strip()
+]
+
+
+def load_policies():
+    if os.path.exists(policies_file):
+        try:
+            with open(policies_file, "r", encoding="utf-8") as fh:
+                policies = json.load(fh)
+                if isinstance(policies, dict):
+                    return policies
+        except Exception as exc:
+            print(f"Warning: Failed to read existing policies: {exc}", file=sys.stderr)
+    return {"policies": {}}
+
+
+def save_policies(policies):
+    with open(policies_file, "w", encoding="utf-8") as fh:
+        json.dump(policies, fh, indent=2)
+
+
+def get_policy_root(policies):
+    root = policies.get("policies")
+    if not isinstance(root, dict):
+        root = {}
+        policies["policies"] = root
+    return root
+
+
+def normalize_path(path):
+    clean = path
+    for prefix in ["http://", "https://", "*://"]:
+        if clean.startswith(prefix):
+            clean = clean[len(prefix):]
+            break
+
+    if "/" not in clean and "." not in clean and "*" not in clean:
+        clean = f"*{clean}*"
+    elif not clean.endswith("*"):
+        clean = f"{clean}*"
+
+    if clean.startswith("*."):
+        return f"*://{clean}"
+    if clean.startswith("*/"):
+        return f"*://*{clean[1:]}"
+    if "." in clean and "/" in clean:
+        return f"*://*.{clean}"
+    return f"*://{clean}"
+
+
+def set_dynamic_website_filter(policy_root):
+    normalized_paths = [normalize_path(path) for path in blocked_paths]
+    policy_root["WebsiteFilter"] = {"Block": normalized_paths}
+    print(f"Firefox: {len(normalized_paths)} paths bloqueados")
+
+
+def apply_dynamic_defaults(policy_root):
+    policy_root["SearchEngines"] = {
+        "Remove": ["Google", "Bing"],
+        "Default": "DuckDuckGo",
+        "Add": [
+            {
+                "Name": "DuckDuckGo",
+                "Description": "Motor de búsqueda centrado en privacidad",
+                "Alias": "ddg",
+                "Method": "GET",
+                "URLTemplate": "https://duckduckgo.com/?q={searchTerms}",
+                "IconURL": "https://duckduckgo.com/favicon.ico",
+                "SuggestURLTemplate": "https://ac.duckduckgo.com/ac/?q={searchTerms}&type=list",
+            },
+            {
+                "Name": "Wikipedia (ES)",
+                "Description": "Enciclopedia libre",
+                "Alias": "wiki",
+                "Method": "GET",
+                "URLTemplate": "https://es.wikipedia.org/wiki/Special:Search?search={searchTerms}",
+                "IconURL": "https://es.wikipedia.org/static/favicon/wikipedia.ico",
+            },
+        ],
+    }
+
+    website_filter = policy_root.setdefault("WebsiteFilter", {"Block": []})
+    block_list = website_filter.setdefault("Block", [])
+    google_blocks = [
+        "*://www.google.com/search*",
+        "*://www.google.es/search*",
+        "*://google.com/search*",
+        "*://google.es/search*",
+    ]
+    for block in google_blocks:
+        if block not in block_list:
+            block_list.append(block)
+
+    print("SearchEngines y bloqueos de Google aplicados")
+
+    policy_root["DNSOverHTTPS"] = {
+        "Enabled": False,
+        "Locked": True,
+    }
+    print("DoH bloqueado, SearchEngines y bloqueos de Google aplicados")
+
+
+def clear_dynamic_restrictions(policy_root):
+    for key in ("WebsiteFilter", "SearchEngines", "DNSOverHTTPS"):
+        policy_root.pop(key, None)
+
+
+def ensure_managed_extension(policy_root):
+    if not ext_id or not install_url:
+        raise SystemExit(1)
+
+    extension_settings = policy_root.setdefault("ExtensionSettings", {})
+    extension_settings[ext_id] = {
+        "installation_mode": "force_installed",
+        "install_url": install_url,
+    }
+
+    extensions = policy_root.setdefault("Extensions", {})
+    installs = extensions.setdefault("Install", [])
+    if install_entry and install_entry not in installs:
+        installs.append(install_entry)
+
+    locked = extensions.setdefault("Locked", [])
+    if ext_id not in locked:
+        locked.append(ext_id)
+
+    print(f"Extensión {ext_id} añadida a políticas")
+
+
+def remove_managed_extension(policy_root):
+    extension_settings = policy_root.get("ExtensionSettings", {})
+    managed_entry = extension_settings.pop(ext_id, None)
+    if not extension_settings:
+        policy_root.pop("ExtensionSettings", None)
+
+    install_targets = set()
+    if isinstance(managed_entry, dict):
+        managed_url = managed_entry.get("install_url")
+        if isinstance(managed_url, str) and managed_url:
+            install_targets.add(managed_url)
+
+    extensions = policy_root.get("Extensions")
+    if not isinstance(extensions, dict):
+        return
+
+    installs = extensions.get("Install", [])
+    if isinstance(installs, list):
+        extensions["Install"] = [
+            item for item in installs
+            if item not in install_targets and item != ext_id and ext_id not in item
+        ]
+        if not extensions["Install"]:
+            extensions.pop("Install", None)
+
+    locked = extensions.get("Locked", [])
+    if isinstance(locked, list):
+        extensions["Locked"] = [item for item in locked if item != ext_id]
+        if not extensions["Locked"]:
+            extensions.pop("Locked", None)
+
+    if not extensions:
+        policy_root.pop("Extensions", None)
+
+
+policies = load_policies()
+policy_root = get_policy_root(policies)
+
+if action == "set_dynamic_website_filter":
+    set_dynamic_website_filter(policy_root)
+elif action == "apply_dynamic_defaults":
+    apply_dynamic_defaults(policy_root)
+elif action == "clear_dynamic_restrictions":
+    clear_dynamic_restrictions(policy_root)
+elif action == "ensure_managed_extension":
+    ensure_managed_extension(policy_root)
+elif action == "remove_managed_extension":
+    remove_managed_extension(policy_root)
+else:
+    raise SystemExit(f"Unsupported Firefox policy action: {action}")
+
+save_policies(policies)
+PYEOF
+}
+
 # Calculate hash of current policies
 # Uses sha256sum for consistency with openpath-update.sh
 get_policies_hash() {
@@ -42,65 +258,7 @@ get_policies_hash() {
 # Generate Firefox policies
 generate_firefox_policies() {
     log "Generating Firefox policies..."
-    
-    local policies_file="$FIREFOX_POLICIES"
-    mkdir -p "$(dirname "$policies_file")"
-    
-    # Use Python for merge (preserves SearchEngines)
-    python3 << PYEOF
-import json
-import os
-
-policies_file = "$policies_file"
-blocked_paths_str = """${BLOCKED_PATHS[*]}"""
-blocked_paths = blocked_paths_str.split() if blocked_paths_str.strip() else []
-
-def normalize_path(path):
-    clean = path
-    for prefix in ['http://', 'https://', '*://']:
-        if clean.startswith(prefix):
-            clean = clean[len(prefix):]
-            break
-    
-    if '/' not in clean and '.' not in clean and '*' not in clean:
-        clean = f"*{clean}*"
-    else:
-        if not clean.endswith('*'):
-            clean = f"{clean}*"
-    
-    if clean.startswith('*.'):
-        return f"*://{clean}"
-    elif clean.startswith('*/'):
-        return f"*://*{clean[1:]}"
-    elif '.' in clean and '/' in clean:
-        return f"*://*.{clean}"
-    else:
-        return f"*://{clean}"
-
-# Read existing policies or create new
-if os.path.exists(policies_file):
-    try:
-        with open(policies_file, 'r') as f:
-            policies = json.load(f)
-    except Exception as e:
-        print(f"Warning: Failed to read existing policies: {e}", file=sys.stderr)
-        policies = {"policies": {}}
-else:
-    policies = {"policies": {}}
-
-if "policies" not in policies:
-    policies["policies"] = {}
-
-# Actualizar WebsiteFilter
-normalized_paths = [normalize_path(p) for p in blocked_paths if p.strip()]
-policies["policies"]["WebsiteFilter"] = {"Block": normalized_paths}
-
-with open(policies_file, 'w') as f:
-    json.dump(policies, f, indent=2)
-
-print(f"Firefox: {len(normalized_paths)} paths bloqueados")
-PYEOF
-    
+    mutate_firefox_policies "set_dynamic_website_filter"
     log "✓ Firefox policies generated"
 }
 
@@ -153,89 +311,7 @@ PYEOF
 # Apply search engine policies (remove Google)
 apply_search_engine_policies() {
     log "Applying search engine policies..."
-    
-    local policies_file="$FIREFOX_POLICIES"
-    
-    # CRITICAL: Create directory if it doesn't exist
-    mkdir -p "$(dirname "$policies_file")"
-    
-    python3 << 'PYEOF'
-import json
-import os
-
-policies_file = os.environ.get('FIREFOX_POLICIES', '/etc/firefox/policies/policies.json')
-
-# Create directory if it doesn't exist
-os.makedirs(os.path.dirname(policies_file), exist_ok=True)
-
-# Read or create policies
-if os.path.exists(policies_file):
-    try:
-        with open(policies_file, 'r') as f:
-            policies = json.load(f)
-    except Exception as e:
-        print(f"Warning: Failed to read existing policies: {e}", file=sys.stderr)
-        policies = {"policies": {}}
-else:
-    policies = {"policies": {}}
-
-if "policies" not in policies:
-    policies["policies"] = {}
-
-# Add SearchEngines
-policies["policies"]["SearchEngines"] = {
-    "Remove": ["Google", "Bing"],
-    "Default": "DuckDuckGo",
-    "Add": [
-        {
-            "Name": "DuckDuckGo",
-            "Description": "Motor de búsqueda centrado en privacidad",
-            "Alias": "ddg",
-            "Method": "GET",
-            "URLTemplate": "https://duckduckgo.com/?q={searchTerms}",
-            "IconURL": "https://duckduckgo.com/favicon.ico",
-            "SuggestURLTemplate": "https://ac.duckduckgo.com/ac/?q={searchTerms}&type=list"
-        },
-        {
-            "Name": "Wikipedia (ES)",
-            "Description": "Enciclopedia libre",
-            "Alias": "wiki",
-            "Method": "GET",
-            "URLTemplate": "https://es.wikipedia.org/wiki/Special:Search?search={searchTerms}",
-            "IconURL": "https://es.wikipedia.org/static/favicon/wikipedia.ico"
-        }
-    ]
-}
-
-# Add Google search blocks to WebsiteFilter
-if "WebsiteFilter" not in policies["policies"]:
-    policies["policies"]["WebsiteFilter"] = {"Block": []}
-
-google_blocks = [
-    "*://www.google.com/search*",
-    "*://www.google.es/search*",
-    "*://google.com/search*",
-    "*://google.es/search*"
-]
-
-for block in google_blocks:
-    if block not in policies["policies"]["WebsiteFilter"]["Block"]:
-        policies["policies"]["WebsiteFilter"]["Block"].append(block)
-
-print("SearchEngines y bloqueos de Google aplicados")
-
-# Block DNS-over-HTTPS to prevent bypassing DNS-level filtering
-policies["policies"]["DNSOverHTTPS"] = {
-    "Enabled": False,
-    "Locked": True
-}
-
-with open(policies_file, 'w') as f:
-    json.dump(policies, f, indent=2)
-
-print("DoH bloqueado, SearchEngines y bloqueos de Google aplicados")
-PYEOF
-    
+    mutate_firefox_policies "apply_dynamic_defaults"
     log "✓ Search engines configured"
 }
 
@@ -486,7 +562,7 @@ cleanup_browser_policies() {
     
     # Firefox - Clean policies.json
     if [ -f "$FIREFOX_POLICIES" ]; then
-        echo '{"policies": {}}' > "$FIREFOX_POLICIES"
+        mutate_firefox_policies "clear_dynamic_restrictions"
         log "✓ Firefox policies cleaned"
     fi
     
@@ -817,7 +893,7 @@ PYEOF
 
 install_firefox_release_extension() {
     local release_source="${1:-$INSTALL_DIR/firefox-release}"
-    local ext_id="monitor-bloqueos@openpath"
+    local ext_id="$FIREFOX_MANAGED_EXTENSION_ID"
     local managed_policy=""
     local managed_policy_values=()
 
@@ -833,7 +909,7 @@ install_firefox_release_extension() {
 
 install_firefox_unpacked_extension() {
     local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
-    local ext_id="monitor-bloqueos@openpath"
+    local ext_id="$FIREFOX_MANAGED_EXTENSION_ID"
     local firefox_app_id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
     local ext_dir=""
 
@@ -869,15 +945,52 @@ install_firefox_extension() {
     install_firefox_unpacked_extension "$ext_source"
 }
 
+install_browser_integrations() {
+    local ext_source="${1:-$INSTALL_DIR/firefox-extension}"
+    local release_source="${2:-$INSTALL_DIR/firefox-release}"
+    local install_native_host_enabled="${3:-false}"
+    local firefox_best_effort="${4:-false}"
+    local chromium_best_effort="${5:-true}"
+    local native_host_best_effort="${6:-false}"
+    local chromium_ext_id=""
+
+    if ! install_firefox_extension "$ext_source" "$release_source"; then
+        if [ "$firefox_best_effort" = true ]; then
+            echo "⚠ Extensión Firefox no instalada (se puede reintentar más tarde)"
+        else
+            return 1
+        fi
+    fi
+
+    if install_chromium_extension "$ext_source"; then
+        chromium_ext_id="$(cat "$(get_chromium_extension_id_file)" 2>/dev/null || true)"
+    else
+        if [ "$chromium_best_effort" = true ]; then
+            echo "⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"
+        else
+            return 1
+        fi
+    fi
+
+    if [ "$install_native_host_enabled" = true ]; then
+        if ! install_native_host "$ext_source/native" "$chromium_ext_id"; then
+            if [ "$native_host_best_effort" = true ]; then
+                echo "⚠ Native host no instalado (se puede reintentar más tarde)"
+            else
+                return 1
+            fi
+        fi
+    fi
+
+    return 0
+}
+
 # Add extension to Firefox policies for force-install
 add_extension_to_policies() {
     local ext_id="$1"
     local install_target="$2"
     local install_url="${3:-}"
     local install_entry="$install_target"
-    
-    local policies_file="$FIREFOX_POLICIES"
-    mkdir -p "$(dirname "$policies_file")"
 
     if [ -z "$install_url" ]; then
         if [[ "$install_target" == *://* ]]; then
@@ -888,63 +1001,8 @@ add_extension_to_policies() {
     else
         install_entry="$install_url"
     fi
-    
-    python3 << PYEOF
-import json
-import os
 
-policies_file = "$policies_file"
-ext_id = "$ext_id"
-install_entry = "$install_entry"
-install_url = "$install_url"
-
-# Read existing policies or create new
-if os.path.exists(policies_file):
-    try:
-        with open(policies_file, 'r') as f:
-            policies = json.load(f)
-    except Exception as e:
-        print(f"Warning: Failed to read existing policies: {e}", file=sys.stderr)
-        policies = {"policies": {}}
-else:
-    policies = {"policies": {}}
-
-if "policies" not in policies:
-    policies["policies"] = {}
-
-# Add ExtensionSettings for force-install
-if "ExtensionSettings" not in policies["policies"]:
-    policies["policies"]["ExtensionSettings"] = {}
-
-policies["policies"]["ExtensionSettings"][ext_id] = {
-    "installation_mode": "force_installed",
-    "install_url": install_url
-}
-
-# Also add to Extensions.Install list
-if "Extensions" not in policies["policies"]:
-    policies["policies"]["Extensions"] = {}
-
-if "Install" not in policies["policies"]["Extensions"]:
-    policies["policies"]["Extensions"]["Install"] = []
-
-# Add path if not already present
-if install_entry not in policies["policies"]["Extensions"]["Install"]:
-    policies["policies"]["Extensions"]["Install"].append(install_entry)
-
-# Lock the extension so users can't disable it
-if "Locked" not in policies["policies"]["Extensions"]:
-    policies["policies"]["Extensions"]["Locked"] = []
-
-if ext_id not in policies["policies"]["Extensions"]["Locked"]:
-    policies["policies"]["Extensions"]["Locked"].append(ext_id)
-
-with open(policies_file, 'w') as f:
-    json.dump(policies, f, indent=2)
-
-print(f"Extensión {ext_id} añadida a políticas")
-PYEOF
-    
+    mutate_firefox_policies "ensure_managed_extension" "$ext_id" "$install_entry" "$install_url"
     log "✓ Extension added to policies.json"
 }
 
@@ -1009,7 +1067,7 @@ EOF
 
 # Remove Firefox extension (for uninstall)
 remove_firefox_extension() {
-    local ext_id="monitor-bloqueos@openpath"
+    local ext_id="$FIREFOX_MANAGED_EXTENSION_ID"
     local firefox_app_id="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
     local ext_dir="/usr/share/mozilla/extensions/$firefox_app_id/$ext_id"
     
@@ -1020,35 +1078,7 @@ remove_firefox_extension() {
     
     # Remove from policies.json
     if [ -f "$FIREFOX_POLICIES" ]; then
-        python3 << PYEOF
-import json
-import os
-
-policies_file = "$FIREFOX_POLICIES"
-ext_id = "$ext_id"
-
-if os.path.exists(policies_file):
-    try:
-        with open(policies_file, 'r') as f:
-            policies = json.load(f)
-        
-        # Remove from ExtensionSettings
-        if "policies" in policies and "ExtensionSettings" in policies["policies"]:
-            policies["policies"]["ExtensionSettings"].pop(ext_id, None)
-        
-        # Remove from Extensions lists
-        if "policies" in policies and "Extensions" in policies["policies"]:
-            ext = policies["policies"]["Extensions"]
-            if "Install" in ext:
-                ext["Install"] = [p for p in ext["Install"] if ext_id not in p]
-            if "Locked" in ext:
-                ext["Locked"] = [e for e in ext["Locked"] if e != ext_id]
-        
-        with open(policies_file, 'w') as f:
-            json.dump(policies, f, indent=2)
-    except Exception as e:
-        print(f"Warning: Failed to update Firefox policies during extension removal: {e}", file=sys.stderr)
-PYEOF
+        mutate_firefox_policies "remove_managed_extension" "$ext_id"
     fi
     
     # Remove native host

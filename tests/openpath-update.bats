@@ -97,10 +97,18 @@ export DNSMASQ_CONF="$state_dir/openpath.conf"
 export DNSMASQ_CONF_HASH="$state_dir/openpath.conf.hash"
 export BROWSER_POLICIES_HASH="$state_dir/browser.hash"
 export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export INSTALL_DIR="$state_dir/install"
+export LOG_FILE="$state_dir/openpath.log"
 
 mkdir -p "$state_dir"
 : > "$WHITELIST_FILE"
 : > "$DNSMASQ_CONF"
+mkdir -p "$INSTALL_DIR/lib"
+cp "$project_dir/linux/lib/common.sh" "$INSTALL_DIR/lib/"
+: > "$INSTALL_DIR/VERSION"
+: > "$INSTALL_DIR/lib/defaults.conf"
+
+source "$project_dir/linux/lib/common.sh"
 
 activate_calls=0
 deactivate_calls=0
@@ -146,4 +154,87 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"activate_calls=1"* ]]
     [[ "$output" == *"deactivate_calls=1"* ]]
+}
+
+@test "cleanup_system preserves Firefox managed extension baseline through reactivation" {
+    local helper_script="$TEST_TMP_DIR/run-cleanup-reactivation-firefox.sh"
+    local state_dir="$TEST_TMP_DIR/update-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+cleanup_script="$state_dir/openpath-update-cleanup.sh"
+
+export CONFIG_DIR="$state_dir/config"
+export INSTALL_DIR="$state_dir/install"
+export FIREFOX_POLICIES="$state_dir/firefox/policies/policies.json"
+export CHROMIUM_POLICIES_BASE="$state_dir/chromium/policies/managed"
+export FIREFOX_EXTENSIONS_ROOT="$state_dir/share/mozilla/extensions"
+export DNSMASQ_CONF="$state_dir/openpath.conf"
+export DNSMASQ_CONF_HASH="$state_dir/openpath.conf.hash"
+export BROWSER_POLICIES_HASH="$state_dir/browser.hash"
+export PRIMARY_DNS="8.8.8.8"
+export LOG_FILE="$state_dir/openpath.log"
+
+mkdir -p "$CONFIG_DIR" "$INSTALL_DIR/lib" "$(dirname "$FIREFOX_POLICIES")" "$CHROMIUM_POLICIES_BASE" "$FIREFOX_EXTENSIONS_ROOT"
+
+log() { :; }
+deactivate_firewall() { :; }
+flush_connections() { :; }
+systemctl() { :; }
+
+source "$project_dir/linux/lib/browser.sh"
+source "$project_dir/linux/lib/common.sh"
+
+add_extension_to_policies \
+  "monitor-bloqueos@openpath" \
+  "$state_dir/openpath.xpi" \
+  "https://downloads.example/openpath-managed.xpi"
+
+awk '/^cleanup_system\(\) \{/,/^}/' \
+    "$project_dir/linux/scripts/runtime/openpath-update.sh" > "$cleanup_script"
+source "$cleanup_script"
+
+cleanup_system
+
+BLOCKED_PATHS=("example.com/ads")
+generate_firefox_policies
+apply_search_engine_policies
+
+python3 - <<PYEOF
+import json
+
+with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
+    policies = json.load(fh)
+
+policy_root = policies["policies"]
+assert "monitor-bloqueos@openpath" in policy_root.get("ExtensionSettings", {})
+assert "https://downloads.example/openpath-managed.xpi" in policy_root.get("Extensions", {}).get("Install", [])
+assert "monitor-bloqueos@openpath" in policy_root.get("Extensions", {}).get("Locked", [])
+assert "WebsiteFilter" in policy_root
+assert "SearchEngines" in policy_root
+assert "DNSOverHTTPS" in policy_root
+PYEOF
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+}
+
+@test "openpath-update reuses shared fail-open transition and runtime reconciliation helpers" {
+    run grep -n "enter_fail_open_mode" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n "build_runtime_reconciliation_plan" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n "apply_runtime_reconciliation_plan" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+    [ "$status" -eq 0 ]
 }

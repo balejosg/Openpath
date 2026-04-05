@@ -258,6 +258,84 @@ EOF
     [ "$status" -eq 1 ]
 }
 
+@test "enter_fail_open_mode applies passthrough runtime and clears hashes" {
+    export DNSMASQ_CONF="$TEST_TMP_DIR/openpath.conf"
+    export DNSMASQ_CONF_HASH="$TEST_TMP_DIR/dnsmasq.hash"
+    export BROWSER_POLICIES_HASH="$TEST_TMP_DIR/browser.hash"
+    export PRIMARY_DNS="9.9.9.9"
+    : > "$DNSMASQ_CONF_HASH"
+    : > "$BROWSER_POLICIES_HASH"
+
+    source "$PROJECT_DIR/linux/lib/common.sh"
+
+    deactivate_firewall() { echo "deactivate_firewall"; }
+    cleanup_browser_policies() { echo "cleanup_browser_policies"; }
+    flush_connections() { echo "flush_connections"; }
+    force_browser_close() { echo "force_browser_close"; }
+    systemctl() { echo "systemctl $*"; }
+    export -f deactivate_firewall cleanup_browser_policies flush_connections force_browser_close systemctl
+
+    run enter_fail_open_mode "$PRIMARY_DNS"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"deactivate_firewall"* ]]
+    [[ "$output" == *"cleanup_browser_policies"* ]]
+    [[ "$output" == *"flush_connections"* ]]
+    [[ "$output" != *"force_browser_close"* ]]
+    [ ! -f "$DNSMASQ_CONF_HASH" ]
+    [ ! -f "$BROWSER_POLICIES_HASH" ]
+    grep -q "server=$PRIMARY_DNS" "$DNSMASQ_CONF"
+}
+
+@test "enter_disabled_mode closes browsers without clearing hashes" {
+    export DNSMASQ_CONF="$TEST_TMP_DIR/openpath.conf"
+    export DNSMASQ_CONF_HASH="$TEST_TMP_DIR/dnsmasq.hash"
+    export BROWSER_POLICIES_HASH="$TEST_TMP_DIR/browser.hash"
+    : > "$DNSMASQ_CONF_HASH"
+    : > "$BROWSER_POLICIES_HASH"
+
+    source "$PROJECT_DIR/linux/lib/common.sh"
+
+    deactivate_firewall() { echo "deactivate_firewall"; }
+    cleanup_browser_policies() { echo "cleanup_browser_policies"; }
+    flush_connections() { echo "flush_connections"; }
+    force_browser_close() { echo "force_browser_close"; }
+    systemctl() { echo "systemctl $*"; }
+    export -f deactivate_firewall cleanup_browser_policies flush_connections force_browser_close systemctl
+
+    run enter_disabled_mode "8.8.4.4"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"force_browser_close"* ]]
+    [ -f "$DNSMASQ_CONF_HASH" ]
+    [ -f "$BROWSER_POLICIES_HASH" ]
+    grep -q "server=8.8.4.4" "$DNSMASQ_CONF"
+}
+
+@test "build_runtime_reconciliation_plan computes firewall and connection actions" {
+    source "$PROJECT_DIR/linux/lib/common.sh"
+
+    run build_runtime_reconciliation_plan false true true false
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FIREWALL_ACTION=activate"* ]]
+    [[ "$output" == *"FLUSH_CONNECTIONS=true"* ]]
+    [[ "$output" == *"FLUSH_REASON=system_reactivated"* ]]
+}
+
+@test "apply_runtime_reconciliation_plan deactivates firewall when dns is unhealthy" {
+    source "$PROJECT_DIR/linux/lib/common.sh"
+
+    activate_firewall() { echo "activate_firewall"; return 0; }
+    deactivate_firewall() { echo "deactivate_firewall"; return 0; }
+    flush_connections() { echo "flush_connections"; }
+    log() { echo "$1"; }
+    export -f activate_firewall deactivate_firewall flush_connections log
+
+    run apply_runtime_reconciliation_plan deactivate false ""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"deactivate_firewall"* ]]
+    ! grep -qx "activate_firewall" <<< "$output"
+    ! grep -qx "flush_connections" <<< "$output"
+}
+
 @test "normalize_machine_name_value canonicalizes machine identifiers" {
     source "$PROJECT_DIR/linux/lib/common.sh"
 

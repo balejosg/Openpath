@@ -551,7 +551,6 @@ step_install_extension() {
     if [ "$INSTALL_EXTENSION" = true ]; then
         local staged_ext_dir="$INSTALL_DIR/firefox-extension"
         local staged_release_dir="$INSTALL_DIR/firefox-release"
-        local chromium_ext_id=""
         local firefox_release_source=""
 
         rm -rf "$staged_ext_dir"
@@ -563,16 +562,13 @@ step_install_extension() {
             echo "  ✓ Artefactos Firefox Release firmados preparados desde $firefox_release_source"
         fi
 
-        install_firefox_extension "$staged_ext_dir" "$staged_release_dir"
-        if install_chromium_extension "$staged_ext_dir"; then
-            chromium_ext_id="$(cat "$(get_chromium_extension_id_file)" 2>/dev/null || true)"
-        else
-            echo "⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"
-        fi
-
-        if [ "$INSTALL_NATIVE_HOST" = true ]; then
-            install_native_host "$staged_ext_dir/native" "$chromium_ext_id"
-        fi
+        install_browser_integrations \
+            "$staged_ext_dir" \
+            "$staged_release_dir" \
+            "$INSTALL_NATIVE_HOST" \
+            false \
+            true \
+            false
         echo "✓ Extensiones del navegador instaladas"
     else
         echo "⊘ Extensiones del navegador omitidas (--no-extension)"
@@ -590,7 +586,7 @@ step_enable_services() {
     source "$INSTALL_DIR/lib/common.sh"
     INTEGRITY_HASH_FILE="$VAR_STATE_DIR/integrity.sha256"
     # Uses CRITICAL_FILES from common.sh (single source of truth)
-    > "$INTEGRITY_HASH_FILE"
+    : > "$INTEGRITY_HASH_FILE"
     for f in "${CRITICAL_FILES[@]}"; do
         [ -f "$f" ] && sha256sum "$f" >> "$INTEGRITY_HASH_FILE"
     done
