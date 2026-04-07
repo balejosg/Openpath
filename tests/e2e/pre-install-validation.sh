@@ -288,7 +288,7 @@ test_installer_extension_paths() {
         test_pass "Firefox asset helper no longer requires dist/config.js"
     fi
 
-    if grep -q 'cp "\$ext_source/background.js"' "$browser_sh"; then
+    if grep -q 'cp "\$ext_source/background.js"' "$installer_sh"; then
         test_fail "installer still references legacy root background.js"
     else
         test_pass "installer no longer references legacy root background.js"
