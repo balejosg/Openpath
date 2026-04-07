@@ -162,7 +162,7 @@ describe('repository verification contract', () => {
     }
   });
 
-  test('required Windows CI publishes a step summary without using Out-File on Windows', () => {
+  test('required Windows CI keeps artifact upload best-effort while publishing a step summary', () => {
     const ciWorkflow = readText('.github/workflows/ci.yml');
 
     assert.ok(
@@ -174,12 +174,20 @@ describe('repository verification contract', () => {
       'ci.yml should not write the Windows Pester summary with Out-File'
     );
     assert.ok(
-      !ciWorkflow.includes('name: Upload test results'),
-      'ci.yml should not make required Windows CI depend on uploading test result artifacts'
+      ciWorkflow.includes('name: Upload test results'),
+      'ci.yml should keep the Windows Pester artifact upload step for post-run diagnostics'
     );
     assert.ok(
-      !ciWorkflow.includes('name: windows-test-results'),
-      'ci.yml should not upload the Windows Pester result artifact from the required CI job'
+      ciWorkflow.includes('uses: actions/upload-artifact@v4'),
+      'ci.yml should use actions/upload-artifact@v4 for the Windows Pester XML'
+    );
+    assert.ok(
+      ciWorkflow.includes('continue-on-error: true'),
+      'ci.yml should make the Windows Pester artifact upload best-effort'
+    );
+    assert.ok(
+      ciWorkflow.includes('name: windows-test-results'),
+      'ci.yml should upload the Windows Pester result artifact for diagnostics'
     );
   });
 
