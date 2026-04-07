@@ -81,6 +81,10 @@ function Initialize-FirewallRuleCaptureMocks {
     Mock Test-Path { $false } -ModuleName Firewall -ParameterFilter { $Path -like '*AcrylicService.exe' }
 }
 
+function Get-CapturedFirewallRules {
+    return @($script:createdFirewallRules)
+}
+
 function Get-ContractFixturePath {
     param(
         [Parameter(Mandatory = $true)]
@@ -127,6 +131,7 @@ Export-ModuleMember -Function @(
     'Import-OpenPathTestModules',
     'Assert-ContentContainsAll',
     'Initialize-FirewallRuleCaptureMocks',
+    'Get-CapturedFirewallRules',
     'Get-ContractFixturePath',
     'Get-ContractFixtureLines',
     'Get-ContractFixtureJson'

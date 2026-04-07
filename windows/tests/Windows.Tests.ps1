@@ -4,19 +4,20 @@
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 
 $script:modulePath = Join-Path $PSScriptRoot ".." "lib"
-Import-Module "$script:modulePath\Common.psm1" -Force -ErrorAction Stop
-Import-Module "$script:modulePath\DNS.psm1" -Force -ErrorAction Stop
-Import-Module "$script:modulePath\Firewall.psm1" -Force -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "Common.psm1") -Force -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "DNS.psm1") -Force -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "Firewall.psm1") -Force -ErrorAction Stop
 
 Describe "Common Module" {
     BeforeAll {
-        Import-Module "$script:modulePath\Common.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\DNS.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\Firewall.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\Services.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\Browser.psm1" -Force -ErrorAction Stop
-        Import-Module "$script:modulePath\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction Stop
+        $modulePath = Join-Path $PSScriptRoot ".." "lib"
+        Import-Module (Join-Path $modulePath "Common.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "DNS.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Firewall.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Services.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.Common.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.FirefoxNativeHost.psm1") -Force -ErrorAction Stop
     }
 
     Context "Test-AdminPrivileges" {
@@ -590,11 +591,11 @@ downloads.example/blocked
                     }
                 } -ModuleName Common
 
-                Mock Update-AcrylicHost { $true } -ModuleName DNS
-                Mock Restart-AcrylicService { $true } -ModuleName DNS
-                Mock Get-AcrylicPath { 'C:\OpenPath\Acrylic DNS Proxy' } -ModuleName DNS
-                Mock Set-OpenPathFirewall { $true } -ModuleName Firewall
-                Mock Set-LocalDNS { } -ModuleName DNS
+                Mock Update-AcrylicHost { $true }
+                Mock Restart-AcrylicService { $true }
+                Mock Get-AcrylicPath { 'C:\OpenPath\Acrylic DNS Proxy' }
+                Mock Set-OpenPathFirewall { $true }
+                Mock Set-LocalDNS { }
 
                 $config = [PSCustomObject]@{
                     enableFirewall = $true
@@ -1135,19 +1136,19 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'TCP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'UDP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '5.5.5.5' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'TCP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '5.5.5.5' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'UDP'
                 }).Count | Should -Be 1
         }
@@ -1163,14 +1164,14 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object { $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
-            ($script:createdFirewallRules | Where-Object { $_.RemoteAddress -eq 'invalid-ip' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.RemoteAddress -eq 'invalid-ip' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '6.6.6.6' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'TCP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '6.6.6.6' -and $_.RemotePort -eq '443' -and $_.Protocol -eq 'UDP'
                 }).Count | Should -Be 1
         }
@@ -1187,7 +1188,7 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object { $_.DisplayName -like '*Block-DoH*' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.DisplayName -like '*Block-DoH*' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
         }
 
         It "Creates targeted DNS/53 bypass blocks instead of a global port 53 block" {
@@ -1202,16 +1203,16 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '53' -and $_.Protocol -eq 'TCP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.RemoteAddress -eq '4.4.4.4' -and $_.RemotePort -eq '53' -and $_.Protocol -eq 'UDP'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-UDP' }).Count | Should -Be 0
-            ($script:createdFirewallRules | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-TCP' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-UDP' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.DisplayName -eq 'OpenPath-DNS-Block-DNS-TCP' }).Count | Should -Be 0
         }
 
         It "Creates TCP and UDP allow rules for Acrylic upstream DNS" {
@@ -1228,11 +1229,11 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -eq 'OpenPath-DNS-Allow-Upstream-UDP' -and $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '53'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -eq 'OpenPath-DNS-Allow-Upstream-TCP' -and $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '53'
                 }).Count | Should -Be 1
         }
@@ -1289,23 +1290,23 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-VPN*' -and $_.Protocol -eq 'TCP' -and $_.RemotePort -eq '9443'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-VPN*' -and $_.Protocol -eq 'UDP' -and $_.RemotePort -eq '5555'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-Tor-10001' -and $_.Protocol -eq 'TCP' -and $_.RemotePort -eq '10001'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-Tor-10002' -and $_.Protocol -eq 'TCP' -and $_.RemotePort -eq '10002'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object { $_.DisplayName -like '*Block-Tor-9001' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object { $_.DisplayName -like '*Block-Tor-9001' }).Count | Should -Be 0
         }
 
         It "Skips invalid VPN/Tor custom entries and keeps valid ones" {
@@ -1320,19 +1321,19 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-VPN*' -and $_.Protocol -eq 'UDP' -and $_.RemotePort -eq '6000'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-VPN*' -and $_.RemotePort -eq '1200'
                 }).Count | Should -Be 0
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-Tor-9050' -and $_.Protocol -eq 'TCP' -and $_.RemotePort -eq '9050'
                 }).Count | Should -Be 1
 
-            ($script:createdFirewallRules | Where-Object {
+            (@(Get-CapturedFirewallRules) | Where-Object {
                     $_.DisplayName -like '*Block-Tor-70000'
                 }).Count | Should -Be 0
         }
