@@ -239,7 +239,52 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "openpath-update synchronizes the managed Firefox extension policy before hashing browser policies" {
-    run grep -n "sync_firefox_managed_extension_policy" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+@test "openpath-update extracts browser integration synchronization into a dedicated helper" {
+    run grep -n "sync_runtime_browser_integrations()" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
     [ "$status" -eq 0 ]
+}
+
+@test "sync_runtime_browser_integrations applies managed Firefox sync before browser policy hashing" {
+    local helper_script="$TEST_TMP_DIR/run-sync-runtime-browser-integrations.sh"
+    local state_dir="$TEST_TMP_DIR/update-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/sync-runtime-browser-integrations.sh"
+
+CALLS=()
+record_call() {
+    CALLS+=("$1")
+}
+
+generate_firefox_policies() { record_call "generate_firefox_policies"; }
+generate_chromium_policies() { record_call "generate_chromium_policies"; }
+apply_search_engine_policies() { record_call "apply_search_engine_policies"; }
+sync_firefox_managed_extension_policy() {
+    record_call "sync_firefox_managed_extension_policy:$1"
+}
+
+awk '/^sync_runtime_browser_integrations\(\) \{/,/^}/' \
+    "$project_dir/linux/scripts/runtime/openpath-update.sh" > "$extracted_script"
+source "$extracted_script"
+
+sync_runtime_browser_integrations
+
+printf '%s\n' "${CALLS[@]}"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "generate_firefox_policies" ]
+    [ "${lines[1]}" = "generate_chromium_policies" ]
+    [ "${lines[2]}" = "apply_search_engine_policies" ]
+    [ "${lines[3]}" = "sync_firefox_managed_extension_policy:/usr/share/openpath/firefox-release" ]
 }

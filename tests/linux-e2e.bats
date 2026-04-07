@@ -194,6 +194,12 @@ EOF
     run grep -nF '$INSTALLER_SOURCE_DIR/lib/firefox-extension-assets.sh' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
+    run grep -nF '$INSTALLER_SOURCE_DIR/lib/firefox-policy.sh' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$INSTALLER_SOURCE_DIR/lib/firefox-managed-extension.sh' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
     run grep -nF 'stage_firefox_release_artifacts "$INSTALLER_SOURCE_DIR" "$staged_release_dir"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
@@ -201,8 +207,24 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "linux browser library delegates Firefox policy and managed release helpers to dedicated modules" {
+    run grep -nF 'source "$_browser_lib_dir/firefox-policy.sh"' "$PROJECT_DIR/linux/lib/browser.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$_browser_lib_dir/firefox-managed-extension.sh"' "$PROJECT_DIR/linux/lib/browser.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux integrity baseline tracks dedicated Firefox helper modules" {
+    run grep -nF '"$INSTALL_DIR/lib/firefox-policy.sh"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"$INSTALL_DIR/lib/firefox-managed-extension.sh"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "linux pre-install validation follows shared Firefox asset staging helpers" {
-    run grep -nF 'stage_firefox_unpacked_extension_assets "$ext_source" "$ext_dir" || return 1' "$PROJECT_DIR/linux/lib/browser.sh"
+    run grep -nF 'stage_firefox_unpacked_extension_assets "$ext_source" "$ext_dir" || return 1' "$PROJECT_DIR/linux/lib/firefox-managed-extension.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF 'dist/background.js|file|extension build artifact' "$PROJECT_DIR/linux/lib/firefox-extension-assets.sh"

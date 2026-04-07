@@ -475,6 +475,29 @@ EOF
     [ "${policy_args[2]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
 }
 
+@test "resolve_firefox_managed_extension_policy reports managed api source when configured" {
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    export ETC_CONFIG_DIR="$TEST_TMP_DIR/etc/openpath"
+    mkdir -p "$release_dir" "$ETC_CONFIG_DIR"
+    printf '%s\n' 'https://school.example/' > "$ETC_CONFIG_DIR/api-url.conf"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    curl() {
+        return 0
+    }
+    export -f curl
+
+    run resolve_firefox_managed_extension_policy "$release_dir"
+    [ "$status" -eq 0 ]
+
+    mapfile -t policy_lines <<< "$output"
+    [ "${policy_lines[0]}" = "monitor-bloqueos@openpath" ]
+    [ "${policy_lines[1]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_lines[2]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_lines[3]}" = "managed-api" ]
+}
+
 @test "install_browser_integrations keeps Chromium best-effort while wiring native host with extension id" {
     local ext_dir="$TEST_TMP_DIR/firefox-extension"
     local release_dir="$TEST_TMP_DIR/firefox-release"

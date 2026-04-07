@@ -191,6 +191,108 @@ function Write-OpenPathUtf8NoBomFile {
     [System.IO.File]::WriteAllText($Path, $Value, $utf8NoBom)
 }
 
+function Get-OpenPathConfigTrimmedValue {
+    param(
+        [AllowNull()]
+        [object]$Config,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName
+    )
+
+    if (
+        $Config -and
+        $Config.PSObject.Properties[$PropertyName] -and
+        $Config.PSObject.Properties[$PropertyName].Value
+    ) {
+        return ([string]$Config.PSObject.Properties[$PropertyName].Value).Trim()
+    }
+
+    return ''
+}
+
+function Get-OpenPathConfiguredFirefoxManagedExtensionPolicy {
+    param(
+        [AllowNull()]
+        [object]$Config
+    )
+
+    $configuredExtensionId = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'firefoxExtensionId'
+    $configuredInstallUrl = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'firefoxExtensionInstallUrl'
+
+    if ($configuredExtensionId -and $configuredInstallUrl) {
+        return [PSCustomObject]@{
+            ExtensionId = $configuredExtensionId
+            InstallUrl = $configuredInstallUrl
+            Source = 'config'
+        }
+    }
+
+    if ($configuredExtensionId -or $configuredInstallUrl) {
+        Write-OpenPathLog 'Firefox signed extension config is incomplete; both firefoxExtensionId and firefoxExtensionInstallUrl are required' -Level WARN
+    }
+
+    return $null
+}
+
+function Get-OpenPathFirefoxReleaseMetadata {
+    $metadataPath = Get-OpenPathFirefoxReleaseMetadataPath
+    if (-not (Test-Path $metadataPath)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $metadataPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        Write-OpenPathLog "Failed to parse Firefox release extension metadata: $_" -Level WARN
+        return $null
+    }
+}
+
+function Get-OpenPathFirefoxReleaseExtensionId {
+    param(
+        [AllowNull()]
+        [object]$Metadata
+    )
+
+    if ($Metadata -and $Metadata.PSObject.Properties['extensionId'] -and $Metadata.extensionId) {
+        return ([string]$Metadata.extensionId).Trim()
+    }
+
+    return ''
+}
+
+function Resolve-OpenPathFirefoxReleaseInstallUrl {
+    param(
+        [AllowNull()]
+        [object]$Config,
+
+        [AllowNull()]
+        [object]$Metadata
+    )
+
+    $apiBaseUrl = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'apiUrl'
+    if ($apiBaseUrl) {
+        $apiBaseUrl = $apiBaseUrl.TrimEnd('/')
+    }
+
+    $signedXpiPath = Get-OpenPathFirefoxReleaseXpiPath
+    if ($apiBaseUrl -and (Test-Path $signedXpiPath)) {
+        return "$apiBaseUrl/api/extensions/firefox/openpath.xpi"
+    }
+
+    if (Test-Path $signedXpiPath) {
+        return ConvertTo-OpenPathFileUrl -Path $signedXpiPath
+    }
+
+    if ($Metadata -and $Metadata.PSObject.Properties['installUrl'] -and $Metadata.installUrl) {
+        return ([string]$Metadata.installUrl).Trim()
+    }
+
+    return ''
+}
+
 function Get-OpenPathFirefoxManagedExtensionPolicy {
     $config = $null
     try {
@@ -200,83 +302,23 @@ function Get-OpenPathFirefoxManagedExtensionPolicy {
         # Allow policy generation to proceed without a persisted config.
     }
 
-    if ($config) {
-        $configuredExtensionId = if (
-            $config.PSObject.Properties['firefoxExtensionId'] -and $config.firefoxExtensionId
-        ) {
-            ([string]$config.firefoxExtensionId).Trim()
-        }
-        else {
-            ''
-        }
-        $configuredInstallUrl = if (
-            $config.PSObject.Properties['firefoxExtensionInstallUrl'] -and $config.firefoxExtensionInstallUrl
-        ) {
-            ([string]$config.firefoxExtensionInstallUrl).Trim()
-        }
-        else {
-            ''
-        }
-
-        if ($configuredExtensionId -and $configuredInstallUrl) {
-            return [PSCustomObject]@{
-                ExtensionId = $configuredExtensionId
-                InstallUrl = $configuredInstallUrl
-                Source = 'config'
-            }
-        }
-
-        if ($configuredExtensionId -or $configuredInstallUrl) {
-            Write-OpenPathLog 'Firefox signed extension config is incomplete; both firefoxExtensionId and firefoxExtensionInstallUrl are required' -Level WARN
-        }
+    $configuredPolicy = Get-OpenPathConfiguredFirefoxManagedExtensionPolicy -Config $config
+    if ($configuredPolicy) {
+        return $configuredPolicy
     }
 
-    $metadataPath = Get-OpenPathFirefoxReleaseMetadataPath
-    if (-not (Test-Path $metadataPath)) {
+    $metadata = Get-OpenPathFirefoxReleaseMetadata
+    if (-not $metadata) {
         return $null
     }
 
-    try {
-        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
-    }
-    catch {
-        Write-OpenPathLog "Failed to parse Firefox release extension metadata: $_" -Level WARN
-        return $null
-    }
-
-    $extensionId = if ($metadata.PSObject.Properties['extensionId'] -and $metadata.extensionId) {
-        ([string]$metadata.extensionId).Trim()
-    }
-    else {
-        ''
-    }
+    $extensionId = Get-OpenPathFirefoxReleaseExtensionId -Metadata $metadata
     if (-not $extensionId) {
         Write-OpenPathLog 'Firefox release extension metadata is incomplete' -Level WARN
         return $null
     }
 
-    $installUrl = ''
-    $apiBaseUrl = if (
-        $config -and
-        $config.PSObject.Properties['apiUrl'] -and
-        $config.apiUrl
-    ) {
-        ([string]$config.apiUrl).TrimEnd('/')
-    }
-    else {
-        ''
-    }
-    $signedXpiPath = Get-OpenPathFirefoxReleaseXpiPath
-    if ($apiBaseUrl -and (Test-Path $signedXpiPath)) {
-        $installUrl = "$apiBaseUrl/api/extensions/firefox/openpath.xpi"
-    }
-    elseif (Test-Path $signedXpiPath) {
-        $installUrl = ConvertTo-OpenPathFileUrl -Path $signedXpiPath
-    }
-    elseif ($metadata.PSObject.Properties['installUrl'] -and $metadata.installUrl) {
-        $installUrl = ([string]$metadata.installUrl).Trim()
-    }
-
+    $installUrl = Resolve-OpenPathFirefoxReleaseInstallUrl -Config $config -Metadata $metadata
     if (-not $installUrl) {
         Write-OpenPathLog 'Firefox release extension metadata did not resolve to a signed XPI source' -Level WARN
         return $null

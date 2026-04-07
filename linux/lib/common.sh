@@ -1041,6 +1041,8 @@ CRITICAL_FILES=(
     "$INSTALL_DIR/lib/firewall.sh"
     "$INSTALL_DIR/lib/captive-portal.sh"
     "$INSTALL_DIR/lib/browser.sh"
+    "$INSTALL_DIR/lib/firefox-policy.sh"
+    "$INSTALL_DIR/lib/firefox-managed-extension.sh"
     "$INSTALL_DIR/lib/services.sh"
     "$INSTALL_DIR/lib/rollback.sh"
     "$SCRIPTS_DIR/openpath-update.sh"
@@ -1052,6 +1054,14 @@ CRITICAL_FILES=(
 load_libraries() {
     local lib_dir="${1:-$INSTALL_DIR/lib}"
     local lib
+    local helper_lib
+
+    for helper_lib in firefox-policy.sh firefox-managed-extension.sh; do
+        if [ ! -f "$lib_dir/$helper_lib" ]; then
+            log_error "Required library not found: $lib_dir/$helper_lib"
+            return 1
+        fi
+    done
 
     for lib in dns.sh firewall.sh browser.sh services.sh rollback.sh; do
         if [ ! -f "$lib_dir/$lib" ]; then
