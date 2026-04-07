@@ -43,35 +43,12 @@ generate_chromium_policies() {
     
     for dir in "${dirs[@]}"; do
         mkdir -p "$dir"
-        
-        if [ ${#BLOCKED_PATHS[@]} -gt 0 ]; then
-            # Generate JSON with URLBlocklist
-            python3 << PYEOF
-import json
 
-blocked_paths_str = """${BLOCKED_PATHS[*]}"""
-blocked_paths = blocked_paths_str.split() if blocked_paths_str.strip() else []
-
-def normalize_path(path):
-    clean = path
-    for prefix in ['http://', 'https://', '*://']:
-        if clean.startswith(prefix):
-            clean = clean[len(prefix):]
-            break
-    if not clean.endswith('*'):
-        clean = f"{clean}*"
-    return clean
-
-normalized = [normalize_path(p) for p in blocked_paths if p.strip()]
-
-policy = {"URLBlocklist": normalized}
-
-with open("$dir/openpath.json", 'w') as f:
-    json.dump(policy, f, indent=2)
-PYEOF
-        else
-            echo '{"URLBlocklist": []}' > "$dir/openpath.json"
-        fi
+        # browser-json.py write-chromium-policy
+        OPENPATH_BLOCKED_PATHS="$(printf '%s\n' "${BLOCKED_PATHS[@]}")" \
+        run_browser_json_helper \
+            write-chromium-policy \
+            --output "$dir/openpath.json"
     done
     
     log "✓ Chromium policies generated"
@@ -133,16 +110,9 @@ detect_chromium_packager() {
 get_extension_version() {
     local ext_source="$1"
 
-    python3 << PYEOF
-import json
-from pathlib import Path
-
-manifest_path = Path("$ext_source") / "manifest.json"
-with manifest_path.open("r", encoding="utf-8") as fh:
-    manifest = json.load(fh)
-
-print(manifest.get("version", "0.0.0"))
-PYEOF
+    run_browser_json_helper \
+        get-extension-version \
+        --manifest "$ext_source/manifest.json"
 }
 
 prepare_chromium_extension_source() {
@@ -157,25 +127,11 @@ prepare_chromium_extension_source() {
     cp -r "$ext_source/icons" "$package_dir/"
     cp -r "$ext_source/blocked" "$package_dir/"
 
-    python3 << PYEOF
-import json
-from pathlib import Path
-
-source_manifest = Path("$ext_source") / "manifest.json"
-target_manifest = Path("$package_dir") / "manifest.json"
-
-with source_manifest.open("r", encoding="utf-8") as fh:
-    manifest = json.load(fh)
-
-manifest.pop("browser_specific_settings", None)
-manifest["background"] = {
-    "service_worker": "dist/background.js",
-    "type": "module",
-}
-
-with target_manifest.open("w", encoding="utf-8") as fh:
-    json.dump(manifest, fh, indent=2)
-PYEOF
+    # browser-json.py rewrite-chromium-manifest
+    run_browser_json_helper \
+        rewrite-chromium-manifest \
+        --source-manifest "$ext_source/manifest.json" \
+        --target-manifest "$package_dir/manifest.json"
 }
 
 derive_chromium_extension_id_from_key() {

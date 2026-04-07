@@ -44,10 +44,13 @@ sed -i "s/^Version:.*/Version: ${VERSION}-${RELEASE}/" "$BUILD_DIR/DEBIAN/contro
 # Copy libraries
 echo "[4/8] Copying libraries..."
 mkdir -p "$BUILD_DIR/usr/local/lib/openpath/lib"
+mkdir -p "$BUILD_DIR/usr/local/lib/openpath/libexec"
 cp "$LINUX_DIR/lib/"*.sh "$BUILD_DIR/usr/local/lib/openpath/lib/"
+cp "$LINUX_DIR/libexec/browser-json.py" "$BUILD_DIR/usr/local/lib/openpath/libexec/"
 cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"
 printf '%s\n' "$VERSION" > "$BUILD_DIR/usr/local/lib/openpath/VERSION"
 chmod +x "$BUILD_DIR/usr/local/lib/openpath/lib/"*.sh
+chmod +x "$BUILD_DIR/usr/local/lib/openpath/libexec/browser-json.py"
 chmod +x "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"
 
 # Copy scripts

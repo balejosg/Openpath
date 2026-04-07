@@ -4,23 +4,10 @@ read_firefox_release_metadata_field() {
     local metadata_path="$1"
     local field_name="$2"
 
-    python3 << PYEOF
-import json
-from pathlib import Path
-
-metadata_path = Path("$metadata_path")
-
-try:
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-except Exception:
-    raise SystemExit(1)
-
-field_value = str(metadata.get("$field_name", "")).strip()
-if not field_value:
-    raise SystemExit(2)
-
-print(field_value)
-PYEOF
+    run_browser_json_helper \
+        read-json-field \
+        --json-file "$metadata_path" \
+        --field "$field_name"
 }
 
 get_firefox_release_extension_policy() {
@@ -33,39 +20,11 @@ get_firefox_release_extension_policy() {
         return 1
     fi
 
-    policy_lines=$(python3 << PYEOF
-import json
-from pathlib import Path
-
-metadata_path = Path("$metadata_path")
-signed_xpi_path = Path("$release_dir") / "openpath-firefox-extension.xpi"
-
-try:
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-except Exception:
-    raise SystemExit(1)
-
-extension_id = str(metadata.get("extensionId", "")).strip()
-if not extension_id:
-    raise SystemExit(2)
-
-if signed_xpi_path.is_file():
-    print(extension_id)
-    print(str(signed_xpi_path.resolve()))
-    print(signed_xpi_path.resolve().as_uri())
-    print("staged-release")
-    raise SystemExit(0)
-
-install_url = str(metadata.get("installUrl", "")).strip()
-if not install_url:
-    raise SystemExit(3)
-
-print(extension_id)
-print(install_url)
-print(install_url)
-print("metadata-install-url")
-PYEOF
-)
+    policy_lines="$(
+        run_browser_json_helper \
+            resolve-firefox-release-policy \
+            --release-dir "$release_dir"
+    )"
     policy_status=$?
 
     if [ "$policy_status" -ne 0 ]; then
@@ -151,7 +110,30 @@ get_firefox_managed_api_extension_policy() {
     local ext_id=""
     ext_id="$(resolve_firefox_managed_extension_id "$release_dir")" || return 1
 
-    printf '%s\n%s\n%s\n%s\n' "$ext_id" "$install_url" "$install_url" "managed-api"
+    printf '%s\n' \
+        "extension_id=$ext_id" \
+        "install_entry=$install_url" \
+        "install_url=$install_url" \
+        "source=managed-api"
+}
+
+read_firefox_managed_extension_policy_field() {
+    local policy_lines="$1"
+    local expected_key="$2"
+    local line=""
+    local line_key=""
+    local line_value=""
+
+    while IFS= read -r line; do
+        line_key="${line%%=*}"
+        line_value="${line#*=}"
+        if [ "$line_key" = "$expected_key" ]; then
+            printf '%s\n' "$line_value"
+            return 0
+        fi
+    done <<< "$policy_lines"
+
+    return 1
 }
 
 resolve_firefox_managed_extension_policy() {
@@ -167,14 +149,16 @@ resolve_firefox_managed_extension_policy() {
 sync_firefox_managed_extension_policy() {
     local release_source="${1:-$INSTALL_DIR/firefox-release}"
     local managed_policy=""
-    local managed_policy_values=()
+    local ext_id=""
+    local install_entry=""
+    local install_url=""
 
     managed_policy="$(resolve_firefox_managed_extension_policy "$release_source")" || return 1
-    mapfile -t managed_policy_values <<< "$managed_policy"
-    add_extension_to_policies \
-        "${managed_policy_values[0]}" \
-        "${managed_policy_values[1]}" \
-        "${managed_policy_values[2]}"
+    ext_id="$(read_firefox_managed_extension_policy_field "$managed_policy" "extension_id")" || return 1
+    install_entry="$(read_firefox_managed_extension_policy_field "$managed_policy" "install_entry")" || return 1
+    install_url="$(read_firefox_managed_extension_policy_field "$managed_policy" "install_url")" || return 1
+
+    add_extension_to_policies "$ext_id" "$install_entry" "$install_url"
 }
 
 install_firefox_release_extension() {

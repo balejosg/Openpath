@@ -1043,6 +1043,7 @@ CRITICAL_FILES=(
     "$INSTALL_DIR/lib/browser.sh"
     "$INSTALL_DIR/lib/firefox-policy.sh"
     "$INSTALL_DIR/lib/firefox-managed-extension.sh"
+    "$INSTALL_DIR/libexec/browser-json.py"
     "$INSTALL_DIR/lib/services.sh"
     "$INSTALL_DIR/lib/rollback.sh"
     "$SCRIPTS_DIR/openpath-update.sh"
@@ -1053,8 +1054,11 @@ CRITICAL_FILES=(
 # Load all libraries
 load_libraries() {
     local lib_dir="${1:-$INSTALL_DIR/lib}"
+    local libexec_dir
     local lib
     local helper_lib
+
+    libexec_dir="$(cd "$lib_dir/.." && pwd)/libexec"
 
     for helper_lib in firefox-policy.sh firefox-managed-extension.sh; do
         if [ ! -f "$lib_dir/$helper_lib" ]; then
@@ -1062,6 +1066,11 @@ load_libraries() {
             return 1
         fi
     done
+
+    if [ ! -f "$libexec_dir/browser-json.py" ]; then
+        log_error "Required helper not found: $libexec_dir/browser-json.py"
+        return 1
+    fi
 
     for lib in dns.sh firewall.sh browser.sh services.sh rollback.sh; do
         if [ ! -f "$lib_dir/$lib" ]; then

@@ -352,16 +352,33 @@ EOF
 }
 
 @test "windows browser policies only force-install Firefox from signed distribution settings" {
-    run grep -nF 'function Get-OpenPathFirefoxManagedExtensionPolicy' "$PROJECT_DIR/windows/lib/Browser.psm1"
+    run grep -nF 'Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1"' "$PROJECT_DIR/windows/lib/Browser.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'firefoxExtensionInstallUrl' "$PROJECT_DIR/windows/lib/Browser.psm1"
+    run grep -nF 'Import-Module "$PSScriptRoot\Browser.FirefoxNativeHost.psm1"' "$PROJECT_DIR/windows/lib/Browser.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'browser-extension\firefox-release' "$PROJECT_DIR/windows/lib/Browser.psm1"
+    run grep -nF 'Import-Module "$PSScriptRoot\Browser.Diagnostics.psm1"' "$PROJECT_DIR/windows/lib/Browser.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'install_url' "$PROJECT_DIR/windows/lib/Browser.psm1"
+    run grep -nF "Source = 'managed-api'" "$PROJECT_DIR/windows/lib/Browser.FirefoxPolicy.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Source = 'staged-release'" "$PROJECT_DIR/windows/lib/Browser.FirefoxPolicy.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Source = 'metadata-install-url'" "$PROJECT_DIR/windows/lib/Browser.FirefoxPolicy.psm1"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux runtime stages the shared browser-json helper" {
+    run grep -nF '$INSTALLER_SOURCE_DIR/libexec/browser-json.py' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '"$INSTALL_DIR/libexec/browser-json.py"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
+
+    run test -f "$PROJECT_DIR/linux/libexec/browser-json.py"
     [ "$status" -eq 0 ]
 }
 

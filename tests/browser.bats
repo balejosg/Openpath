@@ -492,10 +492,10 @@ EOF
     [ "$status" -eq 0 ]
 
     mapfile -t policy_lines <<< "$output"
-    [ "${policy_lines[0]}" = "monitor-bloqueos@openpath" ]
-    [ "${policy_lines[1]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
-    [ "${policy_lines[2]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
-    [ "${policy_lines[3]}" = "managed-api" ]
+    [ "${policy_lines[0]}" = "extension_id=monitor-bloqueos@openpath" ]
+    [ "${policy_lines[1]}" = "install_entry=https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_lines[2]}" = "install_url=https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_lines[3]}" = "source=managed-api" ]
 }
 
 @test "install_browser_integrations keeps Chromium best-effort while wiring native host with extension id" {
@@ -837,4 +837,15 @@ PYEOF
     [ ! -f "$CHROMIUM_NATIVE_HOST_DIR/openpath_native_host.json" ]
     [ ! -f "$CHROME_NATIVE_HOST_DIR/openpath_native_host.json" ]
     [ ! -f "$EDGE_NATIVE_HOST_DIR/openpath_native_host.json" ]
+}
+
+@test "linux browser helpers delegate JSON mutation to the shared browser-json helper" {
+    run grep -nF 'browser-json.py mutate-firefox-policies' "$PROJECT_DIR/linux/lib/firefox-policy.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'browser-json.py write-chromium-policy' "$PROJECT_DIR/linux/lib/browser.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'browser-json.py rewrite-chromium-manifest' "$PROJECT_DIR/linux/lib/browser.sh"
+    [ "$status" -eq 0 ]
 }
