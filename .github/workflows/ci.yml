@@ -172,14 +172,12 @@ jobs:
           $notRunCount = [int]$summary.'not-run'
           $passedCount = $totalCount - $failedCount - $skippedCount - $inconclusiveCount - $notRunCount
 
-          @(
-            '## Windows Agent Tests'
-            ''
-            "- Passed: $passedCount"
-            "- Failed: $failedCount"
-            "- Skipped: $skippedCount"
-            "- Result XML: windows-test-results.xml"
-          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '## Windows Agent Tests'
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Passed: $passedCount"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Failed: $failedCount"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Skipped: $skippedCount"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Result XML: windows-test-results.xml"
 
   # ============================================
   # Job 3: Firefox Delivery Contracts

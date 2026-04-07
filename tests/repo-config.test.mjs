@@ -162,12 +162,16 @@ describe('repository verification contract', () => {
     }
   });
 
-  test('required Windows CI publishes a step summary instead of relying on artifact upload', () => {
+  test('required Windows CI publishes a step summary without using Out-File on Windows', () => {
     const ciWorkflow = readText('.github/workflows/ci.yml');
 
     assert.ok(
-      ciWorkflow.includes('Out-File -FilePath $env:GITHUB_STEP_SUMMARY'),
-      'ci.yml should publish the Windows Pester summary to GITHUB_STEP_SUMMARY'
+      ciWorkflow.includes('Add-Content -Path $env:GITHUB_STEP_SUMMARY'),
+      'ci.yml should append the Windows Pester summary via Add-Content'
+    );
+    assert.ok(
+      !ciWorkflow.includes('Out-File -FilePath $env:GITHUB_STEP_SUMMARY'),
+      'ci.yml should not write the Windows Pester summary with Out-File'
     );
     assert.ok(
       !ciWorkflow.includes('name: Upload test results'),
