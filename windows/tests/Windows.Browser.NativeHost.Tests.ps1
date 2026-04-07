@@ -1,11 +1,8 @@
 # OpenPath Windows browser native host tests
 
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
-
-BeforeAll {
-    $modulePath = Join-Path $PSScriptRoot ".." "lib"
-    Import-Module "$modulePath\Browser.psm1" -Force -ErrorAction Stop
-}
+$modulePath = Join-Path $PSScriptRoot ".." "lib"
+Import-Module "$modulePath\Browser.psm1" -Force -ErrorAction Stop
 
 Describe "Browser Module - Native Host" {
     Context "Native host registration" {

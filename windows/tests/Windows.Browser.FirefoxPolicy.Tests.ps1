@@ -1,12 +1,9 @@
 # OpenPath Windows browser Firefox policy tests
 
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
-
-BeforeAll {
-    $modulePath = Join-Path $PSScriptRoot ".." "lib"
-    Import-Module "$modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
-    Import-Module "$modulePath\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
-}
+$modulePath = Join-Path $PSScriptRoot ".." "lib"
+Import-Module "$modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
+Import-Module "$modulePath\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
 
 Describe "Browser Module - Firefox Policy" {
     Context "Set-FirefoxPolicy" {
