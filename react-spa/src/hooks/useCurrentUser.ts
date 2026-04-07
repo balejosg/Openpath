@@ -36,13 +36,13 @@ export function useCurrentUser(): UseCurrentUserResult {
       const profile = response.user;
 
       // Extract roles from the roles array
-      const roles = profile.roles.map((r) => r.role);
+      const roles = profile.roles.map((r: { role: string }) => r.role);
 
       // Get initials from name (first letter of first two words)
       const nameParts = profile.name.split(' ').filter(Boolean);
       const initials = nameParts
         .slice(0, 2)
-        .map((n) => n[0])
+        .map((n: string) => n[0])
         .join('')
         .toUpperCase();
 
