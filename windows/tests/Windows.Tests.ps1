@@ -4,20 +4,20 @@
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 
 $script:modulePath = Join-Path $PSScriptRoot ".." "lib"
-Import-Module (Join-Path $script:modulePath "Common.psm1") -Force -ErrorAction Stop
-Import-Module (Join-Path $script:modulePath "DNS.psm1") -Force -ErrorAction Stop
-Import-Module (Join-Path $script:modulePath "Firewall.psm1") -Force -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "Common.psm1") -Force -Global -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "DNS.psm1") -Force -Global -ErrorAction Stop
+Import-Module (Join-Path $script:modulePath "Firewall.psm1") -Force -Global -ErrorAction Stop
 
 Describe "Common Module" {
     BeforeAll {
         $modulePath = Join-Path $PSScriptRoot ".." "lib"
-        Import-Module (Join-Path $modulePath "Common.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "DNS.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "Firewall.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "Services.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "Browser.Common.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "Browser.psm1") -Force -ErrorAction Stop
-        Import-Module (Join-Path $modulePath "Browser.FirefoxNativeHost.psm1") -Force -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Common.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "DNS.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Firewall.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Services.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.Common.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.psm1") -Force -Global -ErrorAction Stop
+        Import-Module (Join-Path $modulePath "Browser.FirefoxNativeHost.psm1") -Force -Global -ErrorAction Stop
     }
 
     Context "Test-AdminPrivileges" {
