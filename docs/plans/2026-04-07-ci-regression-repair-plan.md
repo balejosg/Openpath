@@ -83,6 +83,8 @@
 - Replace cross-file string assertions that hardcode `Browser.psm1` locations with module-aware helpers so future Windows module splits do not create false-red CI from moved implementations alone.
 - Replace scoped-variable path interpolation like `"$script:modulePath\Foo.psm1"` with `Join-Path` or braced interpolation across Windows tests/scripts; PowerShell can misparse scope-qualified variables before a backslash and silently generate broken import paths.
 - Remove shared mutable test state hidden behind module-scoped variables in `TestHelpers`; expose explicit accessors or test-local fixtures so Pester suite splits do not depend on script/module scope behavior.
+- Standardize Windows split-module tests on one invocation pattern (`InModuleScope` or an explicit wrapper) instead of mixing `Module\Function`, `Get-Command -Module`, and path imports; the mixed model is still causing command-resolution drift between local intent and GitHub runners.
+- Stop shell wrappers from calling repo-local CLIs as bare binaries; use `npm exec`/`npx` (or `npm run`) so clean shells and CI runners resolve workspace tools consistently.
 - Upgrade remaining GitHub Actions dependencies that still run on deprecated Node 20 (`actions/cache`, `actions/upload-artifact`, `softprops/action-gh-release`) before the June 2, 2026 default switch to Node 24.
 - Make Windows test/config consumers less noisy when `C:\OpenPath\data\config.json` is absent in CI so discovery-time module imports do not emit repeated expected-error logs.
 - Document or automate an SSH-based push path for workflow-touching changes so local pushes do not fail on HTTPS tokens without `workflow` scope.

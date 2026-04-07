@@ -22,28 +22,44 @@ Describe "Common Module" {
 
     Context "Test-AdminPrivileges" {
         It "Returns a boolean value" {
-            $result = Common\Test-AdminPrivileges
+            $result = InModuleScope Common {
+                Test-AdminPrivileges
+            }
             $result | Should -BeOfType [bool]
         }
     }
 
     Context "Write-OpenPathLog" {
         It "Writes INFO level logs" {
-            { Common\Write-OpenPathLog -Message "Test INFO message" -Level INFO } | Should -Not -Throw
+            {
+                InModuleScope Common {
+                    Write-OpenPathLog -Message "Test INFO message" -Level INFO
+                }
+            } | Should -Not -Throw
         }
 
         It "Writes WARN level logs" {
-            { Common\Write-OpenPathLog -Message "Test WARN message" -Level WARN } | Should -Not -Throw
+            {
+                InModuleScope Common {
+                    Write-OpenPathLog -Message "Test WARN message" -Level WARN
+                }
+            } | Should -Not -Throw
         }
 
         It "Writes ERROR level logs" {
-            { Common\Write-OpenPathLog -Message "Test ERROR message" -Level ERROR } | Should -Not -Throw
+            {
+                InModuleScope Common {
+                    Write-OpenPathLog -Message "Test ERROR message" -Level ERROR
+                }
+            } | Should -Not -Throw
         }
 
         It "Includes PID in log entries" {
             $logPath = "C:\OpenPath\data\logs\openpath.log"
             if (Test-Path $logPath) {
-                Common\Write-OpenPathLog -Message "PID test entry" -Level INFO
+                InModuleScope Common {
+                    Write-OpenPathLog -Message "PID test entry" -Level INFO
+                }
                 $lastLine = Get-Content $logPath -Tail 1
                 $lastLine | Should -Match "\[PID:\d+\]"
             }
@@ -52,7 +68,9 @@ Describe "Common Module" {
 
     Context "Get-PrimaryDNS" {
         It "Returns a valid IP address string" {
-            $dns = Common\Get-PrimaryDNS
+            $dns = InModuleScope Common {
+                Get-PrimaryDNS
+            }
             $dns | Should -Not -BeNullOrEmpty
             $dns | Should -Match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
         }
@@ -69,7 +87,9 @@ Describe "Common Module" {
 
     Context "Get-OpenPathRuntimeHealth" {
         It "Returns runtime health object with expected boolean properties" {
-            $health = Common\Get-OpenPathRuntimeHealth
+            $health = InModuleScope Common {
+                Get-OpenPathRuntimeHealth
+            }
 
             $health | Should -Not -BeNullOrEmpty
             $health.PSObject.Properties.Name | Should -Contain 'DnsServiceRunning'
@@ -123,17 +143,23 @@ Describe "Common Module" {
 
     Context "Machine identity helpers" {
         It "Canonicalizes machine names" {
-            (Common\ConvertTo-OpenPathMachineName -Value 'PC 01__Lab') | Should -Be 'pc-01-lab'
+            (InModuleScope Common {
+                ConvertTo-OpenPathMachineName -Value 'PC 01__Lab'
+            }) | Should -Be 'pc-01-lab'
         }
 
         It "Builds classroom-scoped machine names" {
-            $scoped = Common\New-OpenPathScopedMachineName -Hostname 'PC 01__Lab' -ClassroomId 'classroom-123'
+            $scoped = InModuleScope Common {
+                New-OpenPathScopedMachineName -Hostname 'PC 01__Lab' -ClassroomId 'classroom-123'
+            }
             $scoped | Should -Match '^pc-01-lab-[a-f0-9]{8}$'
             $scoped.Length | Should -BeLessOrEqual 63
         }
 
         It "Builds canonical registration payloads" {
-            $body = Common\New-OpenPathMachineRegistrationBody -MachineName 'pc-01-abcd1234' -Version '4.1.0' -ClassroomId 'classroom-123'
+            $body = InModuleScope Common {
+                New-OpenPathMachineRegistrationBody -MachineName 'pc-01-abcd1234' -Version '4.1.0' -ClassroomId 'classroom-123'
+            }
             $body.hostname | Should -Be 'pc-01-abcd1234'
             $body.version | Should -Be '4.1.0'
             $body.classroomId | Should -Be 'classroom-123'
@@ -141,17 +167,19 @@ Describe "Common Module" {
         }
 
         It "Resolves registration responses with server-issued machine names" {
-            $registration = Common\Resolve-OpenPathMachineRegistration `
-                -Response ([PSCustomObject]@{
-                    success = $true
-                    whitelistUrl = 'https://api.example.com/w/token/whitelist.txt'
-                    classroomName = 'Room 101'
-                    classroomId = 'classroom-123'
-                    machineHostname = 'pc-01-abcd1234'
-                }) `
-                -MachineName 'pc-01-lab' `
-                -Classroom 'Room Local' `
-                -ClassroomId 'fallback-id'
+            $registration = InModuleScope Common {
+                Resolve-OpenPathMachineRegistration `
+                    -Response ([PSCustomObject]@{
+                        success = $true
+                        whitelistUrl = 'https://api.example.com/w/token/whitelist.txt'
+                        classroomName = 'Room 101'
+                        classroomId = 'classroom-123'
+                        machineHostname = 'pc-01-abcd1234'
+                    }) `
+                    -MachineName 'pc-01-lab' `
+                    -Classroom 'Room Local' `
+                    -ClassroomId 'fallback-id'
+            }
 
             $registration.WhitelistUrl | Should -Be 'https://api.example.com/w/token/whitelist.txt'
             $registration.Classroom | Should -Be 'Room 101'
@@ -162,7 +190,9 @@ Describe "Common Module" {
 
     Context "Self-update helpers" {
         It "Extracts machine token from whitelist URL" {
-            $token = Common\Get-OpenPathMachineTokenFromWhitelistUrl -WhitelistUrl "https://api.example.com/w/abc123token/whitelist.txt"
+            $token = InModuleScope Common {
+                Get-OpenPathMachineTokenFromWhitelistUrl -WhitelistUrl "https://api.example.com/w/abc123token/whitelist.txt"
+            }
             $token | Should -Be 'abc123token'
         }
 
@@ -174,7 +204,9 @@ Describe "Common Module" {
                 }
             } -ModuleName Common
 
-            $domains = Common\Get-OpenPathProtectedDomains
+            $domains = InModuleScope Common {
+                Get-OpenPathProtectedDomains
+            }
 
             $domains | Should -Contain 'classroompath.example'
             $domains | Should -Contain 'downloads.example'
@@ -186,9 +218,15 @@ Describe "Common Module" {
         }
 
         It "Compares versions correctly" {
-            (Common\Compare-OpenPathVersion -CurrentVersion '4.1.0' -TargetVersion '4.2.0') | Should -BeLessThan 0
-            (Common\Compare-OpenPathVersion -CurrentVersion '4.2.0' -TargetVersion '4.2.0') | Should -Be 0
-            (Common\Compare-OpenPathVersion -CurrentVersion '4.3.0' -TargetVersion '4.2.0') | Should -BeGreaterThan 0
+            (InModuleScope Common {
+                Compare-OpenPathVersion -CurrentVersion '4.1.0' -TargetVersion '4.2.0'
+            }) | Should -BeLessThan 0
+            (InModuleScope Common {
+                Compare-OpenPathVersion -CurrentVersion '4.2.0' -TargetVersion '4.2.0'
+            }) | Should -Be 0
+            (InModuleScope Common {
+                Compare-OpenPathVersion -CurrentVersion '4.3.0' -TargetVersion '4.2.0'
+            }) | Should -BeGreaterThan 0
         }
     }
 
@@ -206,7 +244,11 @@ Describe "Common Module" {
                     ''
                 ) | Set-Content $tempFile -Encoding UTF8
 
-                $domains = Common\Get-ValidWhitelistDomainsFromFile -Path $tempFile
+                $domains = InModuleScope Common -Parameters @{
+                    TempFile = $tempFile
+                } {
+                    Get-ValidWhitelistDomainsFromFile -Path $TempFile
+                }
 
                 $domains | Should -Contain 'google.com'
                 $domains | Should -Contain 'example.org'
@@ -219,17 +261,24 @@ Describe "Common Module" {
         }
 
         It "Returns an empty array when file does not exist" {
-            $domains = Common\Get-ValidWhitelistDomainsFromFile -Path (Join-Path $env:TEMP ([Guid]::NewGuid().ToString() + '.txt'))
+            $missingPath = Join-Path $env:TEMP ([Guid]::NewGuid().ToString() + '.txt')
+            $domains = InModuleScope Common -Parameters @{
+                MissingPath = $missingPath
+            } {
+                Get-ValidWhitelistDomainsFromFile -Path $MissingPath
+            }
             @($domains).Count | Should -Be 0
         }
     }
 
     Context "ConvertTo-OpenPathWhitelistFileContent" {
         It "Serializes whitelist, blocked subdomains, and blocked paths sections" {
-            $content = Common\ConvertTo-OpenPathWhitelistFileContent `
-                -Whitelist @('allowed.example') `
-                -BlockedSubdomains @('ads.allowed.example') `
-                -BlockedPaths @('allowed.example/private')
+            $content = InModuleScope Common {
+                ConvertTo-OpenPathWhitelistFileContent `
+                    -Whitelist @('allowed.example') `
+                    -BlockedSubdomains @('ads.allowed.example') `
+                    -BlockedPaths @('allowed.example/private')
+            }
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '## WHITELIST',
@@ -244,44 +293,54 @@ Describe "Common Module" {
 
     Context "Get-HostFromUrl" {
         It "Returns host for a valid URL" {
-            $parsedHost = Common\Get-HostFromUrl -Url 'https://api.example.com/path?x=1'
+            $parsedHost = InModuleScope Common {
+                Get-HostFromUrl -Url 'https://api.example.com/path?x=1'
+            }
             $parsedHost | Should -Be 'api.example.com'
         }
 
         It "Returns null for invalid URL" {
-            $parsedHost = Common\Get-HostFromUrl -Url 'not-a-valid-url'
+            $parsedHost = InModuleScope Common {
+                Get-HostFromUrl -Url 'not-a-valid-url'
+            }
             $parsedHost | Should -BeNullOrEmpty
         }
 
         It "Returns null for empty URL" {
-            $parsedHost = Common\Get-HostFromUrl -Url ''
+            $parsedHost = InModuleScope Common {
+                Get-HostFromUrl -Url ''
+            }
             $parsedHost | Should -BeNullOrEmpty
         }
     }
 
     Context "Test-OpenPathDomainFormat" {
         It "Accepts syntactically valid domains" {
-            (Common\Test-OpenPathDomainFormat -Domain 'google.com') | Should -BeTrue
-            (Common\Test-OpenPathDomainFormat -Domain 'sub.example.org') | Should -BeTrue
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain 'google.com' }) | Should -BeTrue
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain 'sub.example.org' }) | Should -BeTrue
         }
 
         It "Rejects invalid domain values" {
-            (Common\Test-OpenPathDomainFormat -Domain 'invalid domain') | Should -BeFalse
-            (Common\Test-OpenPathDomainFormat -Domain 'bad..domain.com') | Should -BeFalse
-            (Common\Test-OpenPathDomainFormat -Domain '-bad.example.com') | Should -BeFalse
-            (Common\Test-OpenPathDomainFormat -Domain '') | Should -BeFalse
-            (Common\Test-OpenPathDomainFormat -Domain $null) | Should -BeFalse
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain 'invalid domain' }) | Should -BeFalse
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain 'bad..domain.com' }) | Should -BeFalse
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain '-bad.example.com' }) | Should -BeFalse
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain '' }) | Should -BeFalse
+            (InModuleScope Common { Test-OpenPathDomainFormat -Domain $null }) | Should -BeFalse
         }
 
         It "Matches shared domain contract fixtures" {
             $validDomains = Get-ContractFixtureLines -FileName 'domain-valid.txt'
             foreach ($domain in $validDomains) {
-                (Common\Test-OpenPathDomainFormat -Domain $domain) | Should -BeTrue
+                (InModuleScope Common -Parameters @{ Domain = $domain } {
+                    Test-OpenPathDomainFormat -Domain $Domain
+                }) | Should -BeTrue
             }
 
             $invalidDomains = Get-ContractFixtureLines -FileName 'domain-invalid.txt'
             foreach ($domain in $invalidDomains) {
-                (Common\Test-OpenPathDomainFormat -Domain $domain) | Should -BeFalse
+                (InModuleScope Common -Parameters @{ Domain = $domain } {
+                    Test-OpenPathDomainFormat -Domain $Domain
+                }) | Should -BeFalse
             }
         }
     }
@@ -294,7 +353,9 @@ Describe "Common Module" {
 
     Context "Test-InternetConnection" {
         It "Returns a boolean value" {
-            $result = Common\Test-InternetConnection
+            $result = InModuleScope Common {
+                Test-InternetConnection
+            }
             $result | Should -BeOfType [bool]
         }
     }
