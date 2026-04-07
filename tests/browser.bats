@@ -448,6 +448,33 @@ EOF
     [ "$status" -eq 1 ]
 }
 
+@test "sync_firefox_managed_extension_policy prefers the configured OpenPath API route" {
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    export ETC_CONFIG_DIR="$TEST_TMP_DIR/etc/openpath"
+    mkdir -p "$release_dir" "$ETC_CONFIG_DIR"
+    printf '%s\n' 'https://school.example/' > "$ETC_CONFIG_DIR/api-url.conf"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    curl() {
+        printf '%s\n' "$*" > "$TEST_TMP_DIR/curl-args"
+        return 0
+    }
+    add_extension_to_policies() {
+        printf '%s\n%s\n%s\n' "$1" "$2" "$3" > "$TEST_TMP_DIR/policy-args"
+        return 0
+    }
+    export -f curl add_extension_to_policies
+
+    run sync_firefox_managed_extension_policy "$release_dir"
+    [ "$status" -eq 0 ]
+
+    mapfile -t policy_args < "$TEST_TMP_DIR/policy-args"
+    [ "${policy_args[0]}" = "monitor-bloqueos@openpath" ]
+    [ "${policy_args[1]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_args[2]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
+}
+
 @test "install_browser_integrations keeps Chromium best-effort while wiring native host with extension id" {
     local ext_dir="$TEST_TMP_DIR/firefox-extension"
     local release_dir="$TEST_TMP_DIR/firefox-release"
@@ -546,6 +573,32 @@ with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
 entry = policies["policies"]["ExtensionSettings"]["test-ext@test"]
 assert entry["install_url"] == "https://downloads.example/test-ext.xpi"
 assert "https://downloads.example/test-ext.xpi" in policies["policies"]["Extensions"]["Install"]
+PYEOF
+}
+
+@test "add_extension_to_policies replaces stale install entries for the same extension" {
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run add_extension_to_policies "monitor-bloqueos@openpath" "$TEST_TMP_DIR/unpacked-extension"
+    [ "$status" -eq 0 ]
+
+    run add_extension_to_policies \
+        "monitor-bloqueos@openpath" \
+        "$TEST_TMP_DIR/openpath-firefox-extension.xpi" \
+        "https://school.example/api/extensions/firefox/openpath.xpi"
+    [ "$status" -eq 0 ]
+
+    python3 - <<PYEOF
+import json
+
+with open("$FIREFOX_POLICIES", "r", encoding="utf-8") as fh:
+    policies = json.load(fh)
+
+install_entries = policies["policies"]["Extensions"]["Install"]
+old_entry = "$TEST_TMP_DIR/unpacked-extension"
+assert old_entry not in install_entries, install_entries
+assert install_entries.count("https://school.example/api/extensions/firefox/openpath.xpi") == 1
+assert policies["policies"]["ExtensionSettings"]["monitor-bloqueos@openpath"]["install_url"] == "https://school.example/api/extensions/firefox/openpath.xpi"
 PYEOF
 }
 

@@ -50,6 +50,7 @@ mutate_firefox_policies() {
 import json
 import os
 import sys
+from urllib.parse import unquote, urlparse
 
 policies_file = os.environ["FIREFOX_POLICIES"]
 action = os.environ["FIREFOX_POLICY_ACTION"]
@@ -171,6 +172,7 @@ def ensure_managed_extension(policy_root):
         raise SystemExit(1)
 
     extension_settings = policy_root.setdefault("ExtensionSettings", {})
+    previous_entry = extension_settings.get(ext_id)
     extension_settings[ext_id] = {
         "installation_mode": "force_installed",
         "install_url": install_url,
@@ -178,6 +180,23 @@ def ensure_managed_extension(policy_root):
 
     extensions = policy_root.setdefault("Extensions", {})
     installs = extensions.setdefault("Install", [])
+    install_targets = set()
+    if isinstance(previous_entry, dict):
+        previous_install_url = previous_entry.get("install_url")
+        if isinstance(previous_install_url, str) and previous_install_url:
+            install_targets.add(previous_install_url)
+
+            parsed = urlparse(previous_install_url)
+            if parsed.scheme == "file":
+                try:
+                    install_targets.add(unquote(parsed.path))
+                except Exception:
+                    pass
+
+    if isinstance(installs, list) and install_targets:
+        installs = [item for item in installs if item not in install_targets]
+        extensions["Install"] = installs
+
     if install_entry and install_entry not in installs:
         installs.append(install_entry)
 
@@ -887,23 +906,124 @@ PYEOF
     printf '%s\n' "$policy_lines"
 }
 
+get_openpath_api_url_conf() {
+    echo "${OPENPATH_API_URL_CONF:-$ETC_CONFIG_DIR/api-url.conf}"
+}
+
+read_openpath_api_base_url() {
+    local api_url_conf
+    api_url_conf="$(get_openpath_api_url_conf)"
+
+    if [ ! -r "$api_url_conf" ]; then
+        return 1
+    fi
+
+    local api_url=""
+    api_url="$(tr -d '\r\n' < "$api_url_conf" 2>/dev/null || true)"
+    api_url="${api_url%/}"
+
+    if [ -z "$api_url" ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$api_url"
+}
+
+resolve_firefox_managed_extension_id() {
+    local release_dir="${1:-$INSTALL_DIR/firefox-release}"
+    local metadata_path="$release_dir/metadata.json"
+    local ext_id=""
+
+    if [ -f "$metadata_path" ]; then
+        ext_id="$(
+            python3 << PYEOF
+import json
+from pathlib import Path
+
+metadata_path = Path("$metadata_path")
+
+try:
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+extension_id = str(metadata.get("extensionId", "")).strip()
+if not extension_id:
+    raise SystemExit(2)
+
+print(extension_id)
+PYEOF
+        )" || ext_id=""
+    fi
+
+    if [ -n "$ext_id" ]; then
+        printf '%s\n' "$ext_id"
+        return 0
+    fi
+
+    printf '%s\n' "$FIREFOX_MANAGED_EXTENSION_ID"
+}
+
+openpath_can_fetch_managed_firefox_xpi() {
+    local install_url="$1"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if curl -fsSIL --max-time 5 "$install_url" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    curl -fsSL --max-time 5 --range 0-0 -o /dev/null "$install_url" >/dev/null 2>&1
+}
+
+get_firefox_managed_api_extension_policy() {
+    local release_dir="${1:-$INSTALL_DIR/firefox-release}"
+    local api_base_url=""
+    api_base_url="$(read_openpath_api_base_url)" || return 1
+
+    local install_url="${api_base_url}/api/extensions/firefox/openpath.xpi"
+    openpath_can_fetch_managed_firefox_xpi "$install_url" || return 1
+
+    local ext_id=""
+    ext_id="$(resolve_firefox_managed_extension_id "$release_dir")" || return 1
+
+    printf '%s\n%s\n%s\n' "$ext_id" "$install_url" "$install_url"
+}
+
+sync_firefox_managed_extension_policy() {
+    local release_source="${1:-$INSTALL_DIR/firefox-release}"
+    local managed_policy=""
+    local managed_policy_values=()
+
+    if managed_policy="$(get_firefox_managed_api_extension_policy "$release_source")"; then
+        :
+    elif managed_policy="$(get_firefox_release_extension_policy "$release_source")"; then
+        :
+    else
+        return 1
+    fi
+
+    mapfile -t managed_policy_values <<< "$managed_policy"
+    add_extension_to_policies \
+        "${managed_policy_values[0]}" \
+        "${managed_policy_values[1]}" \
+        "${managed_policy_values[2]}"
+}
+
 # ============================================================================
 # FIREFOX EXTENSION INSTALLATION
 # ============================================================================
 
 install_firefox_release_extension() {
     local release_source="${1:-$INSTALL_DIR/firefox-release}"
-    local ext_id="$FIREFOX_MANAGED_EXTENSION_ID"
-    local managed_policy=""
-    local managed_policy_values=()
+    if ! sync_firefox_managed_extension_policy "$release_source"; then
+        return 1
+    fi
 
-    managed_policy="$(get_firefox_release_extension_policy "$release_source")" || return 1
-    mapfile -t managed_policy_values <<< "$managed_policy"
-    ext_id="${managed_policy_values[0]}"
-
-    log "Installing Firefox extension from signed release artifacts..."
-    add_extension_to_policies "$ext_id" "${managed_policy_values[1]}" "${managed_policy_values[2]}"
-    log "✓ Firefox extension installed from signed release artifacts"
+    log "Installing Firefox extension from managed release artifacts..."
+    log "✓ Firefox extension installed from managed release artifacts"
     return 0
 }
 

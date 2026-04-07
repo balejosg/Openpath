@@ -238,3 +238,8 @@ EOF
     run grep -n "apply_runtime_reconciliation_plan" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
     [ "$status" -eq 0 ]
 }
+
+@test "openpath-update synchronizes the managed Firefox extension policy before hashing browser policies" {
+    run grep -n "sync_firefox_managed_extension_policy" "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+    [ "$status" -eq 0 ]
+}

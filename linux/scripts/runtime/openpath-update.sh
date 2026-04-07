@@ -360,6 +360,7 @@ EOF
     generate_firefox_policies
     generate_chromium_policies
     apply_search_engine_policies
+    sync_firefox_managed_extension_policy "/usr/share/openpath/firefox-release" || true
 
     # Verificar si las políticas de navegador cambiaron
     # Comparar contra hash guardado de ejecución anterior, no contra hash pre-regeneración
