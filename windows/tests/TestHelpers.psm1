@@ -48,6 +48,7 @@ function Assert-ContentContainsAll {
 
 function Initialize-FirewallRuleCaptureMocks {
     $script:createdFirewallRules = @()
+    $script:acrylicServicePresent = $false
 
     Mock Test-AdminPrivileges { $true } -ModuleName Firewall
     Mock Remove-OpenPathFirewall { $true } -ModuleName Firewall
@@ -78,11 +79,20 @@ function Initialize-FirewallRuleCaptureMocks {
         return [PSCustomObject]@{ DisplayName = $DisplayName }
     } -ModuleName Firewall
 
-    Mock Test-Path { $false } -ModuleName Firewall -ParameterFilter { $Path -like '*AcrylicService.exe' }
+    Mock Test-Path { $script:acrylicServicePresent } -ModuleName Firewall -ParameterFilter { $Path -like '*AcrylicService.exe' }
 }
 
 function Get-CapturedFirewallRules {
     return @($script:createdFirewallRules)
+}
+
+function Set-FirewallAcrylicServicePresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$Present
+    )
+
+    $script:acrylicServicePresent = $Present
 }
 
 function Get-ContractFixturePath {
@@ -132,6 +142,7 @@ Export-ModuleMember -Function @(
     'Assert-ContentContainsAll',
     'Initialize-FirewallRuleCaptureMocks',
     'Get-CapturedFirewallRules',
+    'Set-FirewallAcrylicServicePresent',
     'Get-ContractFixturePath',
     'Get-ContractFixtureLines',
     'Get-ContractFixtureJson'

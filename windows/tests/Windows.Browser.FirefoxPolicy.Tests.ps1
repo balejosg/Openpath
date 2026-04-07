@@ -197,18 +197,20 @@ Describe "Browser Module - Firefox Policy" {
 
         It "Converts unresolved staged Windows XPI paths into file URLs" {
             $contract = Get-ContractFixtureJson -FileName 'browser-firefox-managed-extension.json'
+            $convertToFileUrl = Get-Command -Module Browser.Common -Name ConvertTo-OpenPathFileUrl -CommandType Function -ErrorAction Stop
 
             Mock Resolve-Path { $null } -ModuleName Browser.Common
 
-            $result = ConvertTo-OpenPathFileUrl -Path 'C:\OpenPath\browser-extension\firefox-release\openpath-firefox-extension.xpi'
+            $result = & $convertToFileUrl -Path 'C:\OpenPath\browser-extension\firefox-release\openpath-firefox-extension.xpi'
             $result | Should -Be $contract.stagedReleaseInstallUrl
         }
 
         It "Writes UTF-8 text files without a BOM" {
             $tempFile = Join-Path $TestDrive 'policies.json'
             $json = '{"policies":{"DisableTelemetry":true}}'
+            $writeUtf8NoBomFile = Get-Command -Module Browser.Common -Name Write-OpenPathUtf8NoBomFile -CommandType Function -ErrorAction Stop
 
-            Write-OpenPathUtf8NoBomFile -Path $tempFile -Value $json
+            & $writeUtf8NoBomFile -Path $tempFile -Value $json
 
             $bytes = [System.IO.File]::ReadAllBytes($tempFile)
             $hasUtf8Bom = $bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191
