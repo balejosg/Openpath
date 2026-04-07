@@ -312,6 +312,7 @@ step_install_libraries() {
     cp "$INSTALLER_SOURCE_DIR/lib/firefox-managed-extension.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/firefox-extension-assets.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/libexec/browser-json.py" "$INSTALL_DIR/libexec/"
+    cp "$INSTALLER_SOURCE_DIR/../runtime/browser-policy-spec.json" "$INSTALL_DIR/libexec/"
     cp "$INSTALLER_SOURCE_DIR/lib/services.sh" "$INSTALL_DIR/lib/"
     cp "$INSTALLER_SOURCE_DIR/lib/rollback.sh" "$INSTALL_DIR/lib/"
 

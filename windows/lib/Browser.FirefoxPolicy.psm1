@@ -2,6 +2,7 @@
 
 $script:OpenPathRoot = "C:\OpenPath"
 Import-Module "$PSScriptRoot\Common.psm1" -Force -ErrorAction SilentlyContinue
+Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction SilentlyContinue
 
 function Get-OpenPathFirefoxExtensionRoot {
     return "$script:OpenPathRoot\browser-extension\firefox"
@@ -13,75 +14,6 @@ function Get-OpenPathFirefoxReleaseMetadataPath {
 
 function Get-OpenPathFirefoxReleaseXpiPath {
     return "$script:OpenPathRoot\browser-extension\firefox-release\openpath-firefox-extension.xpi"
-}
-
-function ConvertTo-OpenPathFileUrl {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    $absolutePath = ''
-    if ($Path -match '^[A-Za-z]:[\\/]') {
-        $absolutePath = $Path
-    }
-    else {
-        $resolvedPath = Resolve-Path $Path -ErrorAction SilentlyContinue
-        $providerPath = if ($resolvedPath) { $resolvedPath.ProviderPath } else { $Path }
-        $absolutePath = [System.IO.Path]::GetFullPath($providerPath)
-    }
-
-    if ($absolutePath.StartsWith('\')) {
-        $uncParts = $absolutePath.TrimStart('\') -split '\\', 2
-        $uriBuilder = [System.UriBuilder]::new()
-        $uriBuilder.Scheme = [System.Uri]::UriSchemeFile
-        $uriBuilder.Host = $uncParts[0]
-        $uriBuilder.Path = if ($uncParts.Length -gt 1) { $uncParts[1] -replace '\\', '/' } else { '' }
-        return $uriBuilder.Uri.AbsoluteUri
-    }
-
-    $uriBuilder = [System.UriBuilder]::new()
-    $uriBuilder.Scheme = [System.Uri]::UriSchemeFile
-    $uriBuilder.Host = ''
-    $uriBuilder.Path = $absolutePath -replace '\\', '/'
-    return $uriBuilder.Uri.AbsoluteUri
-}
-
-function Write-OpenPathUtf8NoBomFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [AllowNull()]
-        [string]$Value
-    )
-
-    $parent = Split-Path $Path -Parent
-    if ($parent -and -not (Test-Path $parent)) {
-        New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    }
-
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText($Path, $Value, $utf8NoBom)
-}
-
-function Get-OpenPathConfigTrimmedValue {
-    param(
-        [AllowNull()]
-        [object]$Config,
-
-        [Parameter(Mandatory = $true)]
-        [string]$PropertyName
-    )
-
-    if (
-        $Config -and
-        $Config.PSObject.Properties[$PropertyName] -and
-        $Config.PSObject.Properties[$PropertyName].Value
-    ) {
-        return ([string]$Config.PSObject.Properties[$PropertyName].Value).Trim()
-    }
-
-    return ''
 }
 
 function Get-OpenPathConfiguredFirefoxManagedExtensionPolicy {
@@ -160,7 +92,7 @@ function Resolve-OpenPathFirefoxReleaseInstallSpec {
 
     if (Test-Path $signedXpiPath) {
         return [PSCustomObject]@{
-            InstallUrl = (ConvertTo-OpenPathFileUrl -Path $signedXpiPath)
+            InstallUrl = (Browser.Common\ConvertTo-OpenPathFileUrl -Path $signedXpiPath)
             Source = 'staged-release'
         }
     }
@@ -234,6 +166,8 @@ function Set-FirefoxPolicy {
     $unsignedExtensionManifest = Join-Path (Get-OpenPathFirefoxExtensionRoot) 'manifest.json'
     $managedExtensionPolicy = Get-OpenPathFirefoxManagedExtensionPolicy
     $signedExtensionWarningWritten = $false
+    $policySpec = Browser.Common\Get-OpenPathBrowserPolicySpec
+    $firefoxSpec = $policySpec.firefox
 
     foreach ($firefoxPath in $firefoxPaths) {
         $firefoxExe = Split-Path $firefoxPath -Parent
@@ -257,45 +191,24 @@ function Set-FirefoxPolicy {
             }
         }
 
-        $blockedUrls += @(
-            "*://www.google.com/search*",
-            "*://www.google.es/search*",
-            "*://google.com/search*",
-            "*://google.es/search*"
-        )
+        $blockedUrls += @($firefoxSpec.googleSearchBlocks)
 
         $policies = @{
             policies = @{
                 SearchEngines = @{
-                    Remove = @("Google", "Bing")
-                    Default = "DuckDuckGo"
-                    Add = @(
-                        @{
-                            Name = "DuckDuckGo"
-                            Description = "Privacy-focused search engine"
-                            Alias = "ddg"
-                            Method = "GET"
-                            URLTemplate = "https://duckduckgo.com/?q={searchTerms}"
-                            IconURL = "https://duckduckgo.com/favicon.ico"
-                        },
-                        @{
-                            Name = "Wikipedia (ES)"
-                            Description = "Free encyclopedia"
-                            Alias = "wiki"
-                            Method = "GET"
-                            URLTemplate = "https://es.wikipedia.org/wiki/Special:Search?search={searchTerms}"
-                        }
-                    )
+                    Remove = @($firefoxSpec.searchEngines.remove)
+                    Default = [string]$firefoxSpec.searchEngines.default
+                    Add = @($firefoxSpec.searchEngines.add)
                 }
                 WebsiteFilter = @{
                     Block = $blockedUrls
                 }
                 DNSOverHTTPS = @{
-                    Enabled = $false
-                    Locked = $true
+                    Enabled = [bool]$firefoxSpec.dnsOverHttps.Enabled
+                    Locked = [bool]$firefoxSpec.dnsOverHttps.Locked
                 }
-                DisableTelemetry = $true
-                OverrideFirstRunPage = ""
+                DisableTelemetry = [bool]$firefoxSpec.disableTelemetry
+                OverrideFirstRunPage = [string]$firefoxSpec.overrideFirstRunPage
             }
         }
 
@@ -320,7 +233,7 @@ function Set-FirefoxPolicy {
 
         $policiesPath = "$firefoxPath\policies.json"
         $policiesJson = $policies | ConvertTo-Json -Depth 10
-        Write-OpenPathUtf8NoBomFile -Path $policiesPath -Value $policiesJson
+        Browser.Common\Write-OpenPathUtf8NoBomFile -Path $policiesPath -Value $policiesJson
 
         Write-OpenPathLog "Firefox policies written to: $policiesPath"
         $policiesSet = $true
@@ -337,7 +250,6 @@ Export-ModuleMember -Function @(
     'Get-OpenPathFirefoxExtensionRoot',
     'Get-OpenPathFirefoxReleaseMetadataPath',
     'Get-OpenPathFirefoxReleaseXpiPath',
-    'Get-OpenPathConfigTrimmedValue',
     'Get-OpenPathFirefoxManagedExtensionPolicy',
     'Set-FirefoxPolicy'
 )

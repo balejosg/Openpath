@@ -33,6 +33,26 @@ def env_blocked_paths() -> list[str]:
     ]
 
 
+def get_browser_policy_spec_path() -> Path:
+    override_path = os.environ.get("OPENPATH_BROWSER_POLICY_SPEC", "").strip()
+    if override_path:
+        return Path(override_path)
+
+    installed_path = Path(__file__).resolve().with_name("browser-policy-spec.json")
+    if installed_path.is_file():
+        return installed_path
+
+    source_tree_path = Path(__file__).resolve().parents[2] / "runtime" / "browser-policy-spec.json"
+    if source_tree_path.is_file():
+        return source_tree_path
+
+    raise FileNotFoundError("Browser policy spec not found")
+
+
+def load_browser_policy_spec() -> dict:
+    return json.loads(get_browser_policy_spec_path().read_text(encoding="utf-8"))
+
+
 def normalize_firefox_path(path: str) -> str:
     clean = path
     for prefix in ("http://", "https://", "*://"):
@@ -147,43 +167,27 @@ def cmd_mutate_firefox_policies(args: argparse.Namespace) -> int:
         policy_root["WebsiteFilter"] = {"Block": normalized_paths}
         print(f"Firefox: {len(normalized_paths)} paths bloqueados")
     elif action == "apply_dynamic_defaults":
+        browser_policy_spec = load_browser_policy_spec()
+        firefox_spec = browser_policy_spec["firefox"]
         policy_root["SearchEngines"] = {
-            "Remove": ["Google", "Bing"],
-            "Default": "DuckDuckGo",
-            "Add": [
-                {
-                    "Name": "DuckDuckGo",
-                    "Description": "Motor de busqueda centrado en privacidad",
-                    "Alias": "ddg",
-                    "Method": "GET",
-                    "URLTemplate": "https://duckduckgo.com/?q={searchTerms}",
-                    "IconURL": "https://duckduckgo.com/favicon.ico",
-                    "SuggestURLTemplate": "https://ac.duckduckgo.com/ac/?q={searchTerms}&type=list",
-                },
-                {
-                    "Name": "Wikipedia (ES)",
-                    "Description": "Enciclopedia libre",
-                    "Alias": "wiki",
-                    "Method": "GET",
-                    "URLTemplate": "https://es.wikipedia.org/wiki/Special:Search?search={searchTerms}",
-                    "IconURL": "https://es.wikipedia.org/static/favicon/wikipedia.ico",
-                },
-            ],
+            "Remove": list(firefox_spec["searchEngines"]["remove"]),
+            "Default": firefox_spec["searchEngines"]["default"],
+            "Add": list(firefox_spec["searchEngines"]["add"]),
         }
 
         website_filter = policy_root.setdefault("WebsiteFilter", {"Block": []})
         block_list = website_filter.setdefault("Block", [])
-        google_blocks = [
-            "*://www.google.com/search*",
-            "*://www.google.es/search*",
-            "*://google.com/search*",
-            "*://google.es/search*",
-        ]
+        google_blocks = list(firefox_spec["googleSearchBlocks"])
         for block in google_blocks:
             if block not in block_list:
                 block_list.append(block)
 
-        policy_root["DNSOverHTTPS"] = {"Enabled": False, "Locked": True}
+        policy_root["DNSOverHTTPS"] = {
+            "Enabled": bool(firefox_spec["dnsOverHttps"]["Enabled"]),
+            "Locked": bool(firefox_spec["dnsOverHttps"]["Locked"]),
+        }
+        policy_root["DisableTelemetry"] = bool(firefox_spec.get("disableTelemetry", True))
+        policy_root["OverrideFirstRunPage"] = str(firefox_spec.get("overrideFirstRunPage", ""))
         print("DoH bloqueado, SearchEngines y bloqueos de Google aplicados")
     elif action == "clear_dynamic_restrictions":
         for key in ("WebsiteFilter", "SearchEngines", "DNSOverHTTPS"):

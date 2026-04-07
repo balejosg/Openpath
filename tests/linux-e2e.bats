@@ -352,6 +352,9 @@ EOF
 }
 
 @test "windows browser policies only force-install Firefox from signed distribution settings" {
+    run grep -nF 'Import-Module "$PSScriptRoot\Browser.Common.psm1"' "$PROJECT_DIR/windows/lib/Browser.psm1"
+    [ "$status" -eq 0 ]
+
     run grep -nF 'Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1"' "$PROJECT_DIR/windows/lib/Browser.psm1"
     [ "$status" -eq 0 ]
 
@@ -379,6 +382,20 @@ EOF
     [ "$status" -eq 0 ]
 
     run test -f "$PROJECT_DIR/linux/libexec/browser-json.py"
+    [ "$status" -eq 0 ]
+}
+
+@test "browser runtimes stage the shared browser policy spec" {
+    run grep -nF '$INSTALLER_SOURCE_DIR/../runtime/browser-policy-spec.json' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$LINUX_DIR/../runtime/browser-policy-spec.json' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'browser-policy-spec.json' "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run test -f "$PROJECT_DIR/runtime/browser-policy-spec.json"
     [ "$status" -eq 0 ]
 }
 

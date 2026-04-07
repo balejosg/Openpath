@@ -1,0 +1,128 @@
+@test "generate_chromium_policies creates directories" {
+    BLOCKED_PATHS=("example.com/ads")
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run generate_chromium_policies
+    [ "$status" -eq 0 ]
+    [ -d "$CHROMIUM_POLICIES_BASE" ]
+}
+
+@test "generate_chromium_policies creates policies file" {
+    BLOCKED_PATHS=("example.com/ads")
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run generate_chromium_policies
+    [ "$status" -eq 0 ]
+    [ -f "$CHROMIUM_POLICIES_BASE/openpath.json" ]
+}
+
+@test "generate_chromium_policies JSON contains URLBlocklist" {
+    BLOCKED_PATHS=("example.com/ads")
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run generate_chromium_policies
+
+    grep -q "URLBlocklist" "$CHROMIUM_POLICIES_BASE/openpath.json"
+}
+
+@test "install_browser_integrations keeps Chromium best-effort while wiring native host with extension id" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$ext_dir" "$release_dir"
+    export OPENPATH_CHROMIUM_EXTENSION_DIR="$TEST_TMP_DIR/browser-extension"
+    mkdir -p "$OPENPATH_CHROMIUM_EXTENSION_DIR"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    install_firefox_extension() {
+        echo "install_firefox_extension $1 $2"
+        return 0
+    }
+    install_chromium_extension() {
+        echo "install_chromium_extension $1"
+        printf '%s\n' "abcdefghijklmnopabcdefghijklmnop" > "$(get_chromium_extension_id_file)"
+        return 0
+    }
+    install_native_host() {
+        echo "install_native_host $1 $2"
+        return 0
+    }
+    export -f install_firefox_extension install_chromium_extension install_native_host
+
+    run install_browser_integrations "$ext_dir" "$release_dir" true false true false
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"install_firefox_extension $ext_dir $release_dir"* ]]
+    [[ "$output" == *"install_chromium_extension $ext_dir"* ]]
+    [[ "$output" == *"install_native_host $ext_dir/native abcdefghijklmnopabcdefghijklmnop"* ]]
+}
+
+@test "install_browser_integrations warns and continues when Chromium install is best-effort" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$ext_dir" "$release_dir"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    install_firefox_extension() { return 0; }
+    install_chromium_extension() { return 1; }
+    install_native_host() { echo "install_native_host $1 $2"; return 0; }
+    export -f install_firefox_extension install_chromium_extension install_native_host
+
+    run install_browser_integrations "$ext_dir" "$release_dir" true false true true
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠ Extensión Chrome/Edge no instalada (se puede reintentar más tarde)"* ]]
+    [[ "$output" == *"install_native_host $ext_dir/native"* ]]
+}
+
+@test "install_chromium_extension_preferences writes Chrome and Edge descriptors" {
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    run install_chromium_extension_preferences \
+        "abcdefghijklmnopabcdefghijklmnop" \
+        "$TEST_TMP_DIR/packages/openpath.crx" \
+        "1.2.3"
+    [ "$status" -eq 0 ]
+
+    [ -f "$CHROME_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json" ]
+    [ -f "$EDGE_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json" ]
+
+    grep -q '"external_crx"' "$CHROME_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json"
+    grep -q '"1.2.3"' "$CHROME_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json"
+    grep -q '"external_crx"' "$EDGE_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json"
+    grep -q '"1.2.3"' "$EDGE_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json"
+}
+
+@test "install_chromium_extension installs descriptors from generated artifacts" {
+    local ext_dir="$TEST_TMP_DIR/firefox-extension"
+    mkdir -p "$ext_dir"
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    build_chromium_extension_artifacts() {
+        mkdir -p "$TEST_TMP_DIR/packages"
+        touch "$TEST_TMP_DIR/packages/openpath.crx"
+        cat << EOF
+EXT_ID=abcdefghijklmnopabcdefghijklmnop
+CRX_PATH=$TEST_TMP_DIR/packages/openpath.crx
+VERSION=1.2.3
+EOF
+        return 0
+    }
+    export -f build_chromium_extension_artifacts
+
+    run install_chromium_extension "$ext_dir"
+    [ "$status" -eq 0 ]
+
+    [ -f "$CHROME_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json" ]
+    [ -f "$EDGE_EXTERNAL_EXTENSIONS_DIR/abcdefghijklmnopabcdefghijklmnop.json" ]
+}
+#!/usr/bin/env bats
+################################################################################
+# browser_chromium.bats - Chromium browser integration tests
+################################################################################
+
+load 'test_helper'
+source "$BATS_TEST_DIRNAME/browser_support.bash"

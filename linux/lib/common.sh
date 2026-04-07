@@ -1044,6 +1044,7 @@ CRITICAL_FILES=(
     "$INSTALL_DIR/lib/firefox-policy.sh"
     "$INSTALL_DIR/lib/firefox-managed-extension.sh"
     "$INSTALL_DIR/libexec/browser-json.py"
+    "$INSTALL_DIR/libexec/browser-policy-spec.json"
     "$INSTALL_DIR/lib/services.sh"
     "$INSTALL_DIR/lib/rollback.sh"
     "$SCRIPTS_DIR/openpath-update.sh"
@@ -1067,10 +1068,12 @@ load_libraries() {
         fi
     done
 
-    if [ ! -f "$libexec_dir/browser-json.py" ]; then
-        log_error "Required helper not found: $libexec_dir/browser-json.py"
-        return 1
-    fi
+    for helper_runtime in browser-json.py browser-policy-spec.json; do
+        if [ ! -f "$libexec_dir/$helper_runtime" ]; then
+            log_error "Required helper not found: $libexec_dir/$helper_runtime"
+            return 1
+        fi
+    done
 
     for lib in dns.sh firewall.sh browser.sh services.sh rollback.sh; do
         if [ ! -f "$lib_dir/$lib" ]; then

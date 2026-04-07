@@ -2,6 +2,7 @@
 
 $script:OpenPathRoot = "C:\OpenPath"
 Import-Module "$PSScriptRoot\Common.psm1" -Force -ErrorAction SilentlyContinue
+Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction SilentlyContinue
 
 function Get-OpenPathFirefoxNativeHostName {
     return 'whitelist_native_host'
@@ -40,65 +41,6 @@ function Get-OpenPathFirefoxNativeHostRegistryPaths {
         'HKLM\SOFTWARE\Mozilla\NativeMessagingHosts\whitelist_native_host',
         'HKLM\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host'
     )
-}
-
-function ConvertTo-OpenPathRegistryProviderPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RegistryPath
-    )
-
-    if ($RegistryPath -match '^HKLM\\') {
-        return "Registry::HKEY_LOCAL_MACHINE\\$($RegistryPath.Substring(5))"
-    }
-
-    throw "Unsupported registry hive path: $RegistryPath"
-}
-
-function Remove-OpenPathRegistryKeyIfPresent {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RegistryPath
-    )
-
-    $providerPath = ConvertTo-OpenPathRegistryProviderPath -RegistryPath $RegistryPath
-    if (Test-Path $providerPath) {
-        Remove-Item -Path $providerPath -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Write-OpenPathUtf8NoBomFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [AllowNull()]
-        [string]$Value
-    )
-
-    $parent = Split-Path $Path -Parent
-    if ($parent -and -not (Test-Path $parent)) {
-        New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    }
-
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText($Path, $Value, $utf8NoBom)
-}
-
-function Get-OpenPathScheduledTaskSecurityDescriptor {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$TaskName
-    )
-
-    try {
-        $schedule = New-Object -ComObject 'Schedule.Service'
-        $schedule.Connect()
-        $task = $schedule.GetFolder('\').GetTask($TaskName)
-        return [string]$task.GetSecurityDescriptor(0xF)
-    }
-    catch {
-        return $null
-    }
 }
 
 function Sync-OpenPathFirefoxNativeHostArtifacts {
@@ -221,7 +163,7 @@ function Sync-OpenPathFirefoxNativeHostState {
         version = $version
         syncedAt = (Get-Date -Format 'o')
     } | ConvertTo-Json -Depth 8
-    Write-OpenPathUtf8NoBomFile -Path $statePath -Value $stateJson
+    Browser.Common\Write-OpenPathUtf8NoBomFile -Path $statePath -Value $stateJson
 
     $whitelistMirrorPath = Get-OpenPathFirefoxNativeWhitelistMirrorPath
     if ($ClearWhitelist) {
@@ -258,7 +200,7 @@ function Register-OpenPathFirefoxNativeHost {
         type = 'stdio'
         allowed_extensions = @('monitor-bloqueos@openpath')
     } | ConvertTo-Json -Depth 8
-    Write-OpenPathUtf8NoBomFile -Path $manifestPath -Value $manifestJson
+    Browser.Common\Write-OpenPathUtf8NoBomFile -Path $manifestPath -Value $manifestJson
 
     foreach ($registryPath in Get-OpenPathFirefoxNativeHostRegistryPaths) {
         & reg.exe ADD $registryPath /ve /d $manifestPath /f | Out-Null
@@ -270,7 +212,7 @@ function Register-OpenPathFirefoxNativeHost {
 
 function Unregister-OpenPathFirefoxNativeHost {
     foreach ($registryPath in Get-OpenPathFirefoxNativeHostRegistryPaths) {
-        Remove-OpenPathRegistryKeyIfPresent -RegistryPath $registryPath
+        Browser.Common\Remove-OpenPathRegistryKeyIfPresent -RegistryPath $registryPath
     }
 
     $paths = @(
@@ -296,7 +238,6 @@ Export-ModuleMember -Function @(
     'Get-OpenPathFirefoxNativeWhitelistMirrorPath',
     'Get-OpenPathFirefoxNativeHostUpdateTaskName',
     'Get-OpenPathFirefoxNativeHostRegistryPaths',
-    'Get-OpenPathScheduledTaskSecurityDescriptor',
     'Sync-OpenPathFirefoxNativeHostArtifacts',
     'Sync-OpenPathFirefoxNativeHostState',
     'Register-OpenPathFirefoxNativeHost',

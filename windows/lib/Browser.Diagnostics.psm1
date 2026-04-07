@@ -1,6 +1,7 @@
 # OpenPath browser diagnostics for Windows
 
 Import-Module "$PSScriptRoot\Common.psm1" -Force -ErrorAction SilentlyContinue
+Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1" -Force -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction SilentlyContinue
 
@@ -151,7 +152,7 @@ function Get-OpenPathBrowserDoctorReport {
         $task = Get-ScheduledTask -TaskName $nativeHostUpdateTaskName -ErrorAction Stop
         if ($task) {
             $nativeHostUpdateTaskPresent = $true
-            $securityDescriptor = Browser.FirefoxNativeHost\Get-OpenPathScheduledTaskSecurityDescriptor -TaskName $nativeHostUpdateTaskName
+            $securityDescriptor = Browser.Common\Get-OpenPathScheduledTaskSecurityDescriptor -TaskName $nativeHostUpdateTaskName
             if ($securityDescriptor -and $securityDescriptor -match '\(A;;[^)]*(?:GX|GA)[^)]*;;;BU\)') {
                 $nativeHostUpdateTaskUserAccess = 'granted'
             }

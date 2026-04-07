@@ -3,6 +3,7 @@
 
 $script:OpenPathRoot = "C:\OpenPath"
 Import-Module "$PSScriptRoot\Common.psm1" -Force -ErrorAction SilentlyContinue
+Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1" -Force -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot\Browser.Diagnostics.psm1" -Force -ErrorAction SilentlyContinue
@@ -114,6 +115,8 @@ function Set-ChromePolicy {
 
     Write-OpenPathLog "Configuring Chrome/Edge policies..."
     $managedExtensionPolicy = Get-OpenPathChromiumManagedPolicy
+    $policySpec = Browser.Common\Get-OpenPathBrowserPolicySpec
+    $chromiumSpec = $policySpec.chromium
 
     $regPaths = @(
         "HKLM:\SOFTWARE\Policies\Google\Chrome",
@@ -140,11 +143,11 @@ function Set-ChromePolicy {
                 }
             }
 
-            Set-ItemProperty -Path $blocklistPath -Name $i -Value "*://www.google.*/search*"
-            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderEnabled" -Value 1 -Type DWord
-            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderName" -Value "DuckDuckGo"
-            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderSearchURL" -Value "https://duckduckgo.com/?q={searchTerms}"
-            Set-ItemProperty -Path $regPath -Name "DnsOverHttpsMode" -Value "off" -Type String
+            Set-ItemProperty -Path $blocklistPath -Name $i -Value ([string]$chromiumSpec.googleSearchBlock)
+            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderEnabled" -Value ([int]$chromiumSpec.defaultSearchProviderEnabled) -Type DWord
+            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderName" -Value ([string]$chromiumSpec.defaultSearchProviderName)
+            Set-ItemProperty -Path $regPath -Name "DefaultSearchProviderSearchURL" -Value ([string]$chromiumSpec.defaultSearchProviderSearchURL)
+            Set-ItemProperty -Path $regPath -Name "DnsOverHttpsMode" -Value ([string]$chromiumSpec.dnsOverHttpsMode) -Type String
 
             if ($managedExtensionPolicy) {
                 $forcelistPath = "$regPath\ExtensionInstallForcelist"

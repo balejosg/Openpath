@@ -1,0 +1,46 @@
+{
+  "firefox": {
+    "googleSearchBlocks": [
+      "*://www.google.com/search*",
+      "*://www.google.es/search*",
+      "*://google.com/search*",
+      "*://google.es/search*"
+    ],
+    "searchEngines": {
+      "remove": ["Google", "Bing"],
+      "default": "DuckDuckGo",
+      "add": [
+        {
+          "Name": "DuckDuckGo",
+          "Description": "Privacy-focused search engine",
+          "Alias": "ddg",
+          "Method": "GET",
+          "URLTemplate": "https://duckduckgo.com/?q={searchTerms}",
+          "IconURL": "https://duckduckgo.com/favicon.ico",
+          "SuggestURLTemplate": "https://ac.duckduckgo.com/ac/?q={searchTerms}&type=list"
+        },
+        {
+          "Name": "Wikipedia (ES)",
+          "Description": "Free encyclopedia",
+          "Alias": "wiki",
+          "Method": "GET",
+          "URLTemplate": "https://es.wikipedia.org/wiki/Special:Search?search={searchTerms}",
+          "IconURL": "https://es.wikipedia.org/static/favicon/wikipedia.ico"
+        }
+      ]
+    },
+    "dnsOverHttps": {
+      "Enabled": false,
+      "Locked": true
+    },
+    "disableTelemetry": true,
+    "overrideFirstRunPage": ""
+  },
+  "chromium": {
+    "googleSearchBlock": "*://www.google.*/search*",
+    "defaultSearchProviderEnabled": 1,
+    "defaultSearchProviderName": "DuckDuckGo",
+    "defaultSearchProviderSearchURL": "https://duckduckgo.com/?q={searchTerms}",
+    "dnsOverHttpsMode": "off"
+  }
+}

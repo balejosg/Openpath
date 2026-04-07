@@ -47,6 +47,7 @@ mkdir -p "$BUILD_DIR/usr/local/lib/openpath/lib"
 mkdir -p "$BUILD_DIR/usr/local/lib/openpath/libexec"
 cp "$LINUX_DIR/lib/"*.sh "$BUILD_DIR/usr/local/lib/openpath/lib/"
 cp "$LINUX_DIR/libexec/browser-json.py" "$BUILD_DIR/usr/local/lib/openpath/libexec/"
+cp "$LINUX_DIR/../runtime/browser-policy-spec.json" "$BUILD_DIR/usr/local/lib/openpath/libexec/"
 cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"
 printf '%s\n' "$VERSION" > "$BUILD_DIR/usr/local/lib/openpath/VERSION"
 chmod +x "$BUILD_DIR/usr/local/lib/openpath/lib/"*.sh
