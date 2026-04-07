@@ -4,10 +4,19 @@
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 
 $script:modulePath = Join-Path $PSScriptRoot ".." "lib"
+Import-Module "$script:modulePath\Common.psm1" -Force -ErrorAction Stop
+Import-Module "$script:modulePath\DNS.psm1" -Force -ErrorAction Stop
+Import-Module "$script:modulePath\Firewall.psm1" -Force -ErrorAction Stop
 
 Describe "Common Module" {
     BeforeAll {
-        Import-OpenPathTestModules -ModuleNames @('Common', 'DNS', 'Firewall', 'Services', 'Browser.Common', 'Browser', 'Browser.FirefoxNativeHost')
+        Import-Module "$script:modulePath\Common.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\DNS.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\Firewall.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\Services.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\Browser.psm1" -Force -ErrorAction Stop
+        Import-Module "$script:modulePath\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction Stop
     }
 
     Context "Test-AdminPrivileges" {

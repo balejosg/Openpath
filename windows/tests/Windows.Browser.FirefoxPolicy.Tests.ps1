@@ -2,10 +2,13 @@
 
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 $modulePath = Join-Path $PSScriptRoot ".." "lib"
+Import-Module "$modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
+Import-Module "$modulePath\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
 
 Describe "Browser Module - Firefox Policy" {
     BeforeAll {
-        Import-OpenPathTestModules -ModuleNames @('Browser.Common', 'Browser.FirefoxPolicy')
+        Import-Module "$modulePath\Browser.Common.psm1" -Force -ErrorAction Stop
+        Import-Module "$modulePath\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
     }
 
     Context "Set-FirefoxPolicy" {

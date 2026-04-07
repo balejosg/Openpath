@@ -2,10 +2,11 @@
 
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 $modulePath = Join-Path $PSScriptRoot ".." "lib"
+Import-Module "$modulePath\Browser.psm1" -Force -ErrorAction Stop
 
 Describe "Browser Module - Native Host" {
     BeforeAll {
-        Import-OpenPathTestModules -ModuleNames @('Browser')
+        Import-Module "$modulePath\Browser.psm1" -Force -ErrorAction Stop
     }
 
     Context "Native host registration" {
