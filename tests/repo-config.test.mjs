@@ -164,6 +164,7 @@ describe('repository verification contract', () => {
 
   test('required Windows CI keeps the Pester lane minimal and avoids inline summary processing', () => {
     const ciWorkflow = readText('.github/workflows/ci.yml');
+    const windowsCiHelper = readText('tests/e2e/ci/run-windows-unit-tests.ps1');
 
     assert.ok(
       ciWorkflow.includes('runs-on: windows-2022'),
@@ -182,6 +183,10 @@ describe('repository verification contract', () => {
       'ci.yml should keep artifact upload out of the required Windows Pester lane'
     );
     assert.ok(
+      ciWorkflow.includes('tests/e2e/ci/run-windows-unit-tests.ps1'),
+      'ci.yml should run the required Windows Pester lane through the isolated CI helper'
+    );
+    assert.ok(
       ciWorkflow.includes(
         'outputs:\n      tests_passed: ${{ steps.job-status.outputs.tests_passed }}'
       ),
@@ -194,6 +199,14 @@ describe('repository verification contract', () => {
     assert.ok(
       ciWorkflow.includes('needs.test-windows.outputs.tests_passed'),
       'ci.yml should drive the CI summary gate from the recorded Windows lane output'
+    );
+    assert.ok(
+      windowsCiHelper.includes("Environment.Remove('RUNNER_TRACKING_ID')"),
+      'the isolated Windows CI helper should detach the child Pester host from runner orphan tracking'
+    );
+    assert.ok(
+      windowsCiHelper.includes('Invoke-Pester -Configuration $config'),
+      'the isolated Windows CI helper should continue to execute the real Pester suite'
     );
   });
 

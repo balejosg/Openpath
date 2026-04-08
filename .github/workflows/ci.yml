@@ -150,8 +150,9 @@ jobs:
   test-windows:
     name: Windows Agent Tests (Pester)
     # Hosted Windows runs have been leaving successful Pester jobs in a
-    # stuck "in_progress" state at the check-run level. Pinning the image
-    # avoids silent platform drift while we keep this lane stable.
+    # stuck "in_progress" state at the check-run level during orphan cleanup.
+    # Run the required Pester suite in an isolated pwsh host so GitHub's
+    # runner reaper does not wedge after the tests themselves have passed.
     runs-on: windows-2022
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.os_bound == 'true'
@@ -162,36 +163,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install Pester
-        id: install-pester
-        shell: pwsh
-        run: |
-          Install-Module -Name Pester -MinimumVersion 5.0 -Force -Scope CurrentUser
-          Import-Module Pester
-
       - name: Run Windows Unit Tests
         id: run-windows-unit-tests
         shell: pwsh
         run: |
-          $config = New-PesterConfiguration
-          $config.Run.Path = "windows/tests"
-          $config.Output.Verbosity = "Detailed"
-          $config.TestResult.Enabled = $true
-          $config.TestResult.OutputPath = "windows-test-results.xml"
-          $config.TestResult.OutputFormat = "NUnitXml"
-          Invoke-Pester -Configuration $config
-
-          if (-not (Test-Path "windows-test-results.xml")) {
-            throw "Windows Pester suite did not produce windows-test-results.xml."
-          }
+          & tests/e2e/ci/run-windows-unit-tests.ps1 -RepoRoot (Get-Location).Path
 
       - name: Record Windows lane outcome
         id: job-status
         if: always()
         shell: bash
         run: |
-          if [[ "${{ steps.install-pester.outcome }}" == "success" ]] && \
-             [[ "${{ steps.run-windows-unit-tests.outcome }}" == "success" ]]; then
+          if [[ "${{ steps.run-windows-unit-tests.outcome }}" == "success" ]]; then
             echo "tests_passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "tests_passed=false" >> "$GITHUB_OUTPUT"
