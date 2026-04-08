@@ -141,6 +141,7 @@ function Invoke-ChildPesterRun {
 
     $config = New-PesterConfiguration
     $config.Run.Path = 'windows/tests'
+    $config.Run.PassThru = $true
     $config.Output.Verbosity = 'Detailed'
     $config.TestResult.Enabled = $true
     $config.TestResult.OutputPath = $ResultsPath

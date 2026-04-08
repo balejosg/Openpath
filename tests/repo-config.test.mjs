@@ -209,6 +209,10 @@ describe('repository verification contract', () => {
       'the isolated Windows CI helper should preserve the legacy non-strict Pester runtime used by the required Windows suite'
     );
     assert.ok(
+      windowsCiHelper.includes('$config.Run.PassThru = $true'),
+      'the isolated Windows CI helper should request a Pester result object so FailedCount reflects the real suite outcome'
+    );
+    assert.ok(
       windowsCiHelper.includes('Invoke-Pester -Configuration $config'),
       'the isolated Windows CI helper should continue to execute the real Pester suite'
     );
