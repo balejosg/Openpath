@@ -398,6 +398,14 @@ describe('repository verification contract', () => {
       'the Windows process manager helper should target lingering Windows shell and git processes instead of killing arbitrary hosted-runner activity'
     );
     assert.ok(
+      windowsProcessManager.includes("candidate.Name -ieq 'conhost.exe'"),
+      'the Windows process manager helper should treat conhost.exe as a special case before terminating console hosts'
+    );
+    assert.ok(
+      windowsProcessManager.includes('$processMap.ContainsKey([int]$candidate.ParentProcessId)'),
+      'the Windows process manager helper should preserve console hosts whose parent process is still alive'
+    );
+    assert.ok(
       windowsProcessManager.includes(
         'Stop-Process -Id $candidate.ProcessId -Force -ErrorAction Stop'
       ),

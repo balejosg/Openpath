@@ -265,6 +265,15 @@ switch ($Mode) {
         Write-ProcessListing -Processes $cleanupCandidates -Title 'Windows orphan cleanup candidates:'
 
         foreach ($candidate in $cleanupCandidates) {
+            if ([string]$candidate.Name -ieq 'conhost.exe' -and $processMap.ContainsKey([int]$candidate.ParentProcessId)) {
+                $parentProcess = $processMap[[int]$candidate.ParentProcessId]
+                Write-Host ("Skipping live conhost.exe pid={0} because parent pid={1} name={2} is still present" -f `
+                        $candidate.ProcessId, `
+                        $candidate.ParentProcessId, `
+                        $parentProcess.Name)
+                continue
+            }
+
             try {
                 Stop-Process -Id $candidate.ProcessId -Force -ErrorAction Stop
                 Write-Host ("Terminated lingering Windows shell process pid={0} name={1}" -f $candidate.ProcessId, $candidate.Name)
