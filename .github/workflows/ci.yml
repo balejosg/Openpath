@@ -167,6 +167,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Capture Windows process snapshot
+        shell: pwsh
+        run: |
+          & .\tests\e2e\ci\report-windows-processes.ps1 `
+            -Mode capture `
+            -SnapshotPath "$env:RUNNER_TEMP\openpath-windows-process-snapshot.json"
+
       - name: Install Pester
         shell: pwsh
         run: |
@@ -189,18 +196,28 @@ jobs:
           $config.TestResult.OutputPath = 'windows-test-results.xml'
           $config.TestResult.OutputFormat = 'NUnitXml'
 
-          $result = Invoke-Pester -Configuration $config
+          try {
+            $result = Invoke-Pester -Configuration $config
 
-          if (-not (Test-Path 'windows-test-results.xml')) {
-            throw 'Windows Pester suite did not produce windows-test-results.xml.'
+            if (-not (Test-Path 'windows-test-results.xml')) {
+              throw 'Windows Pester suite did not produce windows-test-results.xml.'
+            }
+
+            if ($null -eq $result) {
+              throw 'Invoke-Pester returned no result object.'
+            }
+
+            if ($result.FailedCount -gt 0) {
+              throw "Windows Pester suite reported $($result.FailedCount) failure(s)."
+            }
           }
-
-          if ($null -eq $result) {
-            throw 'Invoke-Pester returned no result object.'
-          }
-
-          if ($result.FailedCount -gt 0) {
-            throw "Windows Pester suite reported $($result.FailedCount) failure(s)."
+          finally {
+            $jobs = @(Get-Job -ErrorAction SilentlyContinue)
+            if ($jobs.Count -gt 0) {
+              Write-Host ("Stopping lingering PowerShell jobs: {0}" -f $jobs.Count)
+              $jobs | Stop-Job -ErrorAction SilentlyContinue
+              $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
+            }
           }
 
       - name: Record Windows lane outcome
@@ -211,6 +228,14 @@ jobs:
         shell: pwsh
         run: |
           "tests_passed=$env:TESTS_PASSED" >> $env:GITHUB_OUTPUT
+
+      - name: Report Windows process diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          & .\tests\e2e\ci\report-windows-processes.ps1 `
+            -Mode report `
+            -SnapshotPath "$env:RUNNER_TEMP\openpath-windows-process-snapshot.json"
 
   # ============================================
   # Job 3: Firefox Delivery Contracts

@@ -170,10 +170,11 @@ describe('repository verification contract', () => {
     }
   });
 
-  test('required Windows CI keeps the Pester lane minimal and avoids inline summary processing', () => {
+  test('required Windows CI keeps the direct Pester lane and emits bounded process diagnostics', () => {
     const ciWorkflow = readText('.github/workflows/ci.yml');
     const linuxJobBlock = extractWorkflowJobBlock(ciWorkflow, 'test-linux-dnsmasq');
     const windowsJobBlock = extractWorkflowJobBlock(ciWorkflow, 'test-windows');
+    const windowsProcessReporter = readText('tests/e2e/ci/report-windows-processes.ps1');
 
     assert.ok(
       ciWorkflow.includes('runs-on: windows-2025'),
@@ -220,6 +221,10 @@ describe('repository verification contract', () => {
       'ci.yml should install Pester explicitly in the Windows lane before running the suite'
     );
     assert.ok(
+      windowsJobBlock.includes('name: Capture Windows process snapshot'),
+      'ci.yml should capture a Windows process snapshot before the direct Pester step'
+    );
+    assert.ok(
       windowsJobBlock.includes('Import-Module Pester -MinimumVersion 5.0 -ErrorAction Stop'),
       'ci.yml should import a compatible Pester version explicitly in the Windows lane'
     );
@@ -237,7 +242,12 @@ describe('repository verification contract', () => {
     );
     assert.ok(
       !ciWorkflow.includes('manage-windows-job-processes.ps1'),
-      'ci.yml should stop routing the Windows lane through the process cleanup helper'
+      'ci.yml should stop routing the Windows lane through the old process cleanup helper'
+    );
+    assert.ok(
+      ciWorkflow.includes('tests/e2e/ci/report-windows-processes.ps1') ||
+        ciWorkflow.includes('tests\\e2e\\ci\\report-windows-processes.ps1'),
+      'ci.yml should route Windows process diagnostics through the shared reporting helper'
     );
     assert.ok(
       !ciWorkflow.includes('name: Capture Windows job process baseline'),
@@ -250,6 +260,10 @@ describe('repository verification contract', () => {
     assert.ok(
       !ciWorkflow.includes('name: Re-scan Windows processes after idle delay'),
       'ci.yml should not re-scan the Windows process table once the lane returns to the direct Pester pattern'
+    );
+    assert.ok(
+      windowsJobBlock.includes('name: Report Windows process diagnostics'),
+      'ci.yml should log bounded Windows process diagnostics before the runner reaches orphan cleanup'
     );
     assert.ok(
       ciWorkflow.includes(
@@ -310,6 +324,18 @@ describe('repository verification contract', () => {
       'ci.yml should fail the Windows lane when the Pester result reports failures'
     );
     assert.ok(
+      windowsJobBlock.includes('Get-Job -ErrorAction SilentlyContinue'),
+      'ci.yml should inspect lingering PowerShell jobs in the same test shell before exiting the Windows lane'
+    );
+    assert.ok(
+      windowsJobBlock.includes('Stop-Job -ErrorAction SilentlyContinue'),
+      'ci.yml should stop lingering PowerShell jobs before exiting the Windows lane'
+    );
+    assert.ok(
+      windowsJobBlock.includes('Remove-Job -Force -ErrorAction SilentlyContinue'),
+      'ci.yml should remove lingering PowerShell jobs before exiting the Windows lane'
+    );
+    assert.ok(
       windowsJobBlock.includes(
         "TESTS_PASSED: ${{ steps.run-windows-unit-tests.outcome == 'success' && 'true' || 'false' }}"
       ),
@@ -326,6 +352,28 @@ describe('repository verification contract', () => {
     assert.ok(
       ciWorkflow.includes('needs.test-windows.outputs.tests_passed'),
       'ci.yml should drive the CI summary gate from the recorded Windows lane output'
+    );
+    assert.ok(
+      windowsProcessReporter.includes("ValidateSet('capture', 'report')"),
+      'the Windows process reporter should support snapshot capture and later reporting modes'
+    );
+    assert.ok(
+      windowsProcessReporter.includes('Get-CimInstance Win32_Process'),
+      'the Windows process reporter should inspect the live Win32 process table'
+    );
+    assert.ok(
+      windowsProcessReporter.includes('Windows processes started after the job baseline:'),
+      'the Windows process reporter should log new processes started during the job'
+    );
+    assert.ok(
+      windowsProcessReporter.includes(
+        'Windows shell and git processes still present before job completion:'
+      ),
+      'the Windows process reporter should log lingering shell and git processes before the runner cleanup phase'
+    );
+    assert.ok(
+      !windowsProcessReporter.includes('Stop-Process -Id'),
+      'the Windows process reporter should stay diagnostic-only until the lingering process culprit is identified'
     );
     for (const relativePath of [
       'windows/tests/Windows.Browser.ChromiumPolicy.Tests.ps1',
