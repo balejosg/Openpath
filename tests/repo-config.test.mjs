@@ -263,6 +263,16 @@ describe('repository verification contract', () => {
       'the isolated Windows CI helper should close the Windows job object handle so any lingering descendants are terminated deterministically'
     );
     assert.ok(
+      windowsCiHelper.includes(
+        "Get-ChildItem -Path (Join-Path $RepoRoot 'windows/tests') -Filter '*.Tests.ps1' -File"
+      ),
+      'the isolated Windows CI helper should enumerate individual Pester files so the suite can be split across fresh child hosts'
+    );
+    assert.ok(
+      windowsCiHelper.includes('Running isolated Windows Pester file:'),
+      'the isolated Windows CI helper should log each isolated Pester file invocation to make per-file runner hangs diagnosable'
+    );
+    assert.ok(
       windowsCiHelper.includes('Invoke-Pester -Configuration $config'),
       'the isolated Windows CI helper should continue to execute the real Pester suite'
     );

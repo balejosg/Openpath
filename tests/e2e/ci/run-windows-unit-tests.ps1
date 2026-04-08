@@ -3,6 +3,7 @@ param(
     [switch]$Child,
     [string]$RepoRoot = (Join-Path $PSScriptRoot '..' '..' '..'),
     [string]$ResultsPath = 'windows-test-results.xml',
+    [string]$TestPath = '',
     [int]$TimeoutSeconds = 900
 )
 
@@ -159,6 +160,8 @@ function Invoke-IsolatedPwshProcess {
         [Parameter(Mandatory = $true)]
         [string]$ResultsPath,
 
+        [string]$TestPath,
+
         [Parameter(Mandatory = $true)]
         [int]$TimeoutSeconds
     )
@@ -188,6 +191,8 @@ function Invoke-IsolatedPwshProcess {
             $RepoRoot,
             '-ResultsPath',
             $ResultsPath,
+            '-TestPath',
+            $TestPath,
             '-TimeoutSeconds',
             [string]$TimeoutSeconds
         )) {
@@ -254,7 +259,9 @@ function Invoke-ChildPesterRun {
         [string]$RepoRoot,
 
         [Parameter(Mandatory = $true)]
-        [string]$ResultsPath
+        [string]$ResultsPath,
+
+        [string]$TestPath
     )
 
     Set-Location $RepoRoot
@@ -279,7 +286,12 @@ function Invoke-ChildPesterRun {
     Set-StrictMode -Off
 
     $config = New-PesterConfiguration
-    $config.Run.Path = 'windows/tests'
+    $config.Run.Path = if ([string]::IsNullOrWhiteSpace($TestPath)) {
+        'windows/tests'
+    }
+    else {
+        $TestPath
+    }
     $config.Run.PassThru = $true
     $config.Output.Verbosity = 'Detailed'
     $config.TestResult.Enabled = $true
@@ -307,6 +319,30 @@ function Invoke-ChildPesterRun {
     }
 }
 
+function Get-PerTestResultsPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ResultsPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TestPath,
+
+        [Parameter(Mandatory = $true)]
+        [int]$TestCount
+    )
+
+    if ($TestCount -le 1) {
+        return $ResultsPath
+    }
+
+    $resultsDirectory = Split-Path $ResultsPath -Parent
+    $resultsBaseName = [System.IO.Path]::GetFileNameWithoutExtension($ResultsPath)
+    $resultsExtension = [System.IO.Path]::GetExtension($ResultsPath)
+    $testBaseName = [System.IO.Path]::GetFileNameWithoutExtension($TestPath)
+
+    return Join-Path $resultsDirectory ("{0}.{1}{2}" -f $resultsBaseName, $testBaseName, $resultsExtension)
+}
+
 $RepoRoot = Resolve-FullPath -Path $RepoRoot
 $ResultsPath = Resolve-FullPath -Path $ResultsPath -BasePath $RepoRoot
 $resultsDirectory = Split-Path $ResultsPath -Parent
@@ -316,11 +352,39 @@ if ($resultsDirectory -and -not (Test-Path $resultsDirectory)) {
 }
 
 if ($Child) {
-    Invoke-ChildPesterRun -RepoRoot $RepoRoot -ResultsPath $ResultsPath
+    Invoke-ChildPesterRun -RepoRoot $RepoRoot -ResultsPath $ResultsPath -TestPath $TestPath
     return
 }
 
-Invoke-IsolatedPwshProcess -ScriptPath $MyInvocation.MyCommand.Path -RepoRoot $RepoRoot -ResultsPath $ResultsPath -TimeoutSeconds $TimeoutSeconds
+$testFiles = @(
+    Get-ChildItem -Path (Join-Path $RepoRoot 'windows/tests') -Filter '*.Tests.ps1' -File |
+        Sort-Object Name |
+        Select-Object -ExpandProperty FullName
+)
+
+if ($testFiles.Count -eq 0) {
+    throw "No Windows Pester test files were found beneath $(Join-Path $RepoRoot 'windows/tests')."
+}
+
+$lastResultsPath = ''
+
+foreach ($testFile in $testFiles) {
+    $perTestResultsPath = Get-PerTestResultsPath -ResultsPath $ResultsPath -TestPath $testFile -TestCount $testFiles.Count
+    Write-Host ("Running isolated Windows Pester file: {0}" -f [System.IO.Path]::GetFileName($testFile))
+
+    Invoke-IsolatedPwshProcess `
+        -ScriptPath $MyInvocation.MyCommand.Path `
+        -RepoRoot $RepoRoot `
+        -ResultsPath $perTestResultsPath `
+        -TestPath $testFile `
+        -TimeoutSeconds $TimeoutSeconds
+
+    $lastResultsPath = $perTestResultsPath
+}
+
+if (-not [string]::IsNullOrWhiteSpace($lastResultsPath) -and $lastResultsPath -ne $ResultsPath) {
+    Copy-Item -Path $lastResultsPath -Destination $ResultsPath -Force
+}
 
 if (-not (Test-Path $ResultsPath)) {
     throw "Windows Pester suite did not produce $ResultsPath."
