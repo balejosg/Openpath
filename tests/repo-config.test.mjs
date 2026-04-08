@@ -177,12 +177,12 @@ describe('repository verification contract', () => {
     const windowsProcessReporter = readText('tests/e2e/ci/report-windows-processes.ps1');
 
     assert.ok(
-      ciWorkflow.includes('runs-on: windows-2022'),
-      'ci.yml should pin the required Windows Pester lane to windows-2022'
+      ciWorkflow.includes('runs-on: windows-2025'),
+      'ci.yml should pin the required Windows Pester lane to windows-2025'
     );
     assert.ok(
-      !ciWorkflow.includes('runs-on: windows-2025'),
-      'ci.yml should stop pinning the required Windows Pester lane to windows-2025'
+      !ciWorkflow.includes('runs-on: windows-2022'),
+      'ci.yml should stop pinning the required Windows Pester lane to windows-2022'
     );
     assert.ok(
       !ciWorkflow.includes('persist-credentials: true'),
