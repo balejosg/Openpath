@@ -230,8 +230,16 @@ describe('repository verification contract', () => {
       'the isolated Windows CI helper should avoid WMI descendant sweeps that can hang the required Windows lane before the step completes'
     );
     assert.ok(
-      !windowsCiHelper.includes('Stop-DescendantProcesses -RootPid $process.Id'),
-      'the isolated Windows CI helper should not run descendant cleanup that can wedge the required Windows lane before the step completes'
+      windowsCiHelper.includes('JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE'),
+      'the isolated Windows CI helper should use a kill-on-close Windows job object so lingering descendants cannot wedge the runner after successful steps'
+    );
+    assert.ok(
+      windowsCiHelper.includes('AssignProcessToJobObject'),
+      'the isolated Windows CI helper should assign the child pwsh host to the kill-on-close Windows job object'
+    );
+    assert.ok(
+      windowsCiHelper.includes('Close-JobObjectHandle -Handle $jobHandle'),
+      'the isolated Windows CI helper should close the Windows job object handle so any lingering descendants are terminated deterministically'
     );
     assert.ok(
       windowsCiHelper.includes('Invoke-Pester -Configuration $config'),

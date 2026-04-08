@@ -22,6 +22,132 @@ function Resolve-FullPath {
     return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
 }
 
+function Initialize-JobObjectInterop {
+    if ('OpenPath.WindowsJobObject' -as [type]) {
+        return
+    }
+
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace OpenPath {
+    public static class WindowsJobObject {
+        public const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+
+        public enum JOBOBJECTINFOCLASS : int {
+            JobObjectExtendedLimitInformation = 9
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public IntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetInformationJobObject(
+            IntPtr hJob,
+            JOBOBJECTINFOCLASS jobObjectInfoClass,
+            IntPtr lpJobObjectInfo,
+            uint cbJobObjectInfoLength
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseHandle(IntPtr hObject);
+    }
+}
+'@
+}
+
+function New-KillOnCloseJobObject {
+    Initialize-JobObjectInterop
+
+    $jobHandle = [OpenPath.WindowsJobObject]::CreateJobObject([IntPtr]::Zero, $null)
+    if ($jobHandle -eq [IntPtr]::Zero) {
+        $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Failed to create Windows job object. Win32Error=$errorCode"
+    }
+
+    $limitInfo = New-Object OpenPath.WindowsJobObject+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    $limitInfo.BasicLimitInformation.LimitFlags = [OpenPath.WindowsJobObject]::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+
+    $structSize = [System.Runtime.InteropServices.Marshal]::SizeOf($limitInfo)
+    $buffer = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($structSize)
+    try {
+        [System.Runtime.InteropServices.Marshal]::StructureToPtr($limitInfo, $buffer, $false)
+        $configured = [OpenPath.WindowsJobObject]::SetInformationJobObject(
+            $jobHandle,
+            [OpenPath.WindowsJobObject+JOBOBJECTINFOCLASS]::JobObjectExtendedLimitInformation,
+            $buffer,
+            [uint32]$structSize
+        )
+
+        if (-not $configured) {
+            $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Failed to configure Windows job object. Win32Error=$errorCode"
+        }
+    }
+    catch {
+        [void][OpenPath.WindowsJobObject]::CloseHandle($jobHandle)
+        throw
+    }
+    finally {
+        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($buffer)
+    }
+
+    return $jobHandle
+}
+
+function Close-JobObjectHandle {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IntPtr]$Handle
+    )
+
+    if ($Handle -eq [System.IntPtr]::Zero) {
+        return
+    }
+
+    [void][OpenPath.WindowsJobObject]::CloseHandle($Handle)
+}
+
 function Invoke-IsolatedPwshProcess {
     param(
         [Parameter(Mandatory = $true)]
@@ -38,6 +164,7 @@ function Invoke-IsolatedPwshProcess {
     )
 
     $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
+    $jobHandle = [System.IntPtr]::Zero
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $pwshPath
     $startInfo.WorkingDirectory = $RepoRoot
@@ -70,12 +197,19 @@ function Invoke-IsolatedPwshProcess {
     $null = $startInfo.Environment.Remove('RUNNER_TRACKING_ID')
     $startInfo.Environment['OPENPATH_WINDOWS_CI_ISOLATED_PESTER'] = '1'
 
+    $jobHandle = New-KillOnCloseJobObject
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) {
         throw 'Failed to start isolated pwsh process for Windows unit tests.'
     }
 
     try {
+        $assignedToJob = [OpenPath.WindowsJobObject]::AssignProcessToJobObject($jobHandle, $process.Handle)
+        if (-not $assignedToJob) {
+            $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Failed to assign isolated Windows Pester host to the kill-on-close job object. Win32Error=$errorCode"
+        }
+
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try {
                 $process.Kill($true)
@@ -104,7 +238,12 @@ function Invoke-IsolatedPwshProcess {
             }
         }
         finally {
-            $process.Dispose()
+            try {
+                Close-JobObjectHandle -Handle $jobHandle
+            }
+            finally {
+                $process.Dispose()
+            }
         }
     }
 }
