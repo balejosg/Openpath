@@ -152,10 +152,9 @@ jobs:
   # ============================================
   test-windows:
     name: Windows Agent Tests (Pester)
-    # Keep the required Windows lane on the last hosted image where the
-    # direct Pester job closed cleanly. The 2022 image has been turning
-    # successful visible steps into teardown-time failures.
-    runs-on: windows-2025
+    # Pin the required Windows lane to the stable hosted image until the
+    # windows-2025 teardown hang is resolved by GitHub.
+    runs-on: windows-2022
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.os_bound == 'true'
     outputs:
