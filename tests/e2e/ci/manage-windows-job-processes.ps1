@@ -209,7 +209,16 @@ switch ($Mode) {
         $currentProcesses = Get-ProcessSnapshot
         $processMap = New-ProcessMap -Processes $currentProcesses
         $protectedIds = Get-ProtectedProcessIds -ProcessId $PID -ProcessMap $processMap
-        $protectedIds = Expand-ProtectedProcessIds -ProtectedIds $protectedIds -Processes $currentProcesses
+
+        # Protect the active cleanup shell subtree, but do not expand from the
+        # entire runner ancestor chain or we mask the very descendants we want
+        # to identify and terminate before GitHub's own orphan sweep runs.
+        $activeCleanupShellIds = New-Object 'System.Collections.Generic.HashSet[int]'
+        [void]$activeCleanupShellIds.Add($PID)
+        $activeCleanupShellIds = Expand-ProtectedProcessIds -ProtectedIds $activeCleanupShellIds -Processes $currentProcesses
+        foreach ($protectedId in $activeCleanupShellIds) {
+            [void]$protectedIds.Add($protectedId)
+        }
 
         $newProcesses = @(
             $currentProcesses |

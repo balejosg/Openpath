@@ -376,6 +376,12 @@ describe('repository verification contract', () => {
       'the Windows process manager helper should protect the active cleanup shell and its descendants before terminating lingering Windows processes'
     );
     assert.ok(
+      !windowsProcessManager.includes(
+        '$protectedIds = Expand-ProtectedProcessIds -ProtectedIds $protectedIds -Processes $currentProcesses'
+      ),
+      'the Windows process manager helper should not expand protection from the full runner ancestor chain because that masks the orphaned descendants the cleanup step is supposed to inspect'
+    );
+    assert.ok(
       windowsProcessManager.includes('$cleanupNames.Contains([string]$_.Name)'),
       'the Windows process manager helper should identify lingering Windows shell and git processes by executable name before terminating them'
     );
