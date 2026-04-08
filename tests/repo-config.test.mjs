@@ -279,8 +279,8 @@ describe('repository verification contract', () => {
       'ci.yml should drive the CI summary gate from the recorded Windows lane output'
     );
     assert.ok(
-      windowsCiHelper.includes("Environment.Remove('RUNNER_TRACKING_ID')"),
-      'the isolated Windows CI helper should detach the child Pester host from runner orphan tracking'
+      !windowsCiHelper.includes("Environment.Remove('RUNNER_TRACKING_ID')"),
+      'the isolated Windows CI helper should keep the child Pester host attached to runner tracking while other isolation safeguards stay in place'
     );
     assert.ok(
       windowsCiHelper.includes('$startInfo.RedirectStandardOutput = $false'),
@@ -297,6 +297,12 @@ describe('repository verification contract', () => {
     assert.ok(
       windowsCiHelper.includes('$config.Run.PassThru = $true'),
       'the isolated Windows CI helper should request a Pester result object so FailedCount reflects the real suite outcome'
+    );
+    assert.ok(
+      windowsCiHelper.includes(
+        "$startInfo.Environment['OPENPATH_WINDOWS_CI_ISOLATED_PESTER'] = '1'"
+      ),
+      'the isolated Windows CI helper should keep its explicit isolation marker for diagnostics'
     );
     assert.ok(
       !windowsCiHelper.includes('Get-CimInstance Win32_Process'),

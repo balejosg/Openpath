@@ -199,7 +199,6 @@ function Invoke-IsolatedPwshProcess {
         [void]$startInfo.ArgumentList.Add($argument)
     }
 
-    $null = $startInfo.Environment.Remove('RUNNER_TRACKING_ID')
     $startInfo.Environment['OPENPATH_WINDOWS_CI_ISOLATED_PESTER'] = '1'
 
     $jobHandle = New-KillOnCloseJobObject
