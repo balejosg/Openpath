@@ -69,11 +69,11 @@ function Write-DescendantProcessSnapshot {
 
     $descendants = @(Get-DescendantProcesses -RootPid $RootPid)
     if ($descendants.Count -eq 0) {
-        Write-Host "$Label: no descendant processes detected."
+        Write-Host "${Label}: no descendant processes detected."
         return @()
     }
 
-    Write-Host "$Label:"
+    Write-Host "${Label}:"
     foreach ($processInfo in @($descendants | Sort-Object ParentProcessId, ProcessId)) {
         $commandLine = [string]$processInfo.CommandLine
         if ($commandLine.Length -gt 180) {
@@ -103,7 +103,7 @@ function Stop-DescendantProcesses {
             Sort-Object -Descending -Unique
     )
 
-    Write-Host "Stopping lingering descendant processes for root PID $RootPid: $($processIds -join ', ')"
+    Write-Host "Stopping lingering descendant processes for root PID ${RootPid}: $($processIds -join ', ')"
     Stop-Process -Id $processIds -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 
