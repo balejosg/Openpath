@@ -156,7 +156,7 @@ jobs:
     # stuck "in_progress" state at the check-run level during orphan cleanup.
     # Run the required Pester suite in an isolated pwsh host so GitHub's
     # runner reaper does not wedge after the tests themselves have passed.
-    runs-on: windows-2022
+    runs-on: windows-2025
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.os_bound == 'true'
     outputs:
