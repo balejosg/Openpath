@@ -271,6 +271,10 @@ describe('repository verification contract', () => {
       'the Windows process manager helper should log the new process set before cleanup so CI exposes the culprit if the runner still hangs'
     );
     assert.ok(
+      windowsProcessManager.includes('[AllowEmptyCollection()]'),
+      'the Windows process manager helper should tolerate empty cleanup candidate lists instead of failing when there is nothing to terminate'
+    );
+    assert.ok(
       windowsProcessManager.includes('Expand-ProtectedProcessIds'),
       'the Windows process manager helper should protect the active cleanup shell and its descendants before terminating lingering Windows processes'
     );

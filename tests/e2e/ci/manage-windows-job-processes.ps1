@@ -118,6 +118,7 @@ function Expand-ProtectedProcessIds {
 function Write-ProcessListing {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Processes,
 
         [Parameter(Mandatory = $true)]
