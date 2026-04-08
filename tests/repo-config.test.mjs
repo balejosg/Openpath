@@ -183,8 +183,13 @@ describe('repository verification contract', () => {
       'ci.yml should keep artifact upload out of the required Windows Pester lane'
     );
     assert.ok(
-      ciWorkflow.includes('tests/e2e/ci/run-windows-unit-tests.ps1'),
+      ciWorkflow.includes('tests/e2e/ci/run-windows-unit-tests.ps1') ||
+        ciWorkflow.includes('tests\\e2e\\ci\\run-windows-unit-tests.ps1'),
       'ci.yml should run the required Windows Pester lane through the isolated CI helper'
+    );
+    assert.ok(
+      ciWorkflow.includes('shell: cmd'),
+      'ci.yml should invoke the required Windows Pester helper from cmd so the runner is not directly hosting the pwsh test shell'
     );
     assert.ok(
       ciWorkflow.includes(

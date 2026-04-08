@@ -165,9 +165,9 @@ jobs:
 
       - name: Run Windows Unit Tests
         id: run-windows-unit-tests
-        shell: pwsh
+        shell: cmd
         run: |
-          & tests/e2e/ci/run-windows-unit-tests.ps1 -RepoRoot (Get-Location).Path
+          pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests\e2e\ci\run-windows-unit-tests.ps1 -RepoRoot "%CD%"
 
       - name: Record Windows lane outcome
         id: job-status
