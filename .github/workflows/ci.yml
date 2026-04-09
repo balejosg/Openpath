@@ -9,6 +9,8 @@ on:
       - 'linux/**'
       - 'windows/**'
       - 'tests/**'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
@@ -18,6 +20,8 @@ on:
       - 'linux/**'
       - 'windows/**'
       - 'tests/**'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 

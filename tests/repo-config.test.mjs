@@ -416,6 +416,14 @@ describe('repository verification contract', () => {
       'ci.yml should document that the overall workflow can conclude cancelled even when required checks pass'
     );
     assert.ok(
+      ciWorkflow.includes("- '.release-please-manifest.json'"),
+      'ci.yml should trigger the canonical CI workflow when release-please metadata advances the stable version manifest'
+    );
+    assert.ok(
+      ciWorkflow.includes("- 'release-please-config.json'"),
+      'ci.yml should trigger the canonical CI workflow when release-please configuration changes'
+    );
+    assert.ok(
       ciWorkflow.includes(
         'gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs'
       ),
