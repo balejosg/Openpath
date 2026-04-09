@@ -394,7 +394,7 @@ configure_client() {
         "/usr/local/bin/openpath setup --api-url 'http://host.docker.internal:$API_PORT' --classroom-id '$classroom_id' --enrollment-token '$enrollment_token' --machine-name '$MACHINE_NAME'"
 
     docker exec "$CONTAINER_NAME" bash -lc '/usr/local/bin/openpath-update.sh'
-    docker exec "$CONTAINER_NAME" bash -lc 'mkdir -p /root/.mozilla/native-messaging-hosts && cp /usr/lib/mozilla/native-messaging-hosts/openpath_native_host.json /root/.mozilla/native-messaging-hosts/whitelist_native_host.json'
+    docker exec "$CONTAINER_NAME" bash -lc 'mkdir -p /root/.mozilla/native-messaging-hosts && cp /usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json /root/.mozilla/native-messaging-hosts/whitelist_native_host.json'
 
     local whitelist_url
     whitelist_url="$(docker exec "$CONTAINER_NAME" bash -lc 'cat /etc/openpath/whitelist-url.conf')"

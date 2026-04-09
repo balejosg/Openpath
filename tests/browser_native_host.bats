@@ -12,7 +12,7 @@
         local native_source="${1:-$INSTALL_DIR/firefox-extension/native}"
         mkdir -p "$native_manifest_dir" "$native_script_dir"
         cp "$native_source/openpath-native-host.py" "$native_script_dir/"
-        echo '{"name":"test"}' > "$native_manifest_dir/openpath_native_host.json"
+        echo '{"name":"test"}' > "$native_manifest_dir/whitelist_native_host.json"
         return 0
     }
     export -f install_native_host
@@ -21,7 +21,7 @@
     [ "$status" -eq 0 ]
 
     [ -f "$native_script_dir/openpath-native-host.py" ]
-    [ -f "$native_manifest_dir/openpath_native_host.json" ]
+    [ -f "$native_manifest_dir/whitelist_native_host.json" ]
 }
 
 @test "install_native_host handles nonexistent directory" {
@@ -74,7 +74,7 @@
 }
 
 @test "remove_firefox_extension removes native host" {
-    local native_manifest="$TEST_TMP_DIR/lib/mozilla/native-messaging-hosts/openpath_native_host.json"
+    local native_manifest="$TEST_TMP_DIR/lib/mozilla/native-messaging-hosts/whitelist_native_host.json"
     local native_script="$TEST_TMP_DIR/local/lib/openpath/openpath-native-host.py"
 
     mkdir -p "$(dirname "$native_manifest")" "$(dirname "$native_script")"
@@ -126,6 +126,11 @@
     [ ! -f "$CHROMIUM_NATIVE_HOST_DIR/openpath_native_host.json" ]
     [ ! -f "$CHROME_NATIVE_HOST_DIR/openpath_native_host.json" ]
     [ ! -f "$EDGE_NATIVE_HOST_DIR/openpath_native_host.json" ]
+}
+
+@test "linux browser runtime uses whitelist_native_host.json for Firefox" {
+    run grep -nF 'whitelist_native_host.json' "$PROJECT_DIR/linux/lib/browser.sh"
+    [ "$status" -eq 0 ]
 }
 #!/usr/bin/env bats
 ################################################################################

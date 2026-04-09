@@ -82,7 +82,7 @@ teardown() {
     [ "$status" -eq 0 ]  # 0 means captive portal detected
 }
 
-@test "check_captive_portal returns 0 (portal detected) when curl times out" {
+@test "check_captive_portal returns 1 (no portal mode) when curl times out" {
     export OPENPATH_CAPTIVE_PORTAL_CHECKS=""
 
     # Mock curl to hang (simulated by returning empty)
@@ -102,10 +102,10 @@ teardown() {
     source "$PROJECT_DIR/linux/lib/common.sh"
 
     run check_captive_portal
-    [ "$status" -eq 0 ]  # Timeout = captive portal (or no network)
+    [ "$status" -eq 1 ]  # Timeout = no network, not captive portal
 }
 
-@test "check_captive_portal returns 0 (portal detected) when curl fails" {
+@test "check_captive_portal returns 1 (no portal mode) when curl fails" {
     export OPENPATH_CAPTIVE_PORTAL_CHECKS=""
 
     # Mock curl to fail (network error)
@@ -126,7 +126,7 @@ teardown() {
     source "$PROJECT_DIR/linux/lib/common.sh"
 
     run check_captive_portal
-    [ "$status" -eq 0 ]  # Network error = assumed captive portal
+    [ "$status" -eq 1 ]  # Network error = no network, not captive portal
 }
 
 # ============== is_network_authenticated tests ==============

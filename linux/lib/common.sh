@@ -474,9 +474,9 @@ CAPTIVE_PORTAL_CHECK_EXPECTED="${CAPTIVE_PORTAL_CHECK_EXPECTED:-${CAPTIVE_PORTAL
 
 # Get captive portal state.
 # Returns one of:
-# - AUTHENTICATED: endpoint(s) return expected response (no portal)
-# - PORTAL: network reachable but response differs (login/redirect/HTML)
-# - NO_NETWORK: transport failure (timeout/DNS failure/no route)
+# - AUTHENTICATED: a reachable quorum returns the expected response (no portal)
+# - PORTAL: a reachable quorum responds, but most reachable checks do not match
+# - NO_NETWORK: too few checks are reachable to classify as a portal
 get_captive_portal_state() {
     local timeout_sec="${CAPTIVE_PORTAL_TIMEOUT:-3}"
     local checks_raw="${CAPTIVE_PORTAL_CHECKS:-}"
@@ -484,6 +484,7 @@ get_captive_portal_state() {
     # Multi-check mode (pipe-separated: url,expected)
     if [ -n "$checks_raw" ]; then
         local total=0
+        local reachable=0
         local success=0
         local transport_fail=0
 
@@ -509,6 +510,8 @@ get_captive_portal_state() {
                 continue
             fi
 
+            reachable=$((reachable + 1))
+
             response=$(printf '%s' "$response" | tr -d '\n\r')
             if [ "$response" = "$expected" ]; then
                 success=$((success + 1))
@@ -520,13 +523,18 @@ get_captive_portal_state() {
             return 0
         fi
 
-        if [ "$transport_fail" -ge "$total" ]; then
+        if [ "$transport_fail" -ge "$total" ] || [ "$reachable" -eq 0 ]; then
+            echo "NO_NETWORK"
+            return 0
+        fi
+
+        if [ "$reachable" -lt 2 ]; then
             echo "NO_NETWORK"
             return 0
         fi
 
         local threshold
-        threshold=$(( (total / 2) + 1 ))
+        threshold=$(( (reachable / 2) + 1 ))
         if [ "$success" -ge "$threshold" ]; then
             echo "AUTHENTICATED"
             return 0
@@ -556,16 +564,16 @@ get_captive_portal_state() {
 }
 
 # Check if there's a captive portal (not authenticated).
-# Returns 0 if captive portal detected (needs auth) OR no network.
-# Returns 1 if no captive portal (authenticated/normal).
+# Returns 0 only when a real captive portal is detected.
+# Returns 1 for authenticated networks and no-network states.
 check_captive_portal() {
     local state
     state=$(get_captive_portal_state)
 
-    if [ "$state" = "AUTHENTICATED" ]; then
-        return 1  # NO captive portal (authenticated)
+    if [ "$state" = "PORTAL" ]; then
+        return 0
     fi
-    return 0  # Captive portal detected (needs auth) OR no network
+    return 1
 }
 
 # Check if authenticated (inverse of check_captive_portal for readability)

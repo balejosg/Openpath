@@ -101,7 +101,7 @@ EOF
         install_browser_integrations \
             /usr/share/openpath/firefox-extension \
             /usr/share/openpath/firefox-release \
-            false \
+            true \
             true \
             true \
             true

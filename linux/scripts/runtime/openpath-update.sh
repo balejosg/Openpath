@@ -264,14 +264,18 @@ main() {
     init_directories
     PRIMARY_DNS=$(detect_primary_dns)
     
-    # CRÍTICO: Verificar portal cautivo ANTES de cualquier cambio
-    # Si hay portal cautivo, desactivar firewall y esperar
-    if check_captive_portal; then
+    # CRÍTICO: Verificar portal cautivo ANTES de cualquier cambio.
+    # Solo una señal real de portal cautivo debe relajar enforcement.
+    local captive_portal_state
+    captive_portal_state=$(get_captive_portal_state)
+    if [ "$captive_portal_state" = "PORTAL" ]; then
         log "⚠ Portal cautivo detectado - desactivando firewall para autenticación"
         deactivate_firewall
         # No continuar hasta que el usuario se autentique
         # El servicio captive-portal-detector.service se encargará de reactivar
         return 0
+    elif [ "$captive_portal_state" = "NO_NETWORK" ]; then
+        log "⚠ Sin conectividad para validar portal cautivo - manteniendo enforcement actual"
     fi
     
     # Descargar whitelist

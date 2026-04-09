@@ -131,10 +131,10 @@ main() {
     if ! install_browser_integrations \
         "$FIREFOX_EXTENSION_SOURCE" \
         "$FIREFOX_RELEASE_SOURCE" \
-        false \
+        true \
         false \
         true \
-        false; then
+        true; then
         log_error "Failed to configure Firefox browser integrations"
         exit 1
     fi

@@ -156,6 +156,89 @@ EOF
     [[ "$output" == *"deactivate_calls=1"* ]]
 }
 
+@test "main keeps enforcement path when captive portal state is NO_NETWORK" {
+    local helper_script="$TEST_TMP_DIR/run-main-no-network.sh"
+    local state_dir="$TEST_TMP_DIR/update-state-no-network"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -uo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/openpath-update-main.sh"
+
+export WHITELIST_FILE="$state_dir/whitelist.txt"
+export DNSMASQ_CONF="$state_dir/openpath.conf"
+export DNSMASQ_CONF_HASH="$state_dir/openpath.conf.hash"
+export BROWSER_POLICIES_HASH="$state_dir/browser.hash"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export INSTALL_DIR="$state_dir/install"
+export LOG_FILE="$state_dir/openpath.log"
+
+mkdir -p "$state_dir"
+: > "$WHITELIST_FILE"
+: > "$DNSMASQ_CONF"
+mkdir -p "$INSTALL_DIR/lib"
+cp "$project_dir/linux/lib/common.sh" "$INSTALL_DIR/lib/"
+: > "$INSTALL_DIR/VERSION"
+: > "$INSTALL_DIR/lib/defaults.conf"
+
+source "$project_dir/linux/lib/common.sh"
+
+activate_calls=0
+deactivate_calls=0
+download_calls=0
+
+log() { echo "$1"; }
+log_warn() { echo "$1"; }
+init_directories() { :; }
+detect_primary_dns() { echo "8.8.8.8"; }
+get_captive_portal_state() { echo "NO_NETWORK"; }
+download_whitelist() { download_calls=$((download_calls + 1)); return 0; }
+check_emergency_disable() { return 1; }
+parse_whitelist_sections() { :; }
+check_firewall_status() { echo "active"; }
+save_checkpoint() { :; }
+generate_dnsmasq_config() { :; }
+generate_firefox_policies() { :; }
+generate_chromium_policies() { :; }
+apply_search_engine_policies() { :; }
+sync_firefox_managed_extension_policy() { :; }
+get_policies_hash() { echo "policies-hash"; }
+has_config_changed() { return 0; }
+restart_dnsmasq() { return 0; }
+verify_dns() { return 0; }
+activate_firewall() { activate_calls=$((activate_calls + 1)); return 0; }
+deactivate_firewall() { deactivate_calls=$((deactivate_calls + 1)); echo "deactivate_firewall called"; return 0; }
+cleanup_system() { echo "cleanup_system called"; }
+flush_connections() { :; }
+force_browser_close() { :; }
+sha256sum() { printf 'deadbeef  %s\n' "$1"; }
+
+awk '/^main\(\) \{/,/^}/' \
+    "$project_dir/linux/scripts/runtime/openpath-update.sh" > "$extracted_script"
+source "$extracted_script"
+
+main
+
+printf 'activate_calls=%s\n' "$activate_calls"
+printf 'deactivate_calls=%s\n' "$deactivate_calls"
+printf 'download_calls=%s\n' "$download_calls"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"download_calls=1"* ]]
+    [[ "$output" == *"activate_calls=0"* ]]
+    [[ "$output" == *"deactivate_calls=0"* ]]
+    [[ "$output" != *"cleanup_system called"* ]]
+}
+
 @test "cleanup_system preserves Firefox managed extension baseline through reactivation" {
     local helper_script="$TEST_TMP_DIR/run-cleanup-reactivation-firefox.sh"
     local state_dir="$TEST_TMP_DIR/update-state"

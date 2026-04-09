@@ -273,6 +273,7 @@ run_contracts() {
         test -f /etc/firefox/policies/policies.json
         grep -q 'ExtensionSettings' /etc/firefox/policies/policies.json
         grep -q 'monitor-bloqueos@openpath' /etc/firefox/policies/policies.json
+        test -f /usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json
         systemctl is-enabled openpath-dnsmasq.timer >/dev/null
     "
 

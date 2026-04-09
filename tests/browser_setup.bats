@@ -121,7 +121,7 @@ EOF
 
     mapfile -t calls < "$calls_file"
     [ "${calls[0]}" = "install_firefox_esr" ]
-    [ "${calls[1]}" = "install_browser_integrations:/usr/share/openpath/firefox-extension|/usr/share/openpath/firefox-release|false|false|true|false" ]
+    [ "${calls[1]}" = "install_browser_integrations:/usr/share/openpath/firefox-extension|/usr/share/openpath/firefox-release|true|false|true|true" ]
     [ "${calls[2]}" = "apply_search_engine_policies" ]
 }
 

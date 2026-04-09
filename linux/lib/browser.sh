@@ -308,6 +308,7 @@ install_native_host() {
     local chromium_ext_id="${2:-}"
     local native_manifest_dir="/usr/lib/mozilla/native-messaging-hosts"
     local native_script_dir="/usr/local/lib/openpath"
+    local firefox_manifest_path="$native_manifest_dir/whitelist_native_host.json"
     
     if [ ! -d "$native_source" ]; then
         log "⚠ Native host directory not found: $native_source"
@@ -325,7 +326,7 @@ install_native_host() {
     chmod +x "$native_script_dir/openpath-native-host.py"
     
     # Generate manifest with correct path
-    cat > "$native_manifest_dir/openpath_native_host.json" << EOF
+    cat > "$firefox_manifest_path" << EOF
 {
     "name": "whitelist_native_host",
     "description": "OpenPath System Native Messaging Host",
@@ -378,7 +379,7 @@ remove_firefox_extension() {
     fi
     
     # Remove native host
-    rm -f "/usr/lib/mozilla/native-messaging-hosts/openpath_native_host.json" 2>/dev/null || true
+    rm -f "/usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json" 2>/dev/null || true
     rm -f "$(get_chromium_native_host_dir)/openpath_native_host.json" 2>/dev/null || true
     rm -f "$(get_chrome_native_host_dir)/openpath_native_host.json" 2>/dev/null || true
     rm -f "$(get_edge_native_host_dir)/openpath_native_host.json" 2>/dev/null || true
