@@ -460,6 +460,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
       assert.ok(data.version.length > 0);
       assert.ok(data.files.length > 0);
       assert.ok(data.files.some((file) => file.path === 'scripts/Update-OpenPath.ps1'));
+      assert.ok(data.files.some((file) => file.path === 'runtime/browser-policy-spec.json'));
       assert.ok(data.files.every((file) => file.sha256.length === 64));
     });
 
@@ -818,6 +819,7 @@ Version: 4.1.10-1
 
       assert.strictEqual(manifest.success, true);
       assert.ok(manifest.files.some((file) => file.path === 'Install-OpenPath.ps1'));
+      assert.ok(manifest.files.some((file) => file.path === 'runtime/browser-policy-spec.json'));
       assert.ok(manifest.files.some((file) => file.path === 'scripts/Pre-Install-Validation.ps1'));
       assert.ok(manifest.files.some((file) => file.path === 'scripts/Enroll-Machine.ps1'));
 

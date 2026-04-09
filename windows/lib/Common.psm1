@@ -623,15 +623,68 @@ function Get-ValidWhitelistDomainsFromFile {
         [string]$Path
     )
 
-    if (-not (Test-Path $Path)) {
-        return @()
-    }
+    $sections = Get-OpenPathWhitelistSectionsFromFile -Path $Path
 
     return @(
-        Get-Content $Path -ErrorAction SilentlyContinue |
+        @($sections.Whitelist) |
             ForEach-Object { $_.Trim() } |
             Where-Object { Test-OpenPathDomainFormat -Domain $_ }
     )
+}
+
+function Get-OpenPathWhitelistSectionsFromFile {
+    <#
+    .SYNOPSIS
+        Returns all supported whitelist sections from a local whitelist file.
+    .PARAMETER Path
+        Full path to whitelist file
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $result = [ordered]@{
+        Whitelist = @()
+        BlockedSubdomains = @()
+        BlockedPaths = @()
+        IsDisabled = $false
+    }
+
+    if (-not (Test-Path $Path)) {
+        return [PSCustomObject]$result
+    }
+
+    $section = 'WHITELIST'
+    foreach ($line in Get-Content $Path -ErrorAction SilentlyContinue) {
+        $trimmed = ([string]$line).Trim()
+
+        if (-not $trimmed) {
+            continue
+        }
+
+        if ($trimmed -match '^#\s*DESACTIVADO\b') {
+            $result.IsDisabled = $true
+            continue
+        }
+
+        if ($trimmed -match '^##\s*(.+)$') {
+            $section = $Matches[1].Trim().ToUpperInvariant()
+            continue
+        }
+
+        if ($trimmed.StartsWith('#')) {
+            continue
+        }
+
+        switch ($section) {
+            'WHITELIST' { $result.Whitelist += $trimmed }
+            'BLOCKED-SUBDOMAINS' { $result.BlockedSubdomains += $trimmed }
+            'BLOCKED-PATHS' { $result.BlockedPaths += $trimmed }
+        }
+    }
+
+    return [PSCustomObject]$result
 }
 
 function ConvertTo-OpenPathWhitelistFileContent {
@@ -2003,6 +2056,7 @@ Export-ModuleMember -Function @(
     'Restore-OpenPathProtectedMode',
     'Get-OpenPathDnsProbeDomains',
     'Get-ValidWhitelistDomainsFromFile',
+    'Get-OpenPathWhitelistSectionsFromFile',
     'ConvertTo-OpenPathWhitelistFileContent',
     'Save-OpenPathWhitelistCheckpoint',
     'Get-OpenPathLatestCheckpoint',

@@ -271,6 +271,54 @@ Describe "Common Module" {
         }
     }
 
+    Context "Get-OpenPathWhitelistSectionsFromFile" {
+        It "Parses whitelist sections from a local whitelist file" {
+            $tempFile = Join-Path $env:TEMP ("openpath-whitelist-sections-" + [Guid]::NewGuid().ToString() + ".txt")
+
+            try {
+                @'
+#DESACTIVADO
+## WHITELIST
+allowed.example
+
+## BLOCKED-SUBDOMAINS
+ads.allowed.example
+
+## BLOCKED-PATHS
+allowed.example/private
+'@ | Set-Content $tempFile -Encoding UTF8
+
+                $sections = InModuleScope Common -Parameters @{
+                    TempFile = $tempFile
+                } {
+                    Get-OpenPathWhitelistSectionsFromFile -Path $TempFile
+                }
+
+                $sections.IsDisabled | Should -BeTrue
+                $sections.Whitelist | Should -Contain 'allowed.example'
+                $sections.BlockedSubdomains | Should -Contain 'ads.allowed.example'
+                $sections.BlockedPaths | Should -Contain 'allowed.example/private'
+            }
+            finally {
+                Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It "Returns empty sections when file does not exist" {
+            $missingPath = Join-Path $env:TEMP ([Guid]::NewGuid().ToString() + '.txt')
+            $sections = InModuleScope Common -Parameters @{
+                MissingPath = $missingPath
+            } {
+                Get-OpenPathWhitelistSectionsFromFile -Path $MissingPath
+            }
+
+            $sections.IsDisabled | Should -BeFalse
+            @($sections.Whitelist).Count | Should -Be 0
+            @($sections.BlockedSubdomains).Count | Should -Be 0
+            @($sections.BlockedPaths).Count | Should -Be 0
+        }
+    }
+
     Context "ConvertTo-OpenPathWhitelistFileContent" {
         It "Serializes whitelist, blocked subdomains, and blocked paths sections" {
             $content = InModuleScope Common {
@@ -1702,9 +1750,24 @@ Describe "Watchdog Script" {
                 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force',
                 'Initialize-OpenPathScriptSession `',
                 '-OpenPathRoot $OpenPathRoot',
-                '-DependentModules @(''DNS'', ''Firewall'', ''CaptivePortal'')',
+                '-DependentModules @(''DNS'', ''Firewall'', ''Browser'', ''CaptivePortal'')',
                 '-RequiredCommands @(',
-                '-ScriptName ''Test-DNSHealth.ps1'''
+                '-ScriptName ''Test-DNSHealth.ps1''',
+                '''Set-FirefoxPolicy''',
+                '''Get-OpenPathWhitelistSectionsFromFile'''
+            )
+        }
+    }
+
+    Context "Firefox policy refresh" {
+        It "Reapplies Firefox policies from the local whitelist so later Firefox installs become managed automatically" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path "$OpenPathRoot\data\whitelist.txt"',
+                'Set-FirefoxPolicy -BlockedPaths $localWhitelistSections.BlockedPaths',
+                'Watchdog: refreshed Firefox policies from local whitelist state'
             )
         }
     }

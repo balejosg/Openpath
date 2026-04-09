@@ -10,6 +10,7 @@ import { logger } from './logger.js';
 import { config } from '../config.js';
 
 const WINDOWS_AGENT_ROOT = path.resolve(process.cwd(), '../windows');
+const SHARED_RUNTIME_ROOT = path.resolve(process.cwd(), '../runtime');
 const LINUX_AGENT_BUILD_ROOT = path.resolve(process.cwd(), '../build');
 const WINDOWS_AGENT_VERSION_FILE = path.resolve(process.cwd(), '../VERSION');
 const FIREFOX_EXTENSION_ROOT = path.resolve(process.cwd(), '../firefox-extension');
@@ -26,6 +27,12 @@ export const CHROMIUM_MANAGED_CRX_FILE = path.join(
   'openpath-chromium-extension.crx'
 );
 const WINDOWS_AGENT_DIRECTORIES = ['lib', 'scripts'] as const;
+const WINDOWS_AGENT_SHARED_FILES = [
+  {
+    relativePath: 'runtime/browser-policy-spec.json',
+    absolutePath: path.join(SHARED_RUNTIME_ROOT, 'browser-policy-spec.json'),
+  },
+] as const;
 const WINDOWS_AGENT_RUNTIME_ROOT_FILES = ['OpenPath.ps1', 'Rotate-Token.ps1'] as const;
 const WINDOWS_AGENT_BOOTSTRAP_ROOT_FILES = [
   'Install-OpenPath.ps1',
@@ -314,6 +321,10 @@ export function buildWindowsAgentFileManifest(options?: {
 
   for (const fileName of rootFiles) {
     addManifestFile(fileName, path.join(WINDOWS_AGENT_ROOT, fileName));
+  }
+
+  for (const fileEntry of WINDOWS_AGENT_SHARED_FILES) {
+    addManifestFile(fileEntry.relativePath, fileEntry.absolutePath);
   }
 
   for (const relativeDirectory of WINDOWS_AGENT_DIRECTORIES) {

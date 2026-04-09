@@ -30,11 +30,12 @@ $OpenPathRoot = "C:\OpenPath"
 Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force
 Initialize-OpenPathScriptSession `
     -OpenPathRoot $OpenPathRoot `
-    -DependentModules @('DNS', 'Firewall', 'CaptivePortal') `
+    -DependentModules @('DNS', 'Firewall', 'Browser', 'CaptivePortal') `
     -RequiredCommands @(
     'Write-OpenPathLog',
     'Get-OpenPathConfig',
     'Get-OpenPathRuntimeHealth',
+    'Get-OpenPathWhitelistSectionsFromFile',
     'Restore-OpenPathProtectedMode',
     'Send-OpenPathHealthReport',
     'Test-OpenPathIntegrity',
@@ -46,6 +47,7 @@ Initialize-OpenPathScriptSession `
     'Test-FirewallActive',
     'Get-AcrylicPath',
     'Set-OpenPathFirewall',
+    'Set-FirefoxPolicy',
     'Set-LocalDNS',
     'Start-AcrylicService',
     'Restart-AcrylicService',
@@ -286,6 +288,19 @@ try {
 catch {
     $issues += "Integrity check error"
     Write-OpenPathLog "Watchdog: Error during integrity checks: $_" -Level ERROR
+}
+
+try {
+    $localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path "$OpenPathRoot\data\whitelist.txt"
+    if ($localWhitelistSections.IsDisabled) {
+        Write-OpenPathLog "Watchdog: skipped Firefox policy refresh because local whitelist is disabled" -Level WARN
+    }
+    elseif (Set-FirefoxPolicy -BlockedPaths $localWhitelistSections.BlockedPaths) {
+        Write-OpenPathLog "Watchdog: refreshed Firefox policies from local whitelist state"
+    }
+}
+catch {
+    Write-OpenPathLog "Watchdog: Firefox policy refresh failed: $_" -Level WARN
 }
 
 # Captive portal handling now runs as a pre-check so other checks can skip
