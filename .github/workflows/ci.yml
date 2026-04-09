@@ -156,6 +156,13 @@ jobs:
     # Keep the required Windows lane on the last hosted image where the
     # direct Pester job closed cleanly. The 2022 image has been turning
     # successful visible steps into teardown-time failures.
+    #
+    # Known hosted-runner limitation: on windows-2025 this job can hang after
+    # every visible step succeeds, during runner cleanup outside our scripts.
+    # We therefore keep successful runs inside an explicit sentinel step and
+    # let the job timeout cancel that active step before the runner reaches the
+    # stuck teardown path. As a result, this job is expected to conclude as
+    # cancelled after a successful Windows test pass.
     runs-on: windows-2025
     timeout-minutes: 15
     needs: detect-relevant-changes
@@ -374,6 +381,10 @@ jobs:
   # ============================================
   # Summary Job
   # ============================================
+  # CI Success is the canonical required signal for this workflow. The hosted
+  # Windows runner workaround above intentionally times out a successful Windows
+  # lane, so the workflow run may finish with a global cancelled conclusion
+  # even when all required checks have passed.
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest

@@ -185,6 +185,18 @@ describe('repository verification contract', () => {
       'ci.yml should cap the required Windows Pester lane with a 15 minute timeout so stuck runner teardown does not block the workflow for hours'
     );
     assert.ok(
+      ciWorkflow.includes(
+        'Known hosted-runner limitation: on windows-2025 this job can hang after'
+      ),
+      'ci.yml should document the hosted Windows runner limitation directly in the workflow'
+    );
+    assert.ok(
+      ciWorkflow.includes(
+        'this job is expected to conclude as\n    # cancelled after a successful Windows test pass'
+      ),
+      'ci.yml should document that the Windows lane is expected to end cancelled after a successful pass'
+    );
+    assert.ok(
       !ciWorkflow.includes('runs-on: windows-2022'),
       'ci.yml should stop pinning the required Windows Pester lane to windows-2022'
     );
@@ -392,6 +404,16 @@ describe('repository verification contract', () => {
     assert.ok(
       ciWorkflow.includes('name: Inspect Windows success marker'),
       'ci.yml should inspect the Windows lane marker step through the Actions API in the summary job when the lane times out'
+    );
+    assert.ok(
+      ciWorkflow.includes(
+        'CI Success is the canonical required signal for this workflow. The hosted'
+      ),
+      'ci.yml should document in the summary job why CI Success is the canonical required signal'
+    );
+    assert.ok(
+      ciWorkflow.includes('workflow run may finish with a global cancelled conclusion'),
+      'ci.yml should document that the overall workflow can conclude cancelled even when required checks pass'
     );
     assert.ok(
       ciWorkflow.includes(
