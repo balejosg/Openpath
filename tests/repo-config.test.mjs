@@ -598,6 +598,15 @@ describe('repository verification contract', () => {
       dockerfile.includes('--mount=type=cache,target=/root/.npm'),
       'api Dockerfile should cache npm downloads across repeated image builds'
     );
+    assert.ok(
+      dockerfile.includes('COPY runtime ./runtime') ||
+        dockerfile.includes('COPY runtime/ ./runtime/'),
+      'api Dockerfile should copy shared runtime assets into the builder context'
+    );
+    assert.ok(
+      dockerfile.includes('COPY --from=builder /app/runtime ./runtime'),
+      'api Dockerfile should preserve shared runtime assets in the runtime image'
+    );
   });
 
   test('linux and windows clients do not reference the legacy classroom whitelist source', () => {

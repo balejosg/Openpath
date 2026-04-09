@@ -24,6 +24,7 @@ COPY api ./api
 COPY shared ./shared
 COPY react-spa ./react-spa
 COPY windows ./windows
+COPY runtime ./runtime
 COPY VERSION ./VERSION
 
 # Build shared package first
@@ -67,6 +68,7 @@ COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/react-spa/dist ./react-spa/dist
 COPY --from=builder /app/api/data ./api/data
 COPY --from=builder /app/windows ./windows
+COPY --from=builder /app/runtime ./runtime
 COPY --from=builder /app/VERSION ./VERSION
 
 # Copy database schema (needed for migration)
