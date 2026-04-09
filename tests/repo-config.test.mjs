@@ -181,6 +181,10 @@ describe('repository verification contract', () => {
       'ci.yml should pin the required Windows Pester lane to windows-2025'
     );
     assert.ok(
+      windowsJobBlock.includes('timeout-minutes: 15'),
+      'ci.yml should cap the required Windows Pester lane with a 15 minute timeout so stuck runner teardown does not block the workflow for hours'
+    );
+    assert.ok(
       !ciWorkflow.includes('runs-on: windows-2022'),
       'ci.yml should stop pinning the required Windows Pester lane to windows-2022'
     );
@@ -352,6 +356,14 @@ describe('repository verification contract', () => {
     assert.ok(
       ciWorkflow.includes('needs.test-windows.outputs.tests_passed'),
       'ci.yml should drive the CI summary gate from the recorded Windows lane output'
+    );
+    assert.ok(
+      ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "cancelled" ]] && \\'),
+      'ci.yml should let the CI summary gate distinguish a cancelled Windows lane from an actual failure'
+    );
+    assert.ok(
+      ciWorkflow.includes('[[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]'),
+      'ci.yml should only accept a cancelled Windows lane when the recorded lane outcome proves the suite passed'
     );
     assert.ok(
       windowsProcessReporter.includes("ValidateSet('capture', 'report')"),

@@ -156,6 +156,7 @@ jobs:
     # direct Pester job closed cleanly. The 2022 image has been turning
     # successful visible steps into teardown-time failures.
     runs-on: windows-2025
+    timeout-minutes: 15
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.os_bound == 'true'
     outputs:
@@ -370,10 +371,17 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ needs.test-windows.result }}" != "skipped" ]] && \
-             [[ "${{ needs.test-windows.outputs.tests_passed }}" != "true" ]]; then
-            echo "Windows Agent Tests (Pester) failed"
-            exit 1
+          if [[ "${{ needs.test-windows.result }}" != "skipped" ]]; then
+            if [[ "${{ needs.test-windows.result }}" == "success" ]] && \
+               [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
+              echo "Windows Agent Tests (Pester) passed"
+            elif [[ "${{ needs.test-windows.result }}" == "cancelled" ]] && \
+                 [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
+              echo "Windows Agent Tests (Pester) timed out after reporting success"
+            else
+              echo "Windows Agent Tests (Pester) failed"
+              exit 1
+            fi
           fi
 
           if [[ "${{ needs.test-delivery-contracts.result }}" != "skipped" ]] && \
