@@ -370,8 +370,8 @@ describe('repository verification contract', () => {
       'ci.yml should persist the Windows success marker before the Windows lane times out'
     );
     assert.ok(
-      windowsJobBlock.includes('uses: actions/cache/save@v4'),
-      'ci.yml should persist the Windows success marker through the cache save action before timeout cancellation'
+      windowsJobBlock.includes('uses: actions/upload-artifact@v7'),
+      'ci.yml should persist the Windows success marker through an explicit artifact upload before timeout cancellation'
     );
     assert.ok(
       windowsJobBlock.includes('windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}'),
@@ -398,16 +398,16 @@ describe('repository verification contract', () => {
       'ci.yml should restore the persisted Windows success marker in the CI summary job when the Windows lane times out'
     );
     assert.ok(
-      ciWorkflow.includes('uses: actions/cache/restore@v4'),
-      'ci.yml should restore the Windows success marker through the cache restore action in the CI summary job'
+      ciWorkflow.includes('uses: actions/download-artifact@v4'),
+      'ci.yml should restore the Windows success marker through an artifact download in the CI summary job'
     );
     assert.ok(
-      ciWorkflow.includes('steps.restore-windows-success-marker.outputs.cache-hit'),
-      'ci.yml should let the CI summary gate inspect whether the persisted Windows success marker was restored'
+      ciWorkflow.includes('name: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}'),
+      'ci.yml should request the run-scoped Windows success marker artifact in the CI summary job'
     );
     assert.ok(
       ciWorkflow.includes('[[ -f .ci/windows-tests-passed.txt ]]'),
-      'ci.yml should verify the restored Windows success marker file exists before trusting the cache hit'
+      'ci.yml should verify the restored Windows success marker file exists before trusting the downloaded artifact'
     );
     assert.ok(
       ciWorkflow.includes('windows_success_marker_restored=true'),

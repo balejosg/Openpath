@@ -239,10 +239,11 @@ jobs:
 
       - name: Save Windows success marker
         if: steps.job-status.outputs.tests_passed == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/upload-artifact@v7
         with:
           path: .ci/windows-tests-passed.txt
-          key: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
+          name: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 1
 
       - name: Hold successful Windows lane until timeout cancellation
         if: steps.job-status.outputs.tests_passed == 'true'
@@ -390,17 +391,16 @@ jobs:
       - name: Restore Windows success marker
         id: restore-windows-success-marker
         if: needs.test-windows.result == 'cancelled'
-        uses: actions/cache/restore@v4
+        continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
-          path: .ci/windows-tests-passed.txt
-          key: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
-          fail-on-cache-miss: false
+          name: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci
 
       - name: Check all jobs
         run: |
           windows_success_marker_restored=false
-          if [[ "${{ steps.restore-windows-success-marker.outputs.cache-hit }}" == "true" ]] && \
-             [[ -f .ci/windows-tests-passed.txt ]]; then
+          if [[ -f .ci/windows-tests-passed.txt ]]; then
             windows_success_marker_restored=true
           fi
 
