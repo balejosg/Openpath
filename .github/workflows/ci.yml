@@ -230,6 +230,20 @@ jobs:
         run: |
           "tests_passed=$env:TESTS_PASSED" >> $env:GITHUB_OUTPUT
 
+      - name: Write Windows success marker
+        if: steps.job-status.outputs.tests_passed == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci | Out-Null
+          Set-Content -Path .ci/windows-tests-passed.txt -Value success
+
+      - name: Save Windows success marker
+        if: steps.job-status.outputs.tests_passed == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci/windows-tests-passed.txt
+          key: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Hold successful Windows lane until timeout cancellation
         if: steps.job-status.outputs.tests_passed == 'true'
         shell: pwsh
@@ -373,8 +387,23 @@ jobs:
     if: always()
 
     steps:
+      - name: Restore Windows success marker
+        id: restore-windows-success-marker
+        if: needs.test-windows.result == 'cancelled'
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci/windows-tests-passed.txt
+          key: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: false
+
       - name: Check all jobs
         run: |
+          windows_success_marker_restored=false
+          if [[ "${{ steps.restore-windows-success-marker.outputs.cache-hit }}" == "true" ]] && \
+             [[ -f .ci/windows-tests-passed.txt ]]; then
+            windows_success_marker_restored=true
+          fi
+
           if [[ "${{ needs.test-linux-dnsmasq.result }}" != "skipped" ]] && \
              [[ "${{ needs.test-linux-dnsmasq.outputs.tests_passed }}" != "true" ]]; then
             echo "Linux Agent Tests (BATS) failed"
@@ -386,7 +415,8 @@ jobs:
                [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
               echo "Windows Agent Tests (Pester) passed"
             elif [[ "${{ needs.test-windows.result }}" == "cancelled" ]] && \
-                 [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
+                 { [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]] || \
+                   [[ "$windows_success_marker_restored" == "true" ]]; }; then
               echo "Windows Agent Tests (Pester) timed out after reporting success"
             else
               echo "Windows Agent Tests (Pester) failed"

@@ -362,6 +362,26 @@ describe('repository verification contract', () => {
       'ci.yml should use a long-running Windows sentinel sleep so the job timeout cancels the lane during an active step'
     );
     assert.ok(
+      windowsJobBlock.includes('name: Write Windows success marker'),
+      'ci.yml should write a persisted Windows success marker before entering the sentinel timeout step'
+    );
+    assert.ok(
+      windowsJobBlock.includes('name: Save Windows success marker'),
+      'ci.yml should persist the Windows success marker before the Windows lane times out'
+    );
+    assert.ok(
+      windowsJobBlock.includes('uses: actions/cache/save@v4'),
+      'ci.yml should persist the Windows success marker through the cache save action before timeout cancellation'
+    );
+    assert.ok(
+      windowsJobBlock.includes('windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}'),
+      'ci.yml should scope the persisted Windows success marker to the current workflow run and attempt'
+    );
+    assert.ok(
+      windowsJobBlock.includes('Set-Content -Path .ci/windows-tests-passed.txt -Value success'),
+      'ci.yml should materialize the Windows success marker as a file in the workspace before saving it'
+    );
+    assert.ok(
       !windowsJobBlock.includes('Out-File -FilePath $env:GITHUB_OUTPUT'),
       'ci.yml should avoid the more error-prone multi-line Out-File pattern in the Windows lane outcome step'
     );
@@ -374,8 +394,28 @@ describe('repository verification contract', () => {
       'ci.yml should let the CI summary gate distinguish a cancelled Windows lane from an actual failure'
     );
     assert.ok(
-      ciWorkflow.includes('[[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]'),
-      'ci.yml should only accept a cancelled Windows lane when the recorded lane outcome proves the suite passed'
+      ciWorkflow.includes('name: Restore Windows success marker'),
+      'ci.yml should restore the persisted Windows success marker in the CI summary job when the Windows lane times out'
+    );
+    assert.ok(
+      ciWorkflow.includes('uses: actions/cache/restore@v4'),
+      'ci.yml should restore the Windows success marker through the cache restore action in the CI summary job'
+    );
+    assert.ok(
+      ciWorkflow.includes('steps.restore-windows-success-marker.outputs.cache-hit'),
+      'ci.yml should let the CI summary gate inspect whether the persisted Windows success marker was restored'
+    );
+    assert.ok(
+      ciWorkflow.includes('[[ -f .ci/windows-tests-passed.txt ]]'),
+      'ci.yml should verify the restored Windows success marker file exists before trusting the cache hit'
+    );
+    assert.ok(
+      ciWorkflow.includes('windows_success_marker_restored=true'),
+      'ci.yml should record when the persisted Windows success marker has been restored successfully'
+    );
+    assert.ok(
+      ciWorkflow.includes('[[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]] || \\'),
+      'ci.yml should accept a timed-out Windows lane when either the normal output or the persisted success marker proves the suite passed'
     );
     assert.ok(
       windowsProcessReporter.includes("ValidateSet('capture', 'report')"),
