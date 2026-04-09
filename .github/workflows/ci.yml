@@ -234,14 +234,14 @@ jobs:
         if: steps.job-status.outputs.tests_passed == 'true'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path .ci | Out-Null
-          Set-Content -Path .ci/windows-tests-passed.txt -Value success
+          New-Item -ItemType Directory -Force -Path ci | Out-Null
+          Set-Content -Path ci/windows-tests-passed.txt -Value success
 
       - name: Save Windows success marker
         if: steps.job-status.outputs.tests_passed == 'true'
         uses: actions/upload-artifact@v7
         with:
-          path: .ci/windows-tests-passed.txt
+          path: ci/windows-tests-passed.txt
           name: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 1
 
@@ -395,12 +395,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-ci-passed-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .ci
+          path: ci
 
       - name: Check all jobs
         run: |
           windows_success_marker_restored=false
-          if [[ -f .ci/windows-tests-passed.txt ]]; then
+          if [[ -f ci/windows-tests-passed.txt ]]; then
             windows_success_marker_restored=true
           fi
 

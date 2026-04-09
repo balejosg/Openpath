@@ -378,7 +378,7 @@ describe('repository verification contract', () => {
       'ci.yml should scope the persisted Windows success marker to the current workflow run and attempt'
     );
     assert.ok(
-      windowsJobBlock.includes('Set-Content -Path .ci/windows-tests-passed.txt -Value success'),
+      windowsJobBlock.includes('Set-Content -Path ci/windows-tests-passed.txt -Value success'),
       'ci.yml should materialize the Windows success marker as a file in the workspace before saving it'
     );
     assert.ok(
@@ -406,7 +406,7 @@ describe('repository verification contract', () => {
       'ci.yml should request the run-scoped Windows success marker artifact in the CI summary job'
     );
     assert.ok(
-      ciWorkflow.includes('[[ -f .ci/windows-tests-passed.txt ]]'),
+      ciWorkflow.includes('[[ -f ci/windows-tests-passed.txt ]]'),
       'ci.yml should verify the restored Windows success marker file exists before trusting the downloaded artifact'
     );
     assert.ok(
