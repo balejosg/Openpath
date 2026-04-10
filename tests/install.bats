@@ -18,6 +18,24 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "linux installers share the generic progress helper" {
+    run test -f "$PROJECT_DIR/linux/lib/progress.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'source "$INSTALLER_SOURCE_DIR/lib/progress.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'source "$SCRIPT_DIR/lib/progress.sh"' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'openpath_show_progress' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'openpath_show_progress' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+
+}
+
 @test "install.sh supports --skip-firefox option" {
     run grep -n -- "--skip-firefox" "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]

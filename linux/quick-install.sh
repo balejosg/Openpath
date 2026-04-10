@@ -28,6 +28,8 @@
 
 set -eo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+
 # ========== CONFIGURE THESE VALUES BEFORE USE ==========
 # These MUST be set to your deployment-specific values
 WHITELIST_URL="${WHITELIST_URL:-}"
@@ -40,6 +42,38 @@ REPO_URL="${REPO_URL:-https://github.com/your-org/openpath}"
 BRANCH="main"
 VERBOSE=false
 EXTRA_INSTALLER_ARGS=()
+
+if [ -f "$SCRIPT_DIR/lib/progress.sh" ]; then
+    # shellcheck source=lib/progress.sh
+    source "$SCRIPT_DIR/lib/progress.sh"
+else
+    openpath_show_progress() {
+        local current="$1"
+        local total="$2"
+        local label="$3"
+        local verbose="${4:-false}"
+        local percent=$((current * 100 / total))
+
+        if [ "$verbose" = true ]; then
+            printf '[%s/%s] %s\n' "$current" "$total" "$label"
+            return 0
+        fi
+
+        if [ -t 1 ]; then
+            local width=24
+            local filled=$((percent * width / 100))
+            local empty=$((width - filled))
+            local bar
+            bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+            printf '\r[%s] %3d%% %s/%s %s' "$bar" "$percent" "$current" "$total" "$label"
+            if [ "$current" -eq "$total" ]; then
+                printf '\n'
+            fi
+        else
+            printf 'Progress %s/%s: %s\n' "$current" "$total" "$label"
+        fi
+    }
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -67,29 +101,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 show_progress() {
-    local current="$1"
-    local total="$2"
-    local label="$3"
-    local percent=$((current * 100 / total))
-
-    if [ "$VERBOSE" = true ]; then
-        printf '[%s/%s] %s\n' "$current" "$total" "$label"
-        return 0
-    fi
-
-    if [ -t 1 ]; then
-        local width=24
-        local filled=$((percent * width / 100))
-        local empty=$((width - filled))
-        local bar
-        bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
-        printf '\r[%s] %3d%% %s/%s %s' "$bar" "$percent" "$current" "$total" "$label"
-        if [ "$current" -eq "$total" ]; then
-            printf '\n'
-        fi
-    else
-        printf 'Progress %s/%s: %s\n' "$current" "$total" "$label"
-    fi
+    openpath_show_progress "$1" "$2" "$3" "$VERBOSE"
 }
 
 if [ "$VERBOSE" = true ]; then

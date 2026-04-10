@@ -63,6 +63,9 @@ CLASSROOM_NAME=""
 API_URL=""
 REGISTRATION_TOKEN=""
 
+# shellcheck source=lib/progress.sh
+source "$INSTALLER_SOURCE_DIR/lib/progress.sh"
+
 log_verbose() {
     if [ "$VERBOSE" = true ]; then
         printf '%s\n' "$*"
@@ -74,29 +77,7 @@ log_notice() {
 }
 
 show_progress() {
-    local current="$1"
-    local total="$2"
-    local label="$3"
-    local percent=$((current * 100 / total))
-
-    if [ "$VERBOSE" = true ]; then
-        printf '[%s/%s] %s\n' "$current" "$total" "$label"
-        return 0
-    fi
-
-    if [ -t 1 ]; then
-        local width=24
-        local filled=$((percent * width / 100))
-        local empty=$((width - filled))
-        local bar
-        bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
-        printf '\r[%s] %3d%% %s/%s %s' "$bar" "$percent" "$current" "$total" "$label"
-        if [ "$current" -eq "$total" ]; then
-            printf '\n'
-        fi
-    else
-        printf 'Progress %s/%s: %s\n' "$current" "$total" "$label"
-    fi
+    openpath_show_progress "$1" "$2" "$3" "$VERBOSE"
 }
 
 replay_quiet_warnings() {
