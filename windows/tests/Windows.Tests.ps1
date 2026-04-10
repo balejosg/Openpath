@@ -2151,6 +2151,22 @@ Describe "Installer" {
         }
     }
 
+    Context "Quiet progress output" {
+        It "Uses PowerShell verbose semantics and progress helpers for installer output" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '[CmdletBinding()]',
+                'function Show-InstallerProgress',
+                'Write-Progress -Activity ''Installing OpenPath''',
+                'function Write-InstallerVerbose',
+                'Write-Verbose $Message',
+                'Show-InstallerProgress -Step 1 -Total 7 -Status ''Creando estructura de directorios'''
+            )
+        }
+    }
+
     Context "Primary DNS detection" {
         It "Uses an installer helper instead of indexing directly into adapter DNS arrays" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"

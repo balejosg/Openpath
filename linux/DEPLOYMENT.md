@@ -38,6 +38,8 @@ sudo ./install.sh \
   --shared-secret "your-shared-secret"
 ```
 
+The installer is quiet by default and shows compact progress. Add `--verbose` when you need detailed per-step output.
+
 ### Method 3: Unattended / Mass Deployment
 
 ```bash

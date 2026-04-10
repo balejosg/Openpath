@@ -160,3 +160,36 @@ EOF
     run grep -n "browser-setup:" "$log_file"
     [ "$status" -eq 0 ]
 }
+
+@test "apt-bootstrap defaults to compact progress and exposes verbose output" {
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local log_file="$TEST_TMP_DIR/apt-bootstrap.log"
+    local browser_setup_script="$TEST_TMP_DIR/openpath-browser-setup.sh"
+
+    mkdir -p "$bin_dir"
+    write_mock_id "$bin_dir"
+    write_mock_apt_get "$bin_dir" "$log_file"
+    write_mock_apt_cache "$bin_dir" "$log_file"
+    write_mock_curl "$bin_dir" "$log_file"
+    write_mock_openpath "$bin_dir" "$log_file" "0"
+    write_mock_browser_setup "$browser_setup_script" "$log_file"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        OPENPATH_APT_REPO_URL="http://repo.local/apt" \
+        OPENPATH_BROWSER_SETUP_SCRIPT="$browser_setup_script" \
+        bash "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh" --skip-setup
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Progress 1/5: Installing bootstrap dependencies"* ]]
+    [[ "$output" != *"OK Dependencies ready"* ]]
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        OPENPATH_APT_REPO_URL="http://repo.local/apt" \
+        OPENPATH_BROWSER_SETUP_SCRIPT="$browser_setup_script" \
+        bash "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh" --skip-setup --verbose
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"OK Dependencies ready"* ]]
+}

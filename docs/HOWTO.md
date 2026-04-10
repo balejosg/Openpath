@@ -9,6 +9,11 @@ curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-
 ```
 
 The bootstrap installs OpenPath and launches `openpath setup` (classroom wizard).
+It is quiet by default and shows compact progress. For detailed output, pass `--verbose`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash -s -- --verbose
+```
 
 ---
 

@@ -29,6 +29,8 @@ sudo ./install.sh
 ```
 
 The installer runs a preflight validation before making changes (systemd, disk space, network, tooling).
+It is quiet by default and shows a compact progress indicator so unattended runs still show liveness.
+Use `--verbose` to show detailed per-step output.
 Use `--skip-preflight` only for controlled environments where those checks are intentionally bypassed.
 
 ### Advanced Installation
@@ -38,6 +40,8 @@ Use the `quick-install.sh` script for non-interactive installations:
 ```bash
 sudo ./quick-install.sh --url "http://your-api-server:3000/export/group.txt"
 ```
+
+Add `--verbose` to `quick-install.sh` when you need the full download and installer trace.
 
 ## Structure
 

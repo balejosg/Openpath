@@ -346,3 +346,38 @@ load 'test_helper'
     run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-agent-update.sh"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 }
+
+@test "linux installers support quiet progress with explicit verbose mode" {
+    run grep -n 'VERBOSE=false' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n -- '--verbose' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'show_progress()' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'INSTALLER_STEP_TOTAL=15' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'run_installer_step 1 "\$INSTALLER_STEP_TOTAL" "Instalando librerias" step_install_libraries' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'ORIGINAL_ARGS=("\$@")' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'exec sudo "\$0" "\${ORIGINAL_ARGS\[@\]}"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n -- '--verbose' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'installer_args+=(--verbose)' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'EXTRA_INSTALLER_ARGS+=("\$1")' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'installer_args+=("\${EXTRA_INSTALLER_ARGS\[@\]}")' "$PROJECT_DIR/linux/quick-install.sh"
+    [ "$status" -eq 0 ]
+}

@@ -45,6 +45,7 @@
     .\Install-Whitelist.ps1 -WhitelistUrl "http://server:3000/export/grupo.txt"
 #>
 
+[CmdletBinding()]
 param(
     [string]$WhitelistUrl = "",
     [switch]$SkipAcrylic,
@@ -67,6 +68,57 @@ $ErrorActionPreference = "Stop"
 $OpenPathRoot = "C:\OpenPath"
 $scriptDir = $PSScriptRoot
 $apiBaseUrl = if ($ApiUrl) { $ApiUrl.TrimEnd('/') } else { '' }
+
+function Write-InstallerNotice {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [string]$ForegroundColor = ''
+    )
+
+    if ($ForegroundColor) {
+        Write-Host $Message -ForegroundColor $ForegroundColor
+    }
+    else {
+        Write-Host $Message
+    }
+}
+
+function Write-InstallerVerbose {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    Write-Verbose $Message
+}
+
+function Show-InstallerProgress {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Step,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Total,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Status
+    )
+
+    $percentComplete = [Math]::Min(100, [Math]::Max(0, [int](($Step / $Total) * 100)))
+    if ($VerbosePreference -eq 'Continue') {
+        Write-Verbose "[$Step/$Total] $Status"
+        return
+    }
+
+    if ([Console]::IsOutputRedirected) {
+        Write-Host "Progress ${Step}/${Total}: $Status"
+        return
+    }
+
+    Write-Progress -Activity 'Installing OpenPath' -Status $Status -PercentComplete $percentComplete
+}
 
 # Verify that modules exist at the expected location
 if (-not (Test-Path "$scriptDir\lib\*.psm1")) {
@@ -188,73 +240,80 @@ if (($FirefoxExtensionId -and -not $FirefoxExtensionInstallUrl) -or ($FirefoxExt
 $usesEnrollmentToken = [bool]$EnrollmentToken
 $usesRegistrationToken = [bool]$RegistrationToken
 
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  OpenPath DNS para Windows - Instalador" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host ""
-if ($classroomModeRequested) {
-    Write-Host "Classroom mode: enabled"
-    if ($Classroom) {
-        Write-Host "Classroom: $Classroom"
+if ($VerbosePreference -eq 'Continue') {
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host "  OpenPath DNS para Windows - Instalador" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host ""
+    if ($classroomModeRequested) {
+        Write-Host "Classroom mode: enabled"
+        if ($Classroom) {
+            Write-Host "Classroom: $Classroom"
+        }
+        if ($ClassroomId) {
+            Write-Host "Classroom ID: $ClassroomId"
+        }
+        Write-Host "API URL: $apiBaseUrl"
+        if ($usesEnrollmentToken) {
+            Write-Host "Enrollment auth: enrollment token"
+        }
+        elseif ($usesRegistrationToken) {
+            Write-Host "Enrollment auth: registration token"
+        }
+        if ($HealthApiSecret) {
+            Write-Host "Health API secret: configured"
+        }
+        if ($FirefoxExtensionId -and $FirefoxExtensionInstallUrl) {
+            Write-Host "Firefox signed extension: configured via install URL"
+        }
+        if ($ChromeExtensionStoreUrl -or $EdgeExtensionStoreUrl) {
+            Write-Host "Chromium store guidance: configured for unmanaged installs"
+        }
     }
-    if ($ClassroomId) {
-        Write-Host "Classroom ID: $ClassroomId"
+    elseif ($WhitelistUrl) {
+        Write-Host "URL: $WhitelistUrl"
     }
-    Write-Host "API URL: $apiBaseUrl"
-    if ($usesEnrollmentToken) {
-        Write-Host "Enrollment auth: enrollment token"
+    else {
+        Write-Host "Mode: Standalone (no whitelist URL configured)"
     }
-    elseif ($usesRegistrationToken) {
-        Write-Host "Enrollment auth: registration token"
-    }
-    if ($HealthApiSecret) {
-        Write-Host "Health API secret: configured"
-    }
-    if ($FirefoxExtensionId -and $FirefoxExtensionInstallUrl) {
+
+    if (-not $classroomModeRequested -and $FirefoxExtensionId -and $FirefoxExtensionInstallUrl) {
         Write-Host "Firefox signed extension: configured via install URL"
     }
-    if ($ChromeExtensionStoreUrl -or $EdgeExtensionStoreUrl) {
+    if (-not $classroomModeRequested -and ($ChromeExtensionStoreUrl -or $EdgeExtensionStoreUrl)) {
         Write-Host "Chromium store guidance: configured for unmanaged installs"
     }
-}
-elseif ($WhitelistUrl) {
-    Write-Host "URL: $WhitelistUrl"
+    Write-Host ""
 }
 else {
-    Write-Host "Mode: Standalone (no whitelist URL configured)"
+    Write-InstallerNotice "Installing OpenPath DNS for Windows..."
 }
-
-if (-not $classroomModeRequested -and $FirefoxExtensionId -and $FirefoxExtensionInstallUrl) {
-    Write-Host "Firefox signed extension: configured via install URL"
-}
-if (-not $classroomModeRequested -and ($ChromeExtensionStoreUrl -or $EdgeExtensionStoreUrl)) {
-    Write-Host "Chromium store guidance: configured for unmanaged installs"
-}
-Write-Host ""
 
 if ($SkipPreflight) {
-    Write-Host "[Preflight] Omitido por -SkipPreflight" -ForegroundColor Yellow
-    Write-Host ""
+    Write-InstallerVerbose "[Preflight] Omitido por -SkipPreflight"
 }
 else {
     $validationScript = Join-Path $scriptDir "scripts\Pre-Install-Validation.ps1"
     if (Test-Path $validationScript) {
-        Write-Host "[Preflight] Ejecutando validacion previa..." -ForegroundColor Yellow
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $validationScript
+        Show-InstallerProgress -Step 0 -Total 7 -Status 'Ejecutando validacion previa'
+        $validationOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $validationScript 2>&1
         if ($LASTEXITCODE -ne 0) {
+            $validationOutput | ForEach-Object { Write-Host $_ }
             Write-Host "ERROR: Pre-install validation failed" -ForegroundColor Red
             exit 1
         }
-        Write-Host "[Preflight] Validacion completada" -ForegroundColor Green
+        if ($VerbosePreference -eq 'Continue') {
+            $validationOutput | ForEach-Object { Write-Verbose "$_" }
+        }
+        Write-InstallerVerbose "[Preflight] Validacion completada"
     }
     else {
-        Write-Host "[Preflight] Omitido: paquete sin script de validacion previa" -ForegroundColor Yellow
+        Write-Warning "[Preflight] Omitido: paquete sin script de validacion previa"
     }
-    Write-Host ""
 }
 
 # Step 1: Create directory structure
-Write-Host "[1/7] Creando estructura de directorios..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 1 -Total 7 -Status 'Creando estructura de directorios'
 
 $dirs = @(
     "$OpenPathRoot\lib",
@@ -271,10 +330,10 @@ foreach ($dir in $dirs) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 }
-Write-Host "  Estructura creada en $OpenPathRoot" -ForegroundColor Green
+Write-InstallerVerbose "  Estructura creada en $OpenPathRoot"
 
 # Lock down permissions: only SYSTEM and Administrators
-Write-Host "  Aplicando permisos restrictivos..." -ForegroundColor Yellow
+Write-InstallerVerbose "  Aplicando permisos restrictivos..."
 try {
     $acl = Get-Acl $OpenPathRoot
     $acl.SetAccessRuleProtection($true, $false) # Disable inheritance, remove inherited rules
@@ -289,7 +348,7 @@ try {
         "BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
     $acl.AddAccessRule($adminRule)
     Set-Acl $OpenPathRoot $acl
-    Write-Host "  Permisos aplicados (solo SYSTEM y Administradores)" -ForegroundColor Green
+    Write-InstallerVerbose "  Permisos aplicados (solo SYSTEM y Administradores)"
 }
 catch {
     Write-Host "  ADVERTENCIA: No se pudieron restringir permisos: $_" -ForegroundColor Yellow
@@ -303,7 +362,7 @@ if (Test-Path $browserExtensionAclPath) {
             "BUILTIN\Users", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
         $browserExtensionAcl.AddAccessRule($usersReadRule)
         Set-Acl $browserExtensionAclPath $browserExtensionAcl
-        Write-Host "  Read access granted for browser extension artifacts" -ForegroundColor Green
+        Write-InstallerVerbose "  Read access granted for browser extension artifacts"
     }
     catch {
         Write-Host "  ADVERTENCIA: No se pudo habilitar lectura para browser-extension: $_" -ForegroundColor Yellow
@@ -311,7 +370,7 @@ if (Test-Path $browserExtensionAclPath) {
 }
 
 # Step 2: Copy modules and scripts
-Write-Host "[2/7] Copiando modulos y scripts..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 2 -Total 7 -Status 'Copiando modulos y scripts'
 
 # Copy lib modules
 Get-ChildItem "$scriptDir\lib\*.psm1" -ErrorAction SilentlyContinue | 
@@ -371,7 +430,7 @@ if ($browserExtensionSource) {
             Copy-Item (Join-Path $browserExtensionSource 'native') -Destination $browserExtensionTarget -Recurse -Force
         }
 
-        Write-Host "  Firefox development extension assets staged in $OpenPathRoot\browser-extension\firefox" -ForegroundColor Green
+        Write-InstallerVerbose "  Firefox development extension assets staged in $OpenPathRoot\browser-extension\firefox"
     }
     else {
         Write-Host "  ADVERTENCIA: Firefox development extension source incomplete ($($missingItems -join ', '))" -ForegroundColor Yellow
@@ -396,7 +455,7 @@ if ($missingNativeHostArtifacts.Count -eq 0) {
             -Force
     }
 
-    Write-Host "  Firefox native host assets staged in $OpenPathRoot\browser-extension\firefox\native" -ForegroundColor Green
+    Write-InstallerVerbose "  Firefox native host assets staged in $OpenPathRoot\browser-extension\firefox\native"
 }
 else {
     Write-Host "  ADVERTENCIA: Firefox native host artifacts missing ($($missingNativeHostArtifacts -join ', '))" -ForegroundColor Yellow
@@ -423,7 +482,7 @@ if ($firefoxReleaseSource) {
         Copy-Item $firefoxReleaseXpiSource -Destination (Join-Path $firefoxReleaseTarget 'openpath-firefox-extension.xpi') -Force
     }
 
-    Write-Host "  Signed Firefox Release artifacts staged in $OpenPathRoot\browser-extension\firefox-release" -ForegroundColor Green
+    Write-InstallerVerbose "  Signed Firefox Release artifacts staged in $OpenPathRoot\browser-extension\firefox-release"
 }
 elseif (-not ($FirefoxExtensionId -and $FirefoxExtensionInstallUrl)) {
     Write-Host "  ADVERTENCIA: Firefox Release extension auto-install requires a signed XPI distribution (AMO, HTTPS URL, or staged signed artifact)." -ForegroundColor Yellow
@@ -444,7 +503,7 @@ if ($chromiumManagedSource) {
     Remove-Item $chromiumManagedTarget -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $chromiumManagedTarget -Force | Out-Null
     Copy-Item (Join-Path $chromiumManagedSource 'metadata.json') -Destination (Join-Path $chromiumManagedTarget 'metadata.json') -Force
-    Write-Host "  Chromium managed rollout metadata staged in $OpenPathRoot\browser-extension\chromium-managed" -ForegroundColor Green
+    Write-InstallerVerbose "  Chromium managed rollout metadata staged in $OpenPathRoot\browser-extension\chromium-managed"
 }
 else {
     Write-Host "  ADVERTENCIA: Chromium managed rollout metadata not found in browser-extension\chromium-managed or firefox-extension\build\chromium-managed; Edge/Chrome managed extension install skipped" -ForegroundColor Yellow
@@ -530,13 +589,13 @@ function Install-OpenPathChromiumUnmanagedGuidance {
     foreach ($browserTarget in $browserTargets) {
         $shortcutPath = Join-Path $guidanceRoot $browserTarget.ShortcutName
         New-OpenPathInternetShortcut -Path $shortcutPath -Url $browserTarget.StoreUrl
-        Write-Host "  Chromium store guidance staged in $shortcutPath" -ForegroundColor Green
+        Write-InstallerVerbose "  Chromium store guidance staged in $shortcutPath"
 
         if (-not $Unattended) {
             if ($browserTarget.ExecutablePath) {
                 try {
                     Start-Process -FilePath $browserTarget.ExecutablePath -ArgumentList $browserTarget.StoreUrl | Out-Null
-                    Write-Host "  Opened $($browserTarget.Name) store page for OpenPath extension" -ForegroundColor Green
+                    Write-InstallerVerbose "  Opened $($browserTarget.Name) store page for OpenPath extension"
                 }
                 catch {
                     Write-Host "  ADVERTENCIA: No se pudo abrir $($browserTarget.Name) automaticamente: $_" -ForegroundColor Yellow
@@ -566,7 +625,7 @@ if (-not $chromiumManagedSource) {
 
 Write-Host "  Chrome/Edge force-install is not available on unmanaged Windows; use store guidance, Firefox auto-install, or a managed CRX/update-manifest rollout." -ForegroundColor Yellow
 
-Write-Host "  Modulos copiados" -ForegroundColor Green
+Write-InstallerVerbose "  Modulos copiados"
 
 # Import modules
 Import-Module "$OpenPathRoot\lib\Common.psm1" -Force
@@ -655,7 +714,7 @@ function Get-InstallerPrimaryDNS {
 }
 
 # Step 3: Create configuration
-Write-Host "[3/7] Creando configuracion..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 3 -Total 7 -Status 'Creando configuracion'
 
 # Detect primary DNS
 $primaryDNS = Get-InstallerPrimaryDNS
@@ -728,7 +787,7 @@ if ($EdgeExtensionStoreUrl) {
 }
 
 $config | ConvertTo-Json -Depth 10 | Set-Content "$OpenPathRoot\data\config.json" -Encoding UTF8
-Write-Host "  DNS upstream: $primaryDNS" -ForegroundColor Green
+Write-InstallerVerbose "  DNS upstream: $primaryDNS"
 
 Import-Module "$OpenPathRoot\lib\DNS.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Browser.psm1" -Force
@@ -742,16 +801,16 @@ catch {
 }
 
 # Step 4: Install Acrylic DNS
-Write-Host "[4/7] Instalando Acrylic DNS Proxy..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 4 -Total 7 -Status 'Instalando Acrylic DNS Proxy'
 
 if (-not $SkipAcrylic) {
     if (Test-AcrylicInstalled) {
-        Write-Host "  Acrylic ya instalado" -ForegroundColor Green
+        Write-InstallerVerbose "  Acrylic ya instalado"
     }
     else {
         $installed = Install-AcrylicDNS
         if ($installed) {
-            Write-Host "  Acrylic instalado" -ForegroundColor Green
+            Write-InstallerVerbose "  Acrylic instalado"
         }
         else {
             Write-Host "  ADVERTENCIA: No se pudo instalar Acrylic automaticamente" -ForegroundColor Yellow
@@ -767,26 +826,26 @@ else {
 Set-AcrylicConfiguration
 
 # Step 5: Configure DNS
-Write-Host "[5/7] Configurando DNS local..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 5 -Total 7 -Status 'Configurando DNS local'
 Set-LocalDNS
-Write-Host "  DNS configurado a 127.0.0.1" -ForegroundColor Green
+Write-InstallerVerbose "  DNS configurado a 127.0.0.1"
 
 # Step 6: Register scheduled tasks
-Write-Host "[6/7] Registrando tareas programadas..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 6 -Total 7 -Status 'Registrando tareas programadas'
 Register-OpenPathTask -UpdateIntervalMinutes 15 -WatchdogIntervalMinutes 1
 if (Start-OpenPathTask -TaskType SSE) {
-    Write-Host "  Listener SSE iniciado" -ForegroundColor Green
+    Write-InstallerVerbose "  Listener SSE iniciado"
 }
 else {
     Write-Host "  ADVERTENCIA: No se pudo iniciar el listener SSE automaticamente" -ForegroundColor Yellow
 }
-Write-Host "  Tareas registradas" -ForegroundColor Green
+Write-InstallerVerbose "  Tareas registradas"
 
 # Register machine in classroom mode
 $machineRegistered = "NOT_REQUESTED"
 if ($classroomModeRequested) {
-    Write-Host ""
-    Write-Host "Registering machine in classroom..." -ForegroundColor Yellow
+    Write-InstallerVerbose ""
+    Write-InstallerVerbose "Registering machine in classroom..."
 
     $enrollScript = "$OpenPathRoot\scripts\Enroll-Machine.ps1"
     if (-not (Test-Path $enrollScript)) {
@@ -826,7 +885,7 @@ if ($classroomModeRequested) {
                 if ($enrollResult.WhitelistUrl) {
                     $WhitelistUrl = [string]$enrollResult.WhitelistUrl
                 }
-                Write-Host "  Machine registration completed" -ForegroundColor Green
+                Write-InstallerVerbose "  Machine registration completed"
             }
             else {
                 $machineRegistered = "FAILED"
@@ -849,7 +908,7 @@ catch {
 }
 
 # Step 7: First update
-Write-Host "[7/7] Ejecutando primera actualizacion..." -ForegroundColor Yellow
+Show-InstallerProgress -Step 7 -Total 7 -Status 'Ejecutando primera actualizacion'
 
 $shouldRunFirstUpdate = $true
 if ($classroomModeRequested -and $machineRegistered -ne "REGISTERED") {
@@ -860,7 +919,7 @@ if ($classroomModeRequested -and $machineRegistered -ne "REGISTERED") {
 if ($shouldRunFirstUpdate) {
     try {
         & "$OpenPathRoot\scripts\Update-OpenPath.ps1"
-        Write-Host "  Primera actualizacion completada" -ForegroundColor Green
+        Write-InstallerVerbose "  Primera actualizacion completada"
     }
     catch {
         Write-Host "  ADVERTENCIA: Primera actualizacion fallida (se reintentara)" -ForegroundColor Yellow
@@ -871,7 +930,7 @@ if ($shouldRunFirstUpdate) {
 try {
     if (Save-OpenPathIntegrityBackup) {
         if (New-OpenPathIntegrityBaseline) {
-            Write-Host "  Baseline de integridad generada" -ForegroundColor Green
+            Write-InstallerVerbose "  Baseline de integridad generada"
         }
     }
 }
@@ -880,10 +939,12 @@ catch {
 }
 
 # Verify installation
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  Verificando instalacion..." -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+if ($VerbosePreference -eq 'Continue') {
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host "  Verificando instalacion..." -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
+}
 
 $checks = @()
 
@@ -959,18 +1020,27 @@ try {
 catch {
     # Keep placeholder when no probe domain can be derived
 }
-Write-Host "Comandos utiles:"
-Write-Host "  .\OpenPath.ps1 status          # Estado del agente"
-Write-Host "  .\OpenPath.ps1 update          # Forzar actualizacion"
-Write-Host "  .\OpenPath.ps1 health          # Ejecutar watchdog"
-Write-Host "  .\OpenPath.ps1 self-update --check  # Comprobar actualizacion de agente"
-Write-Host "  nslookup $dnsProbeDomain 127.0.0.1  # Probar DNS"
-Write-Host "  Get-ScheduledTask OpenPath-*  # Ver tareas"
-if ($classroomModeRequested) {
-    Write-Host "  .\OpenPath.ps1 rotate-token -Secret <secret>  # Rotar token"
-    Write-Host "  .\OpenPath.ps1 enroll -Classroom <aula> -ApiUrl <url> -RegistrationToken <token>"
-    Write-Host "  .\OpenPath.ps1 enroll -ApiUrl <url> -ClassroomId <id> -EnrollmentToken <token> -Unattended"
+if ($VerbosePreference -eq 'Continue') {
+    Write-Host "Comandos utiles:"
+    Write-Host "  .\OpenPath.ps1 status          # Estado del agente"
+    Write-Host "  .\OpenPath.ps1 update          # Forzar actualizacion"
+    Write-Host "  .\OpenPath.ps1 health          # Ejecutar watchdog"
+    Write-Host "  .\OpenPath.ps1 self-update --check  # Comprobar actualizacion de agente"
+    Write-Host "  nslookup $dnsProbeDomain 127.0.0.1  # Probar DNS"
+    Write-Host "  Get-ScheduledTask OpenPath-*  # Ver tareas"
+    if ($classroomModeRequested) {
+        Write-Host "  .\OpenPath.ps1 rotate-token -Secret <secret>  # Rotar token"
+        Write-Host "  .\OpenPath.ps1 enroll -Classroom <aula> -ApiUrl <url> -RegistrationToken <token>"
+        Write-Host "  .\OpenPath.ps1 enroll -ApiUrl <url> -ClassroomId <id> -EnrollmentToken <token> -Unattended"
+    }
+    Write-Host ""
 }
-Write-Host ""
+else {
+    Write-Host "Comando de gestion: .\OpenPath.ps1 status"
+    Write-Host ""
+}
+if ($VerbosePreference -ne 'Continue' -and -not [Console]::IsOutputRedirected) {
+    Write-Progress -Activity 'Installing OpenPath' -Completed
+}
 Write-Host "Desinstalar: .\Uninstall-OpenPath.ps1"
 Write-Host ""

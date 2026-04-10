@@ -38,31 +38,95 @@ HEALTH_API_SECRET="${HEALTH_API_SECRET:-}"
 # Override REPO_URL for your fork/deployment
 REPO_URL="${REPO_URL:-https://github.com/your-org/openpath}"
 BRANCH="main"
+VERBOSE=false
+EXTRA_INSTALLER_ARGS=()
 
-echo ""
-echo "╔═══════════════════════════════════════════════════╗"
-echo "║     🛡️  Whitelist System Quick Install            ║"
-echo "╚═══════════════════════════════════════════════════╝"
-echo ""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
+        --url|--whitelist-url)
+            WHITELIST_URL="$2"
+            shift 2
+            ;;
+        --health-api-url)
+            HEALTH_API_URL="$2"
+            shift 2
+            ;;
+        --health-api-secret)
+            HEALTH_API_SECRET="$2"
+            shift 2
+            ;;
+        *)
+            EXTRA_INSTALLER_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+show_progress() {
+    local current="$1"
+    local total="$2"
+    local label="$3"
+    local percent=$((current * 100 / total))
+
+    if [ "$VERBOSE" = true ]; then
+        printf '[%s/%s] %s\n' "$current" "$total" "$label"
+        return 0
+    fi
+
+    if [ -t 1 ]; then
+        local width=24
+        local filled=$((percent * width / 100))
+        local empty=$((width - filled))
+        local bar
+        bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+        printf '\r[%s] %3d%% %s/%s %s' "$bar" "$percent" "$current" "$total" "$label"
+        if [ "$current" -eq "$total" ]; then
+            printf '\n'
+        fi
+    else
+        printf 'Progress %s/%s: %s\n' "$current" "$total" "$label"
+    fi
+}
+
+if [ "$VERBOSE" = true ]; then
+    echo ""
+    echo "╔═══════════════════════════════════════════════════╗"
+    echo "║     🛡️  Whitelist System Quick Install            ║"
+    echo "╚═══════════════════════════════════════════════════╝"
+    echo ""
+else
+    echo "Installing OpenPath..."
+fi
 
 # Create temp directory
 TMPDIR=$(mktemp -d)
 cd "$TMPDIR"
 
-echo "📥 Downloading latest release..."
+show_progress 1 3 "Downloading latest release"
 curl -sSL "${REPO_URL}/archive/refs/heads/${BRANCH}.tar.gz" | tar -xz
 cd whitelist-${BRANCH}
 
-echo "🚀 Running installer..."
-./install.sh --unattended \
+show_progress 2 3 "Running installer"
+installer_args=(
+    --unattended
     --url "$WHITELIST_URL" \
     --health-api-url "$HEALTH_API_URL" \
     --health-api-secret "$HEALTH_API_SECRET"
+)
+if [ "$VERBOSE" = true ]; then
+    installer_args+=(--verbose)
+fi
+installer_args+=("${EXTRA_INSTALLER_ARGS[@]}")
+
+./install.sh "${installer_args[@]}"
 
 # Cleanup
 cd /
 rm -rf "$TMPDIR"
 
-echo ""
-echo "✅ Installation complete!"
-echo ""
+show_progress 3 3 "Installation complete"
+echo "Installation complete."

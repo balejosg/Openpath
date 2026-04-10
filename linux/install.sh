@@ -38,6 +38,7 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER_SOURCE_DIR="$SCRIPT_DIR"
 VERSION=$(cat "$INSTALLER_SOURCE_DIR/../VERSION" 2>/dev/null || echo "4.1.0")
+ORIGINAL_ARGS=("$@")
 
 # Directorios de instalación
 INSTALL_DIR="/usr/local/lib/openpath"
@@ -54,11 +55,87 @@ INSTALL_EXTENSION=true
 INSTALL_FIREFOX=true
 INSTALL_NATIVE_HOST=false
 SKIP_PREFLIGHT=false
+VERBOSE=false
+INSTALLER_STEP_TOTAL=15
 HEALTH_API_URL=""
 HEALTH_API_SECRET=""
 CLASSROOM_NAME=""
 API_URL=""
 REGISTRATION_TOKEN=""
+
+log_verbose() {
+    if [ "$VERBOSE" = true ]; then
+        printf '%s\n' "$*"
+    fi
+}
+
+log_notice() {
+    printf '%s\n' "$*"
+}
+
+show_progress() {
+    local current="$1"
+    local total="$2"
+    local label="$3"
+    local percent=$((current * 100 / total))
+
+    if [ "$VERBOSE" = true ]; then
+        printf '[%s/%s] %s\n' "$current" "$total" "$label"
+        return 0
+    fi
+
+    if [ -t 1 ]; then
+        local width=24
+        local filled=$((percent * width / 100))
+        local empty=$((width - filled))
+        local bar
+        bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+        printf '\r[%s] %3d%% %s/%s %s' "$bar" "$percent" "$current" "$total" "$label"
+        if [ "$current" -eq "$total" ]; then
+            printf '\n'
+        fi
+    else
+        printf 'Progress %s/%s: %s\n' "$current" "$total" "$label"
+    fi
+}
+
+replay_quiet_warnings() {
+    local output_file="$1"
+    if grep -Eq 'ADVERTENCIA|WARNING|WARN|ERROR|Error|error|fall[oó]|fallida|fallido|no pudo|no se pudo|⚠|✗' "$output_file"; then
+        [ -t 1 ] && printf '\n'
+        grep -E 'ADVERTENCIA|WARNING|WARN|ERROR|Error|error|fall[oó]|fallida|fallido|no pudo|no se pudo|⚠|✗' "$output_file"
+    fi
+}
+
+run_quietly() {
+    local output_file
+    output_file="$(mktemp)"
+
+    if "$@" >"$output_file" 2>&1; then
+        replay_quiet_warnings "$output_file"
+        rm -f "$output_file"
+        return 0
+    fi
+
+    [ -t 1 ] && printf '\n'
+    cat "$output_file"
+    rm -f "$output_file"
+    return 1
+}
+
+run_installer_step() {
+    local current="$1"
+    local total="$2"
+    local label="$3"
+    local step_function="$4"
+
+    show_progress "$current" "$total" "$label"
+    if [ "$VERBOSE" = true ]; then
+        "$step_function"
+    else
+        run_quietly "$step_function"
+    fi
+}
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -95,6 +172,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_PREFLIGHT=true
             shift
             ;;
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
         --classroom)
             CLASSROOM_NAME="$2"
             shift 2
@@ -119,9 +200,9 @@ if [ -n "$CLASSROOM_NAME" ] && [ -n "$API_URL" ] && [ -z "$HEALTH_API_SECRET" ];
     { set +x; } 2>/dev/null
     # Generate a random 32-character secret using cryptographic entropy
     HEALTH_API_SECRET=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
-    echo "🔑 API Secret generated automatically for Classroom mode"
-    echo "   Secret will be saved to /etc/openpath/api-secret.conf"
-    echo "   ACTION: Backup this file securely for reinstallation"
+    log_notice "API Secret generated automatically for classroom mode"
+    log_notice "   Secret will be saved to /etc/openpath/api-secret.conf"
+    log_notice "   ACTION: Backup this file securely for reinstallation"
 fi
 
 # Validate registration token in classroom mode
@@ -132,7 +213,7 @@ if [ -n "$CLASSROOM_NAME" ] && [ -n "$API_URL" ]; then
         exit 1
     fi
     
-    echo "Validando token de registro..."
+    log_verbose "Validando token de registro..."
     VALIDATE_RESPONSE=$(curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$REGISTRATION_TOKEN\"}" \
@@ -143,27 +224,31 @@ if [ -n "$CLASSROOM_NAME" ] && [ -n "$API_URL" ]; then
         echo "   Verifique el token con el administrador del servidor central"
         exit 1
     fi
-    echo "✓ Token de registro validado"
+    log_verbose "Token de registro validado"
 fi
 
 # Auto-elevación con sudo
 if [ "$EUID" -ne 0 ]; then
-    echo "Elevando permisos con sudo..."
-    exec sudo "$0" "$@"
+    log_notice "Elevando permisos con sudo..."
+    exec sudo "$0" "${ORIGINAL_ARGS[@]}"
 fi
 
-echo "======================================================"
-echo "  dnsmasq URL Whitelist System v$VERSION - Instalación"
-echo "======================================================"
-echo ""
-echo "URL Whitelist: $WHITELIST_URL"
-echo "Extensión Firefox: $INSTALL_EXTENSION"
-echo "Firefox: $INSTALL_FIREFOX"
-if [ -n "$CLASSROOM_NAME" ]; then
-    echo "Modo Aula: $CLASSROOM_NAME"
-    echo "API URL: $API_URL"
+if [ "$VERBOSE" = true ]; then
+    echo "======================================================"
+    echo "  dnsmasq URL Whitelist System v$VERSION - Instalación"
+    echo "======================================================"
+    echo ""
+    echo "URL Whitelist: $WHITELIST_URL"
+    echo "Extensión Firefox: $INSTALL_EXTENSION"
+    echo "Firefox: $INSTALL_FIREFOX"
+    if [ -n "$CLASSROOM_NAME" ]; then
+        echo "Modo Aula: $CLASSROOM_NAME"
+        echo "API URL: $API_URL"
+    fi
+    echo ""
+else
+    log_notice "Installing OpenPath DNS v$VERSION..."
 fi
-echo ""
 
 # ============================================================================
 # Installation Step Functions
@@ -651,6 +736,19 @@ run_classroom_registration() {
 }
 
 print_summary() {
+    if [ "$VERBOSE" != true ]; then
+        echo ""
+        echo "Installation complete."
+        echo "Status: dnsmasq=$(systemctl is-active dnsmasq), smoke-tests=$SMOKE_STATUS"
+        if [ -n "$MACHINE_REGISTERED" ]; then
+            echo "Enrollment: $MACHINE_REGISTERED"
+        fi
+        echo "Manage with: openpath status"
+        echo "Uninstall: sudo $INSTALLER_SOURCE_DIR/uninstall.sh"
+        echo ""
+        return 0
+    fi
+
     echo ""
     echo "======================================================"
     echo "  ✓ INSTALACIÓN COMPLETADA"
@@ -690,27 +788,32 @@ print_summary() {
 
 main() {
     if [ "$SKIP_PREFLIGHT" = true ]; then
-        echo ""
-        echo "[Preflight] Omitido por --skip-preflight"
+        log_verbose ""
+        log_verbose "[Preflight] Omitido por --skip-preflight"
     else
-        run_pre_install_validation
+        show_progress 0 "$INSTALLER_STEP_TOTAL" "Validando requisitos previos"
+        if [ "$VERBOSE" = true ]; then
+            run_pre_install_validation
+        else
+            run_quietly run_pre_install_validation
+        fi
     fi
 
-    step_install_libraries
-    step_install_dependencies
-    step_free_port_53
-    step_detect_dns
-    step_install_scripts
-    step_configure_sudoers
-    step_create_services
-    step_configure_dns
-    step_configure_dnsmasq
-    step_install_firefox
-    step_apply_policies
-    step_install_extension
-    step_enable_services
-    run_smoke_tests
-    run_classroom_registration
+    run_installer_step 1 "$INSTALLER_STEP_TOTAL" "Instalando librerias" step_install_libraries
+    run_installer_step 2 "$INSTALLER_STEP_TOTAL" "Instalando dependencias" step_install_dependencies
+    run_installer_step 3 "$INSTALLER_STEP_TOTAL" "Liberando puerto 53" step_free_port_53
+    run_installer_step 4 "$INSTALLER_STEP_TOTAL" "Detectando DNS primario" step_detect_dns
+    run_installer_step 5 "$INSTALLER_STEP_TOTAL" "Instalando scripts" step_install_scripts
+    run_installer_step 6 "$INSTALLER_STEP_TOTAL" "Configurando permisos sudo" step_configure_sudoers
+    run_installer_step 7 "$INSTALLER_STEP_TOTAL" "Creando servicios systemd" step_create_services
+    run_installer_step 8 "$INSTALLER_STEP_TOTAL" "Configurando DNS" step_configure_dns
+    run_installer_step 9 "$INSTALLER_STEP_TOTAL" "Configurando dnsmasq" step_configure_dnsmasq
+    run_installer_step 10 "$INSTALLER_STEP_TOTAL" "Instalando Firefox" step_install_firefox
+    run_installer_step 11 "$INSTALLER_STEP_TOTAL" "Aplicando politicas de navegadores" step_apply_policies
+    run_installer_step 12 "$INSTALLER_STEP_TOTAL" "Instalando extensiones del navegador" step_install_extension
+    run_installer_step 13 "$INSTALLER_STEP_TOTAL" "Habilitando servicios" step_enable_services
+    run_installer_step 14 "$INSTALLER_STEP_TOTAL" "Ejecutando smoke tests" run_smoke_tests
+    run_installer_step 15 "$INSTALLER_STEP_TOTAL" "Registrando maquina" run_classroom_registration
     print_summary
 }
 

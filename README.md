@@ -113,6 +113,12 @@ One-liner installation via APT + guided classroom linking. This is the simplest 
 curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash
 ```
 
+The bootstrap is quiet by default and shows a compact progress indicator. Add `--verbose` for detailed installer output:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash -s -- --verbose
+```
+
 The installer asks for:
 
 1. API URL (central server)
@@ -138,6 +144,8 @@ PowerShell-based installation using Acrylic DNS Proxy.
 ```powershell
 ./windows/Install-OpenPath.ps1
 ```
+
+The Windows installer shows progress by default and accepts `-Verbose` when you need detailed per-step output.
 
 ## Technologies
 
