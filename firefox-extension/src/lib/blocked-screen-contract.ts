@@ -22,6 +22,11 @@ export interface SubmitBlockedDomainRequestMessage {
   error?: string | undefined;
 }
 
+export interface BlockedMonitorNavigation {
+  frameId: number;
+  url: string;
+}
+
 function getSearchParam(params: URLSearchParams, key: string): string | null {
   const value = params.get(key);
   return value && value.trim().length > 0 ? value : null;
@@ -94,4 +99,21 @@ export function isSubmitBlockedDomainRequestMessage(
     isOptionalString(record.origin) &&
     isOptionalString(record.error)
   );
+}
+
+export function shouldClearBlockedMonitorStateOnNavigate(
+  navigation: BlockedMonitorNavigation,
+  blockedScreenUrl: string
+): boolean {
+  if (navigation.frameId !== 0) {
+    return false;
+  }
+
+  try {
+    const target = new URL(navigation.url);
+    const blockedScreen = new URL(blockedScreenUrl);
+    return target.origin !== blockedScreen.origin || target.pathname !== blockedScreen.pathname;
+  } catch {
+    return true;
+  }
 }

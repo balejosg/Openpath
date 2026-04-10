@@ -98,10 +98,9 @@ function normalizeDomainStatusesResponse(response: unknown): Record<string, { st
 function shouldEnableRequestAction(input: {
   hasDomains: boolean;
   nativeAvailable: boolean;
-  apiAvailable: boolean;
   requestConfigured: boolean;
 }): boolean {
-  return input.hasDomains && input.nativeAvailable && input.apiAvailable && input.requestConfigured;
+  return input.hasDomains && input.nativeAvailable && input.requestConfigured;
 }
 
 function buildAutoRequestPayload(input: {
@@ -517,18 +516,16 @@ void describe('Auto-Allow UX Contract', () => {
     assert.strictEqual(result['api.example.com']?.state, 'autoApproved');
   });
 
-  void test('should enable request only when all requirements are met', () => {
+  void test('should enable request without popup-level API probing', () => {
     const enabled = shouldEnableRequestAction({
       hasDomains: true,
       nativeAvailable: true,
-      apiAvailable: true,
       requestConfigured: true,
     });
 
     const disabledNoNative = shouldEnableRequestAction({
       hasDomains: true,
       nativeAvailable: false,
-      apiAvailable: true,
       requestConfigured: true,
     });
 

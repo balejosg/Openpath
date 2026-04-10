@@ -4,9 +4,10 @@
  */
 
 import { logger, getErrorMessage } from './lib/logger.js';
+import { buildSubmitBlockedDomainRequestMessage } from './lib/blocked-screen-contract.js';
+import { formatNativeHostStatusLabel } from './lib/native-status-label.js';
 import {
   DEFAULT_REQUEST_CONFIG,
-  getRequestApiEndpoints as getApiEndpoints,
   hasValidRequestConfig,
   loadRequestConfig,
   type RequestConfig,
@@ -101,7 +102,6 @@ let blockedDomainsData: BlockedDomainsData = {};
 
 // Native Messaging availability
 let isNativeAvailable = false;
-let isRequestApiAvailable = false;
 let domainStatusesData: Record<string, DomainStatus> = {};
 
 /**
@@ -157,42 +157,8 @@ function normalizeDomainStatuses(response: unknown): Record<string, DomainStatus
   return payload.statuses ?? {};
 }
 
-function getRequestApiEndpoints(): string[] {
-  return getApiEndpoints(CONFIG);
-}
-
 function isRequestConfigured(): boolean {
   return hasValidRequestConfig(CONFIG);
-}
-
-async function fetchWithFallback(
-  path: string,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> {
-  const endpoints = getRequestApiEndpoints();
-  let lastError: Error | null = null;
-
-  for (const endpoint of endpoints) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-
-    try {
-      const response = await fetch(`${endpoint}${path}`, {
-        ...init,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      return response;
-    } catch (error) {
-      clearTimeout(timeout);
-      lastError = error instanceof Error ? error : new Error(String(error));
-    }
-  }
-
-  throw lastError ?? new Error('No hay endpoint API disponible');
 }
 
 function statusMeta(status?: DomainStatus): {
@@ -218,8 +184,7 @@ function statusMeta(status?: DomainStatus): {
 
 function refreshRequestButtonState(): void {
   const hasDomains = Object.keys(blockedDomainsData).length > 0;
-  const canRequest =
-    hasDomains && isNativeAvailable && isRequestApiAvailable && isRequestConfigured();
+  const canRequest = hasDomains && isNativeAvailable && isRequestConfigured();
 
   if (canRequest) {
     btnRequest.classList.remove('hidden');
@@ -375,10 +340,13 @@ async function checkNativeAvailable(): Promise<void> {
     isNativeAvailable = res.available ?? res.success ?? false;
 
     if (isNativeAvailable) {
-      nativeStatusEl.textContent = `Host nativo v${res.version ?? '?'}`;
+      nativeStatusEl.textContent = formatNativeHostStatusLabel({
+        available: true,
+        version: res.version,
+      });
       nativeStatusEl.className = 'status-indicator available';
     } else {
-      nativeStatusEl.textContent = 'Host nativo no disponible';
+      nativeStatusEl.textContent = formatNativeHostStatusLabel({ available: false });
       nativeStatusEl.className = 'status-indicator unavailable';
     }
 
@@ -470,35 +438,6 @@ function hideVerifyResults(): void {
 let CONFIG: RequestConfig = { ...DEFAULT_REQUEST_CONFIG };
 
 /**
- * Check if the request API is available
- */
-async function checkRequestApiAvailable(): Promise<boolean> {
-  if (!isRequestConfigured()) {
-    return false;
-  }
-
-  try {
-    const response = await fetchWithFallback(
-      '/health',
-      {
-        method: 'GET',
-      },
-      5000
-    );
-
-    if (response.ok) {
-      return true;
-    }
-  } catch (error) {
-    if (CONFIG.debugMode) {
-      logger.debug('[Popup] Request API not available', { error: getErrorMessage(error) });
-    }
-  }
-
-  return false;
-}
-
-/**
  * Toggle request section visibility
  */
 function toggleRequestSection(): void {
@@ -547,11 +486,7 @@ function updateSubmitButtonState(): void {
   const hasReason = requestReasonEl.value.trim().length >= 3;
 
   btnSubmitRequest.disabled =
-    !hasSelection ||
-    !hasReason ||
-    !isRequestConfigured() ||
-    !isNativeAvailable ||
-    !isRequestApiAvailable;
+    !hasSelection || !hasReason || !isRequestConfigured() || !isNativeAvailable;
 }
 
 /**
@@ -561,7 +496,6 @@ async function submitDomainRequest(): Promise<void> {
   const domain = requestDomainSelectEl.value;
   const reason = requestReasonEl.value.trim();
   const selectedInfo = blockedDomainsData[domain];
-  const extensionVersion = browser.runtime.getManifest().version;
 
   if (!domain || reason.length < 3) {
     showRequestStatus('❌ Selecciona un dominio y escribe un motivo', 'error');
@@ -579,59 +513,16 @@ async function submitDomainRequest(): Promise<void> {
   showRequestStatus('Enviando solicitud...', 'pending');
 
   try {
-    let machineHostname: string | undefined;
-    try {
-      const hostResponse = await browser.runtime.sendMessage({ action: 'getHostname' });
-      const hostPayload = hostResponse as { success?: boolean; hostname?: string };
-      if (hostPayload.success && hostPayload.hostname) {
-        machineHostname = hostPayload.hostname;
-      }
-    } catch {
-      machineHostname = undefined;
-    }
-
-    if (!machineHostname) {
-      showRequestStatus('❌ No se pudo obtener el hostname del equipo', 'error');
-      showToast('❌ Hostname no disponible');
-      return;
-    }
-
-    const tokenResponse: { success?: boolean; token?: string; error?: string } =
-      await browser.runtime.sendMessage({
-        action: 'getMachineToken',
-      });
-    if (!tokenResponse.success || !tokenResponse.token) {
-      showRequestStatus(
-        `❌ ${tokenResponse.error ?? 'No se pudo obtener token de la máquina'}`,
-        'error'
-      );
-      showToast('❌ Token de máquina no disponible');
-      return;
-    }
-
-    const token = tokenResponse.token;
-
-    const apiResponse = await fetchWithFallback(
-      '/api/requests/submit',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          domain,
-          reason,
-          token,
-          hostname: machineHostname,
-          origin_host: selectedInfo?.origin ?? undefined,
-          client_version: extensionVersion,
-          error_type: selectedInfo?.errors?.[0],
-        }),
-      },
-      CONFIG.requestTimeout
+    const payload: Partial<SubmitRequestResult> = await browser.runtime.sendMessage(
+      buildSubmitBlockedDomainRequestMessage({
+        domain,
+        reason,
+        origin: selectedInfo?.origin ?? undefined,
+        error: selectedInfo?.errors?.[0],
+      })
     );
 
-    const payload = (await apiResponse.json()) as Partial<SubmitRequestResult>;
-
-    if (apiResponse.ok && payload.success === true && payload.id) {
+    if (payload.success === true && payload.id) {
       showRequestStatus(
         `✅ Solicitud enviada para ${domain}. Queda pendiente de aprobación.`,
         'success'
@@ -742,8 +633,6 @@ async function init(): Promise<void> {
     // Verificar si Native Messaging está disponible
     await checkNativeAvailable();
 
-    // Verificar si Request API está disponible
-    isRequestApiAvailable = await checkRequestApiAvailable();
     refreshRequestButtonState();
   } catch (error) {
     logger.error('[Popup] Error de inicialización', { error: getErrorMessage(error) });

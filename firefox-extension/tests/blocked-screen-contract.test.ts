@@ -6,6 +6,7 @@ import {
   buildBlockedScreenContextFromSearch,
   buildSubmitBlockedDomainRequestMessage,
   isSubmitBlockedDomainRequestMessage,
+  shouldClearBlockedMonitorStateOnNavigate,
 } from '../src/lib/blocked-screen-contract.js';
 
 void describe('blocked screen contract', () => {
@@ -47,6 +48,35 @@ void describe('blocked screen contract', () => {
         reason: 'Lo necesito para una actividad de clase',
         origin: 42,
       }),
+      false
+    );
+  });
+
+  void test('preserves monitor state while navigating to the extension blocked screen', () => {
+    const blockedScreenUrl = 'moz-extension://unit-test-id/blocked/blocked.html';
+
+    assert.equal(
+      shouldClearBlockedMonitorStateOnNavigate(
+        {
+          frameId: 0,
+          url: 'moz-extension://unit-test-id/blocked/blocked.html?domain=learning.example',
+        },
+        blockedScreenUrl
+      ),
+      false
+    );
+    assert.equal(
+      shouldClearBlockedMonitorStateOnNavigate(
+        { frameId: 0, url: 'https://learning.example/activity' },
+        blockedScreenUrl
+      ),
+      true
+    );
+    assert.equal(
+      shouldClearBlockedMonitorStateOnNavigate(
+        { frameId: 1, url: 'https://learning.example/frame' },
+        blockedScreenUrl
+      ),
       false
     );
   });

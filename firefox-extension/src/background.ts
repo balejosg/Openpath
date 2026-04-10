@@ -19,6 +19,7 @@ import { buildBlockedDomainSubmitBody } from './lib/blocked-request.js';
 import {
   SUBMIT_BLOCKED_DOMAIN_REQUEST_ACTION,
   isSubmitBlockedDomainRequestMessage,
+  shouldClearBlockedMonitorStateOnNavigate,
 } from './lib/blocked-screen-contract.js';
 
 declare const browser: Browser;
@@ -1162,8 +1163,12 @@ browser.webRequest.onErrorOccurred.addListener(
  */
 browser.webNavigation.onBeforeNavigate.addListener(
   (details: WebNavigation.OnBeforeNavigateDetailsType) => {
-    // Solo limpiar para navegación principal (no iframes)
-    if (details.frameId === 0) {
+    if (
+      shouldClearBlockedMonitorStateOnNavigate(
+        { frameId: details.frameId, url: details.url },
+        browser.runtime.getURL(BLOCKED_SCREEN_PATH)
+      )
+    ) {
       logger.debug(`[Monitor] Limpiando bloqueos para tab ${details.tabId.toString()}`);
       clearTabRuntimeState(details.tabId);
     }
