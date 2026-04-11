@@ -527,27 +527,7 @@ except Exception:
         echo -e "  Token: ${GREEN}valido${NC}"
     fi
     
-    # Step 2: Save config
-    mkdir -p "$ETC_CONFIG_DIR"
-    chown root:root "$ETC_CONFIG_DIR" 2>/dev/null || true
-    chmod 750 "$ETC_CONFIG_DIR" 2>/dev/null || true
-
-    echo "$api_url"   > "$ETC_CONFIG_DIR/api-url.conf"
-    chown root:root "$ETC_CONFIG_DIR/api-url.conf" 2>/dev/null || true
-    chmod 640 "$ETC_CONFIG_DIR/api-url.conf"
-
-    if [[ -n "$classroom" ]]; then
-        echo "$classroom" > "$ETC_CONFIG_DIR/classroom.conf"
-        chown root:root "$ETC_CONFIG_DIR/classroom.conf" 2>/dev/null || true
-        chmod 640 "$ETC_CONFIG_DIR/classroom.conf"
-    fi
-    if [[ -n "$classroom_id" ]]; then
-        echo "$classroom_id" > "$ETC_CONFIG_DIR/classroom-id.conf"
-        chown root:root "$ETC_CONFIG_DIR/classroom-id.conf" 2>/dev/null || true
-        chmod 640 "$ETC_CONFIG_DIR/classroom-id.conf"
-    fi
-
-    # Step 3: Register with API
+    # Step 2: Register with API
     local hostname version response
     hostname=$(hostname)
     if [[ -n "$machine_name" ]]; then
@@ -567,23 +547,47 @@ except Exception:
     fi
 
     if register_machine "$machine_name" "$classroom" "$classroom_id" "$version" "$api_url" "$auth_token"; then
+        if [[ -z "${TOKENIZED_URL:-}" ]] || ! is_tokenized_whitelist_url "$TOKENIZED_URL"; then
+            echo -e "${RED}Error: la API no devolvio una whitelist URL tokenizada valida${NC}"
+            echo "  Respuesta: ${REGISTER_RESPONSE:-sin respuesta}"
+            exit 1
+        fi
+
+        mkdir -p "$ETC_CONFIG_DIR"
+        chown root:root "$ETC_CONFIG_DIR" 2>/dev/null || true
+        chmod 750 "$ETC_CONFIG_DIR" 2>/dev/null || true
+
+        local persisted_classroom="$classroom"
+        local persisted_classroom_id="$classroom_id"
+        if [[ -n "$REGISTERED_CLASSROOM_NAME" ]]; then
+            persisted_classroom="$REGISTERED_CLASSROOM_NAME"
+        fi
+        if [[ -n "$REGISTERED_CLASSROOM_ID" ]]; then
+            persisted_classroom_id="$REGISTERED_CLASSROOM_ID"
+        fi
+
+        echo "$api_url" > "$ETC_CONFIG_DIR/api-url.conf"
+        chown root:root "$ETC_CONFIG_DIR/api-url.conf" 2>/dev/null || true
+        chmod 640 "$ETC_CONFIG_DIR/api-url.conf"
+
+        if [[ -n "$persisted_classroom" ]]; then
+            echo "$persisted_classroom" > "$ETC_CONFIG_DIR/classroom.conf"
+            chown root:root "$ETC_CONFIG_DIR/classroom.conf" 2>/dev/null || true
+            chmod 640 "$ETC_CONFIG_DIR/classroom.conf"
+        fi
+        if [[ -n "$persisted_classroom_id" ]]; then
+            echo "$persisted_classroom_id" > "$ETC_CONFIG_DIR/classroom-id.conf"
+            chown root:root "$ETC_CONFIG_DIR/classroom-id.conf" 2>/dev/null || true
+            chmod 640 "$ETC_CONFIG_DIR/classroom-id.conf"
+        fi
+
         echo "$TOKENIZED_URL" > "$WHITELIST_URL_CONF"
         chown root:root "$WHITELIST_URL_CONF" 2>/dev/null || true
         chmod 640 "$WHITELIST_URL_CONF"
         persist_machine_name "${REGISTERED_MACHINE_NAME:-$machine_name}" || true
 
-        if [[ -n "$REGISTERED_CLASSROOM_NAME" ]]; then
-            classroom="$REGISTERED_CLASSROOM_NAME"
-            echo "$REGISTERED_CLASSROOM_NAME" > "$ETC_CONFIG_DIR/classroom.conf"
-            chown root:root "$ETC_CONFIG_DIR/classroom.conf" 2>/dev/null || true
-            chmod 640 "$ETC_CONFIG_DIR/classroom.conf"
-        fi
-        if [[ -n "$REGISTERED_CLASSROOM_ID" ]]; then
-            classroom_id="$REGISTERED_CLASSROOM_ID"
-            echo "$REGISTERED_CLASSROOM_ID" > "$ETC_CONFIG_DIR/classroom-id.conf"
-            chown root:root "$ETC_CONFIG_DIR/classroom-id.conf" 2>/dev/null || true
-            chmod 640 "$ETC_CONFIG_DIR/classroom-id.conf"
-        fi
+        classroom="$persisted_classroom"
+        classroom_id="$persisted_classroom_id"
 
         echo -e "  Registro: ${GREEN}exitoso${NC}"
         echo "  URL: $TOKENIZED_URL"

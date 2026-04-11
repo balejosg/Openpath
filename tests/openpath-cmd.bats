@@ -412,3 +412,152 @@ EOF
 
     [ "$status" -eq 0 ]
 }
+
+@test "cmd_enroll does not persist partial classroom state when registration fails" {
+    local helper_script="$TEST_TMP_DIR/run-cmd-enroll-registration-failure.sh"
+    local state_dir="$TEST_TMP_DIR/enroll-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/cmd-enroll.sh"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+export WHITELIST_FILE="$state_dir/whitelist.txt"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export DNSMASQ_CONF_HASH="$state_dir/dnsmasq.hash"
+export BROWSER_POLICIES_HASH="$state_dir/browser.hash"
+
+mkdir -p "$ETC_CONFIG_DIR"
+
+GREEN=""
+RED=""
+YELLOW=""
+BLUE=""
+NC=""
+
+normalize_machine_name_value() { printf '%s\n' "$1"; }
+register_machine() { REGISTER_RESPONSE='{"success":false}'; return 1; }
+persist_machine_name() { return 0; }
+reset_cached_whitelist_state() { :; }
+systemctl() { return 0; }
+dpkg() { printf 'Version: 4.1.15-1\n'; }
+hostname() { printf 'max12\n'; }
+
+{
+    awk '/^cmd_enroll\(\) \{/,/^}/' \
+        "$project_dir/linux/scripts/runtime/openpath-cmd.sh"
+    awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
+        "$project_dir/linux/scripts/runtime/openpath-cmd.sh"
+} > "$extracted_script"
+set +e
+(
+    source "$extracted_script"
+    cmd_enroll --classroom 'Room 101' --api-url 'https://classroompath.eu' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
+)
+status=$?
+set -e
+
+printf 'status=%s\n' "$status"
+printf 'api_url_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/api-url.conf" && echo yes || echo no)"
+printf 'classroom_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/classroom.conf" && echo yes || echo no)"
+printf 'classroom_id_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/classroom-id.conf" && echo yes || echo no)"
+printf 'whitelist_url_exists=%s\n' "$(test -f "$WHITELIST_URL_CONF" && echo yes || echo no)"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"status=1"* ]]
+    [[ "$output" == *"api_url_exists=no"* ]]
+    [[ "$output" == *"classroom_exists=no"* ]]
+    [[ "$output" == *"classroom_id_exists=no"* ]]
+    [[ "$output" == *"whitelist_url_exists=no"* ]]
+}
+
+@test "cmd_enroll persists api, classroom, and tokenized whitelist together after successful registration" {
+    local helper_script="$TEST_TMP_DIR/run-cmd-enroll-success.sh"
+    local state_dir="$TEST_TMP_DIR/enroll-success-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/cmd-enroll.sh"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+export WHITELIST_FILE="$state_dir/whitelist.txt"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export DNSMASQ_CONF_HASH="$state_dir/dnsmasq.hash"
+export BROWSER_POLICIES_HASH="$state_dir/browser.hash"
+
+mkdir -p "$ETC_CONFIG_DIR"
+
+GREEN=""
+RED=""
+YELLOW=""
+BLUE=""
+NC=""
+
+normalize_machine_name_value() { printf '%s\n' "$1"; }
+register_machine() {
+    TOKENIZED_URL='https://classroompath.eu/w/token123/whitelist.txt'
+    REGISTERED_CLASSROOM_NAME='Room 201'
+    REGISTERED_CLASSROOM_ID='cls_201'
+    REGISTERED_MACHINE_NAME='max12-scoped'
+    return 0
+}
+persist_machine_name() { printf '%s\n' "$1" > "$ETC_CONFIG_DIR/persisted-machine-name"; return 0; }
+reset_cached_whitelist_state() { :; }
+systemctl() { return 0; }
+dpkg() { printf 'Version: 4.1.15-1\n'; }
+hostname() { printf 'max12\n'; }
+
+{
+    awk '/^is_tokenized_whitelist_url\(\) \{/,/^}/' \
+        "$project_dir/linux/scripts/runtime/openpath-cmd.sh"
+    awk '/^cmd_enroll\(\) \{/,/^}/' \
+        "$project_dir/linux/scripts/runtime/openpath-cmd.sh"
+    awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
+        "$project_dir/linux/scripts/runtime/openpath-cmd.sh"
+} > "$extracted_script"
+
+set +e
+(
+    source "$extracted_script"
+    cmd_enroll --classroom 'Room 101' --api-url 'https://classroompath.eu' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
+)
+status=$?
+set -e
+
+printf 'status=%s\n' "$status"
+printf 'api_url=%s\n' "$(cat "$ETC_CONFIG_DIR/api-url.conf")"
+printf 'classroom=%s\n' "$(cat "$ETC_CONFIG_DIR/classroom.conf")"
+printf 'classroom_id=%s\n' "$(cat "$ETC_CONFIG_DIR/classroom-id.conf")"
+printf 'whitelist_url=%s\n' "$(cat "$WHITELIST_URL_CONF")"
+printf 'machine_name=%s\n' "$(cat "$ETC_CONFIG_DIR/persisted-machine-name")"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"status=0"* ]]
+    [[ "$output" == *"api_url=https://classroompath.eu"* ]]
+    [[ "$output" == *"classroom=Room 201"* ]]
+    [[ "$output" == *"classroom_id=cls_201"* ]]
+    [[ "$output" == *"whitelist_url=https://classroompath.eu/w/token123/whitelist.txt"* ]]
+    [[ "$output" == *"machine_name=max12-scoped"* ]]
+}

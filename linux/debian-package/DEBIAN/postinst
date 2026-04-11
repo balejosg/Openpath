@@ -9,6 +9,31 @@ set -e
 # Load debconf library
 . /usr/share/debconf/confmodule
 
+safe_db_get() {
+    local canonical_key="$1"
+    local legacy_key="${2:-}"
+
+    RET=""
+    if db_get "$canonical_key"; then
+        printf '%s\n' "${RET:-}"
+        return 0
+    fi
+
+    RET=""
+    if [ -n "$legacy_key" ] && db_get "$legacy_key"; then
+        printf '%s\n' "${RET:-}"
+        return 0
+    fi
+
+    RET=""
+    return 0
+}
+
+is_http_url() {
+    local value="${1:-}"
+    [[ "$value" =~ ^https?://[^[:space:]]+$ ]]
+}
+
 case "$1" in
     configure)
         echo "Configuring openpath-dnsmasq..."
@@ -21,32 +46,20 @@ case "$1" in
         source /usr/local/lib/openpath/lib/services.sh
         
         # Get configuration from debconf (prefer canonical keys, fallback legacy)
-        db_get openpath-dnsmasq/whitelist-url || true
-        if [ -z "${RET:-}" ]; then
-            db_get whitelist-dnsmasq/whitelist-url || true
-        fi
-        WHITELIST_URL="${RET:-}"
-
-        db_get openpath-dnsmasq/health-api-url || true
-        if [ -z "${RET:-}" ]; then
-            db_get whitelist-dnsmasq/health-api-url || true
-        fi
-        HEALTH_API_URL="${RET:-}"
-
-        db_get openpath-dnsmasq/health-api-secret || true
-        if [ -z "${RET:-}" ]; then
-            db_get whitelist-dnsmasq/health-api-secret || true
-        fi
-        HEALTH_API_SECRET="${RET:-}"
+        WHITELIST_URL="$(safe_db_get openpath-dnsmasq/whitelist-url whitelist-dnsmasq/whitelist-url)"
+        HEALTH_API_URL="$(safe_db_get openpath-dnsmasq/health-api-url whitelist-dnsmasq/health-api-url)"
+        HEALTH_API_SECRET="$(safe_db_get openpath-dnsmasq/health-api-secret whitelist-dnsmasq/health-api-secret)"
         
         # Create directories (Debian FHS compliant)
         mkdir -p "$ETC_CONFIG_DIR"     # /etc/openpath - config (preserved)
         mkdir -p "$VAR_STATE_DIR"      # /var/lib/openpath - state/cache
         
         # Save configuration to /etc/ (preserved on upgrade)
-        echo "$WHITELIST_URL" > "$WHITELIST_URL_CONF"
+        if is_http_url "$WHITELIST_URL"; then
+            echo "$WHITELIST_URL" > "$WHITELIST_URL_CONF"
+        fi
         
-        if [ -n "$HEALTH_API_URL" ]; then
+        if is_http_url "$HEALTH_API_URL"; then
             echo "$HEALTH_API_URL" > "$HEALTH_API_URL_CONF"
         fi
         if [ -n "$HEALTH_API_SECRET" ]; then

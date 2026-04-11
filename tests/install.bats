@@ -295,6 +295,113 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "postinst ignores debconf fallback error strings when canonical whitelist key is empty" {
+    local helper_script="$TEST_TMP_DIR/run-postinst-safe-debconf.sh"
+    local state_dir="$TEST_TMP_DIR/postinst-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/postinst-helpers.sh"
+
+log_file="$state_dir/db-get.log"
+: > "$log_file"
+
+db_get() {
+    printf '%s\n' "$1" >> "$log_file"
+    case "$1" in
+        openpath-dnsmasq/whitelist-url)
+            RET=""
+            return 0
+            ;;
+        whitelist-dnsmasq/whitelist-url)
+            RET="10 whitelist-dnsmasq/whitelist-url doesn't exist"
+            return 10
+            ;;
+        *)
+            RET=""
+            return 0
+            ;;
+    esac
+}
+
+awk '/^safe_db_get\(\) \{/,/^}/' \
+    "$project_dir/linux/debian-package/DEBIAN/postinst" > "$extracted_script"
+source "$extracted_script"
+
+value="$(safe_db_get openpath-dnsmasq/whitelist-url whitelist-dnsmasq/whitelist-url)"
+printf 'value=%s\n' "$value"
+cat "$log_file"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"value="* ]]
+    [[ "$output" == *"openpath-dnsmasq/whitelist-url"* ]]
+    [[ "$output" != *"whitelist-dnsmasq/whitelist-url"* ]]
+    [[ "$output" != *"doesn't exist"* ]]
+}
+
+@test "postinst falls back to legacy whitelist debconf key only when canonical lookup fails" {
+    local helper_script="$TEST_TMP_DIR/run-postinst-legacy-debconf-fallback.sh"
+    local state_dir="$TEST_TMP_DIR/postinst-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/postinst-helpers.sh"
+log_file="$state_dir/db-get.log"
+
+: > "$log_file"
+
+db_get() {
+    printf '%s\n' "$1" >> "$log_file"
+    case "$1" in
+        openpath-dnsmasq/whitelist-url)
+            RET=""
+            return 10
+            ;;
+        whitelist-dnsmasq/whitelist-url)
+            RET="https://legacy.example.test/w/token/whitelist.txt"
+            return 0
+            ;;
+        *)
+            RET=""
+            return 0
+            ;;
+    esac
+}
+
+awk '/^safe_db_get\(\) \{/,/^}/' \
+    "$project_dir/linux/debian-package/DEBIAN/postinst" > "$extracted_script"
+source "$extracted_script"
+
+value="$(safe_db_get openpath-dnsmasq/whitelist-url whitelist-dnsmasq/whitelist-url)"
+printf 'value=%s\n' "$value"
+cat "$log_file"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"value=https://legacy.example.test/w/token/whitelist.txt"* ]]
+    [[ "$output" == *"openpath-dnsmasq/whitelist-url"* ]]
+    [[ "$output" == *"whitelist-dnsmasq/whitelist-url"* ]]
+}
+
 @test "install.sh apt dependencies match debian control Depends" {
     local control_file="$PROJECT_DIR/linux/debian-package/DEBIAN/control"
     local install_file="$PROJECT_DIR/linux/install.sh"
