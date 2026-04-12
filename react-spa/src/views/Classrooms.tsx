@@ -259,6 +259,12 @@ const EnrollClassroomModal: React.FC<EnrollClassroomModalProps> = ({
         Selecciona plataforma y ejecuta el comando en cada equipo del aula{' '}
         <strong>{selectedClassroom.displayName}</strong> para instalar y registrar el agente:
       </p>
+      {selectedClassroom.currentGroupId === null ? (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <p>El equipo se registrará con navegación sin bloqueos hasta asignar un grupo al aula.</p>
+        </div>
+      ) : null}
       <div className="mb-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
         <button
           onClick={() => onSelectPlatform('linux')}

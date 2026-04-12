@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { emitWhitelistChanged } from '../lib/rule-events.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
+import { UNRESTRICTED_GROUP_ID } from '../lib/exemption-storage.js';
 import { withTransaction } from '../db/index.js';
 import RequestService from '../services/request.service.js';
 import { normalizeHostInput } from '../lib/machine-proof.js';
@@ -82,6 +83,13 @@ export function registerPublicRequestRoutes(app: Express): void {
         res.status(404).json({
           success: false,
           error: 'No active group found for machine hostname',
+        });
+        return;
+      }
+      if (groupContext.groupId === UNRESTRICTED_GROUP_ID) {
+        res.status(400).json({
+          success: false,
+          error: 'Machine classroom is unrestricted and does not require access requests',
         });
         return;
       }
@@ -203,6 +211,13 @@ export function registerPublicRequestRoutes(app: Express): void {
         res.status(404).json({
           success: false,
           error: 'No active group found for machine hostname',
+        });
+        return;
+      }
+      if (groupContext.groupId === UNRESTRICTED_GROUP_ID) {
+        res.status(400).json({
+          success: false,
+          error: 'Machine classroom is unrestricted and does not require access requests',
         });
         return;
       }

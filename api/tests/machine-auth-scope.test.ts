@@ -81,10 +81,14 @@ async function createGroup(name: string): Promise<string> {
   return ((await parseTRPC(response)).data as { id: string }).id;
 }
 
-async function createClassroom(name: string, defaultGroupId: string): Promise<string> {
+async function createClassroom(name: string, defaultGroupId?: string): Promise<string> {
   const response = await trpcMutate(
     'classrooms.create',
-    { name, displayName: name, defaultGroupId },
+    {
+      name,
+      displayName: name,
+      ...(defaultGroupId ? { defaultGroupId } : {}),
+    },
     bearerAuth(ADMIN_TOKEN)
   );
 
@@ -227,6 +231,54 @@ await describe('Machine authentication scope regressions', async () => {
 
     const deniedResponse = await requestEnrollmentTicket(deniedClassroomId, teacher.accessToken);
     assert.strictEqual(deniedResponse.status, 403);
+  });
+
+  await test('teacher can mint an enrollment token and register a machine for a groupless classroom', async () => {
+    const grouplessClassroomId = await createClassroom(`groupless-room-${TEST_RUN_ID}`);
+
+    const teacher = await createUser({
+      prefix: 'teacher-groupless-ticket',
+      role: 'teacher',
+      groupIds: [],
+    });
+
+    const ticketResponse = await requestEnrollmentTicket(grouplessClassroomId, teacher.accessToken);
+    assert.strictEqual(ticketResponse.status, 200);
+
+    const ticketData = (await ticketResponse.json()) as { enrollmentToken?: string };
+    assert.ok(ticketData.enrollmentToken);
+
+    const registration = await registerMachine({
+      classroomId: grouplessClassroomId,
+      hostname: 'pc-groupless-01',
+      enrollmentToken: ticketData.enrollmentToken,
+    });
+
+    assert.strictEqual(registration.machineHostname.includes('pc-groupless-01'), true);
+
+    const whitelistResponse = await fetch(
+      `${API_URL}/w/${encodeURIComponent(registration.machineToken)}/whitelist.txt`
+    );
+    assert.strictEqual(whitelistResponse.status, 200);
+    assert.strictEqual(await whitelistResponse.text(), '#DESACTIVADO\n');
+
+    const contextResponse = await fetch(
+      `${API_URL}/api/test-support/machine-context/${encodeURIComponent(registration.machineHostname)}`,
+      {
+        headers: { Authorization: `Bearer ${teacher.accessToken}` },
+      }
+    );
+    assert.strictEqual(contextResponse.status, 200);
+    const contextData = (await contextResponse.json()) as {
+      context?: { groupId?: string | null };
+    };
+    assert.strictEqual(contextData.context?.groupId, '__unrestricted__');
+
+    const eventsResponse = await fetch(`${API_URL}/api/machines/events`, {
+      headers: { Authorization: `Bearer ${registration.machineToken}` },
+    });
+    assert.strictEqual(eventsResponse.status, 200);
+    await eventsResponse.body?.cancel();
   });
 
   await test('classroom-scoped enrollment and machine tokens cannot cross classroom boundaries', async () => {

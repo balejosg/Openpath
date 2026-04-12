@@ -120,13 +120,12 @@ function canAccessClassroomScope(
   return candidateGroupIds.some((groupId) => auth.canApproveGroup(user, groupId));
 }
 
-export async function ensureUserCanAccessClassroom(
-  user: JWTPayload,
+async function resolveClassroomAccessScope(
   classroomId: string
-): Promise<ClassroomAccessResult> {
+): Promise<ClassroomAccessScope | null> {
   const classroom = await classroomStorage.getClassroomById(classroomId);
   if (!classroom) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+    return null;
   }
 
   const currentSchedule = await scheduleStorage.getCurrentSchedule(classroom.id);
@@ -145,6 +144,41 @@ export async function ensureUserCanAccessClassroom(
     currentGroupId: currentGroup.id,
     currentGroupSource: currentGroup.source,
   };
+
+  return scope;
+}
+
+export async function ensureUserCanAccessClassroom(
+  user: JWTPayload,
+  classroomId: string
+): Promise<ClassroomAccessResult> {
+  const scope = await resolveClassroomAccessScope(classroomId);
+  if (!scope) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  }
+
+  if (!canAccessClassroomScope(user, scope)) {
+    return {
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'You do not have access to this classroom' },
+    };
+  }
+
+  return { ok: true, data: scope };
+}
+
+export async function ensureUserCanEnrollClassroom(
+  user: JWTPayload,
+  classroomId: string
+): Promise<ClassroomAccessResult> {
+  const scope = await resolveClassroomAccessScope(classroomId);
+  if (!scope) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  }
+
+  if (scope.currentGroupSource === 'none') {
+    return { ok: true, data: scope };
+  }
 
   if (!canAccessClassroomScope(user, scope)) {
     return {
@@ -342,4 +376,5 @@ export default {
   listClassrooms,
   getClassroom,
   ensureUserCanAccessClassroom,
+  ensureUserCanEnrollClassroom,
 };

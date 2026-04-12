@@ -429,7 +429,13 @@ export async function resolveMachineGroupContext(
   if (!classroom) return null;
 
   const groupId = await resolveEffectiveGroupIdForClassroom(classroom, now);
-  if (groupId === null) return null;
+  if (groupId === null) {
+    return {
+      groupId: UNRESTRICTED_GROUP_ID,
+      classroomId: classroom.id,
+      classroomName: classroom.name,
+    };
+  }
 
   return {
     groupId,
@@ -482,7 +488,13 @@ export async function resolveClassroomGroupContext(
   if (!classroom) return null;
 
   const groupId = await resolveEffectiveGroupIdForClassroom(classroom, now);
-  if (groupId === null) return null;
+  if (groupId === null) {
+    return {
+      groupId: UNRESTRICTED_GROUP_ID,
+      classroomId: classroom.id,
+      classroomName: classroom.name,
+    };
+  }
 
   return {
     groupId,

@@ -37,7 +37,7 @@ export function registerEnrollmentRoutes(app: Express): void {
           return;
         }
 
-        const access = await ClassroomService.ensureUserCanAccessClassroom(decoded, classroomId);
+        const access = await ClassroomService.ensureUserCanEnrollClassroom(decoded, classroomId);
         if (!access.ok) {
           const statusCode = access.error.code === 'NOT_FOUND' ? 404 : 403;
           res.status(statusCode).json({ success: false, error: access.error.message });

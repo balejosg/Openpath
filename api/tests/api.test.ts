@@ -423,7 +423,7 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
       assert.strictEqual(firstRow.group_id, defaultGroupId);
     });
 
-    await test('should return 404 when the machine classroom has no effective group', async () => {
+    await test('should return 400 when the machine classroom is unrestricted because it has no group', async () => {
       const suffix = `${Date.now().toString()}-submit-no-group`;
       const classroomId = `cls-${suffix}`;
       const machineId = `mach-${suffix}`;
@@ -452,14 +452,17 @@ await describe('Whitelist Request API Tests (tRPC)', { timeout: 30000 }, async (
         }),
       });
 
-      assert.strictEqual(response.status, 404);
+      assert.strictEqual(response.status, 400);
       const data = (await response.json()) as {
         success: boolean;
         error?: string;
       };
 
       assert.strictEqual(data.success, false);
-      assert.strictEqual(data.error, 'No active group found for machine hostname');
+      assert.strictEqual(
+        data.error,
+        'Machine classroom is unrestricted and does not require access requests'
+      );
     });
 
     await test('should map duplicate pending requests to HTTP 409', async () => {

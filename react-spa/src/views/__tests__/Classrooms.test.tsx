@@ -164,6 +164,7 @@ function installHookOverrides(options?: {
   isInitialLoading?: boolean;
   loadError?: string | null;
   admin?: boolean;
+  selectedClassroom?: Record<string, unknown>;
   newModalOpen?: boolean;
   activeGroupOverwriteOpen?: boolean;
   scheduleFormOpen?: boolean;
@@ -173,7 +174,7 @@ function installHookOverrides(options?: {
   enrollPlatform?: 'linux' | 'windows';
   enrollCopied?: boolean;
 }) {
-  const selectedClassroom = buildClassroom();
+  const selectedClassroom = buildClassroom(options?.selectedClassroom);
   const retryLoad = vi.fn();
   const setSelectedClassroomId = vi.fn();
   const setSearchQuery = vi.fn();
@@ -726,5 +727,23 @@ describe('Classrooms', () => {
     expect(await screen.findByText(/powershell -File install-agent\.ps1/i)).toBeInTheDocument();
     expect(screen.getByText(/Ejecuta PowerShell como Administrador/i)).toBeInTheDocument();
     expect(screen.getByText('Copiado')).toBeInTheDocument();
+  });
+
+  it('warns when a groupless classroom will register machines with unrestricted browsing', async () => {
+    installHookOverrides({
+      selectedClassroom: {
+        defaultGroupId: null,
+        defaultGroupDisplayName: null,
+        currentGroupId: null,
+        currentGroupDisplayName: null,
+        currentGroupSource: 'none',
+      },
+    });
+
+    renderClassrooms();
+
+    expect(
+      await screen.findByText(/navegación sin bloqueos hasta asignar un grupo/i)
+    ).toBeInTheDocument();
   });
 });
