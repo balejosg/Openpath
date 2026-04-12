@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDbEventBridge, type DbEventPayload } from './db-event-bridge.js';
-import { resolveClassroomGroupContext } from './classroom-storage.js';
+import { resolveEffectiveClassroomPolicyContext } from './classroom-storage.js';
 import { getActiveExemptHostnamesByClassroom, UNRESTRICTED_GROUP_ID } from './exemption-storage.js';
 import { touchGroupUpdatedAt } from './groups-storage.js';
 import { logger } from './logger.js';
@@ -10,7 +10,7 @@ import { createSseHub, type SseStream } from './sse-hub.js';
 const INSTANCE_ID = randomUUID();
 
 const sseHub = createSseHub({
-  resolveClassroomGroupContext,
+  resolveClassroomGroupContext: resolveEffectiveClassroomPolicyContext,
   resolveExemptHostnamesByClassroom: getActiveExemptHostnamesByClassroom,
   unrestrictedGroupId: UNRESTRICTED_GROUP_ID,
 });

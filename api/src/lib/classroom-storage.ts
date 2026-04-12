@@ -7,12 +7,12 @@
 
 import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { eq, sql, count } from 'drizzle-orm';
+import { eq, sql, count, inArray } from 'drizzle-orm';
 import { db, classrooms, machines } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
-import { getCurrentSchedule } from './schedule-storage.js';
-import { sanitizeSlug } from '@openpath/shared';
+import { getCurrentSchedule, getCurrentSchedulesByClassroomIds } from './schedule-storage.js';
+import { sanitizeSlug, resolveCurrentGroup, type CurrentGroupSource } from '@openpath/shared';
 import { isMachineExempt, UNRESTRICTED_GROUP_ID } from './exemption-storage.js';
 import type { Classroom, MachineStatus } from '../types/index.js';
 import type {
@@ -39,10 +39,40 @@ interface ClassroomWithCount {
   machineCount: number;
 }
 
+export interface ClassroomPolicyScopeSource {
+  id: string;
+  name: string;
+  displayName: string;
+  defaultGroupId: string | null;
+  activeGroupId: string | null;
+}
+
 export interface WhitelistUrlResult {
   groupId: string;
   classroomId: string;
   classroomName: string;
+}
+
+export type EffectivePolicyContextMode = 'grouped' | 'unrestricted';
+export type EffectivePolicyContextReason = CurrentGroupSource | 'exemption';
+
+export interface EffectivePolicyContext {
+  classroomId: string;
+  classroomName: string;
+  groupId: string | null;
+  mode: EffectivePolicyContextMode;
+  reason: EffectivePolicyContextReason;
+}
+
+export interface ClassroomPolicyScope {
+  classroomId: string;
+  classroomName: string;
+  classroomDisplayName: string;
+  defaultGroupId: string | null;
+  activeGroupId: string | null;
+  currentGroupId: string | null;
+  currentGroupSource: CurrentGroupSource;
+  mode: EffectivePolicyContextMode;
 }
 
 export interface ClassroomStats {
@@ -84,20 +114,52 @@ export function machineHostnameMatches(
 // Helper Functions
 // =============================================================================
 
-async function resolveEffectiveGroupIdForClassroom(
-  classroom: Pick<DBClassroom, 'id' | 'activeGroupId' | 'defaultGroupId'>,
+async function resolveClassroomPolicyScopeForRecord(
+  classroom: ClassroomPolicyScopeSource,
   now: Date
-): Promise<string | null> {
-  if (classroom.activeGroupId !== null) {
-    return classroom.activeGroupId;
-  }
-
+): Promise<ClassroomPolicyScope> {
   const currentSchedule = await getCurrentSchedule(classroom.id, now);
-  if (currentSchedule) {
-    return currentSchedule.groupId;
-  }
+  return buildClassroomPolicyScope(classroom, currentSchedule?.groupId ?? null);
+}
 
-  return classroom.defaultGroupId;
+function buildClassroomPolicyScope(
+  classroom: ClassroomPolicyScopeSource,
+  scheduleGroupId: string | null
+): ClassroomPolicyScope {
+  const currentGroup = resolveCurrentGroup({
+    activeGroupId: classroom.activeGroupId,
+    scheduleGroupId,
+    defaultGroupId: classroom.defaultGroupId,
+  });
+
+  return {
+    classroomId: classroom.id,
+    classroomName: classroom.name,
+    classroomDisplayName: classroom.displayName,
+    defaultGroupId: classroom.defaultGroupId,
+    activeGroupId: classroom.activeGroupId,
+    currentGroupId: currentGroup.id,
+    currentGroupSource: currentGroup.source,
+    mode: currentGroup.id === null ? 'unrestricted' : 'grouped',
+  };
+}
+
+function toEffectivePolicyContext(scope: ClassroomPolicyScope): EffectivePolicyContext {
+  return {
+    classroomId: scope.classroomId,
+    classroomName: scope.classroomName,
+    groupId: scope.currentGroupId,
+    mode: scope.mode,
+    reason: scope.currentGroupSource,
+  };
+}
+
+function toLegacyWhitelistUrlResult(context: EffectivePolicyContext): WhitelistUrlResult {
+  return {
+    groupId: context.mode === 'unrestricted' ? UNRESTRICTED_GROUP_ID : (context.groupId ?? ''),
+    classroomId: context.classroomId,
+    classroomName: context.classroomName,
+  };
 }
 
 function toClassroomType(classroom: DBClassroom, machineList: DBMachine[] = []): Classroom {
@@ -298,6 +360,40 @@ export async function getMachinesByClassroom(classroomId: string): Promise<DBMac
   return result;
 }
 
+export async function getMachinesByClassroomIds(
+  classroomIds: string[]
+): Promise<Map<string, DBMachine[]>> {
+  const normalizedClassroomIds = [...new Set(classroomIds.filter((id) => id.length > 0))];
+  const machinesByClassroomId = new Map<string, DBMachine[]>(
+    normalizedClassroomIds.map((id) => [id, []])
+  );
+
+  if (normalizedClassroomIds.length === 0) {
+    return machinesByClassroomId;
+  }
+
+  const result = await db
+    .select()
+    .from(machines)
+    .where(inArray(machines.classroomId, normalizedClassroomIds))
+    .orderBy(sql`${machines.createdAt} DESC`);
+
+  for (const machine of result) {
+    if (!machine.classroomId) {
+      continue;
+    }
+
+    const machineList = machinesByClassroomId.get(machine.classroomId);
+    if (machineList) {
+      machineList.push(machine);
+    } else {
+      machinesByClassroomId.set(machine.classroomId, [machine]);
+    }
+  }
+
+  return machinesByClassroomId;
+}
+
 export async function getMachineByHostname(hostname: string): Promise<DBMachine | null> {
   const normalizedHostname = hostname.toLowerCase().trim();
   const result = await db
@@ -419,6 +515,50 @@ export async function resolveMachineGroupContext(
   hostname: string,
   now: Date = new Date()
 ): Promise<WhitelistUrlResult | null> {
+  const context = await resolveEffectiveMachinePolicyContext(hostname, now);
+  return context ? toLegacyWhitelistUrlResult(context) : null;
+}
+
+export async function resolveClassroomPolicyScope(
+  classroomId: string,
+  now: Date = new Date()
+): Promise<ClassroomPolicyScope | null> {
+  const classroom = await getClassroomById(classroomId);
+  if (!classroom) return null;
+
+  return resolveClassroomPolicyScopeForRecord(classroom, now);
+}
+
+export async function resolveClassroomPolicyScopesForClassrooms(
+  classroomRecords: ClassroomPolicyScopeSource[],
+  now: Date = new Date()
+): Promise<Map<string, ClassroomPolicyScope>> {
+  const normalizedClassrooms = classroomRecords.filter((classroom) => classroom.id.length > 0);
+  const scheduleMap = await getCurrentSchedulesByClassroomIds(
+    normalizedClassrooms.map((classroom) => classroom.id),
+    now
+  );
+
+  return new Map(
+    normalizedClassrooms.map((classroom) => [
+      classroom.id,
+      buildClassroomPolicyScope(classroom, scheduleMap.get(classroom.id)?.groupId ?? null),
+    ])
+  );
+}
+
+export async function resolveEffectiveClassroomPolicyContext(
+  classroomId: string,
+  now: Date = new Date()
+): Promise<EffectivePolicyContext | null> {
+  const scope = await resolveClassroomPolicyScope(classroomId, now);
+  return scope ? toEffectivePolicyContext(scope) : null;
+}
+
+export async function resolveEffectiveMachinePolicyContext(
+  hostname: string,
+  now: Date = new Date()
+): Promise<EffectivePolicyContext | null> {
   const machine = await getMachineByHostname(hostname);
   if (!machine) return null;
 
@@ -428,20 +568,8 @@ export async function resolveMachineGroupContext(
   const classroom = await getClassroomById(classroomId);
   if (!classroom) return null;
 
-  const groupId = await resolveEffectiveGroupIdForClassroom(classroom, now);
-  if (groupId === null) {
-    return {
-      groupId: UNRESTRICTED_GROUP_ID,
-      classroomId: classroom.id,
-      classroomName: classroom.name,
-    };
-  }
-
-  return {
-    groupId,
-    classroomId: classroom.id,
-    classroomName: classroom.name,
-  };
+  const scope = await resolveClassroomPolicyScopeForRecord(classroom, now);
+  return toEffectivePolicyContext(scope);
 }
 
 /**
@@ -452,25 +580,36 @@ export async function resolveMachineEnforcementContext(
   hostname: string,
   now: Date = new Date()
 ): Promise<WhitelistUrlResult | null> {
+  const context = await resolveEffectiveMachineEnforcementPolicyContext(hostname, now);
+  return context ? toLegacyWhitelistUrlResult(context) : null;
+}
+
+export async function resolveEffectiveMachineEnforcementPolicyContext(
+  hostname: string,
+  now: Date = new Date()
+): Promise<EffectivePolicyContext | null> {
   const machine = await getMachineByHostname(hostname);
   if (!machine) return null;
 
   const classroomId = machine.classroomId;
   if (!classroomId) return null;
 
+  const classroom = await getClassroomById(classroomId);
+  if (!classroom) return null;
+
   const exempt = await isMachineExempt(machine.id, classroomId, now);
   if (exempt) {
-    const classroom = await getClassroomById(classroomId);
-    if (!classroom) return null;
-
     return {
-      groupId: UNRESTRICTED_GROUP_ID,
       classroomId: classroom.id,
       classroomName: classroom.name,
+      groupId: null,
+      mode: 'unrestricted',
+      reason: 'exemption',
     };
   }
 
-  return resolveMachineGroupContext(hostname, now);
+  const scope = await resolveClassroomPolicyScopeForRecord(classroom, now);
+  return toEffectivePolicyContext(scope);
 }
 
 /**
@@ -484,23 +623,8 @@ export async function resolveClassroomGroupContext(
   classroomId: string,
   now: Date = new Date()
 ): Promise<WhitelistUrlResult | null> {
-  const classroom = await getClassroomById(classroomId);
-  if (!classroom) return null;
-
-  const groupId = await resolveEffectiveGroupIdForClassroom(classroom, now);
-  if (groupId === null) {
-    return {
-      groupId: UNRESTRICTED_GROUP_ID,
-      classroomId: classroom.id,
-      classroomName: classroom.name,
-    };
-  }
-
-  return {
-    groupId,
-    classroomId: classroom.id,
-    classroomName: classroom.name,
-  };
+  const context = await resolveEffectiveClassroomPolicyContext(classroomId, now);
+  return context ? toLegacyWhitelistUrlResult(context) : null;
 }
 
 export async function getWhitelistUrlForMachine(

@@ -5,16 +5,15 @@ import { logger } from '../lib/logger.js';
 import { emitWhitelistChanged } from '../lib/rule-events.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import * as groupsStorage from '../lib/groups-storage.js';
-import { UNRESTRICTED_GROUP_ID } from '../lib/exemption-storage.js';
 import { withTransaction } from '../db/index.js';
 import RequestService from '../services/request.service.js';
 import { normalizeHostInput } from '../lib/machine-proof.js';
-import { hashMachineToken } from '../lib/machine-download-token.js';
 import {
   parseAutoRequestPayload,
   parseSubmitRequestPayload,
   parseWhitelistDomain,
 } from '../lib/public-request-input.js';
+import { resolveMachineTokenAccess } from '../lib/server-request-auth.js';
 
 async function requireValidMachineToken(params: {
   hostnameRaw: string;
@@ -23,9 +22,7 @@ async function requireValidMachineToken(params: {
   res: Response;
 }): Promise<{ ok: true; machineHostname: string; requestedHostname: string } | { ok: false }> {
   const hostname = normalizeHostInput(params.hostnameRaw);
-  const machine = await classroomStorage.getMachineByDownloadTokenHash(
-    hashMachineToken(params.token)
-  );
+  const machine = await resolveMachineTokenAccess(params.token);
 
   if (!machine) {
     logger.warn(`${params.logContext} rejected: invalid machine token`, { hostname });
@@ -34,19 +31,83 @@ async function requireValidMachineToken(params: {
   }
 
   const requestedHostname = normalizeHostInput(hostname);
-  const machineHostname = machine.hostname.trim().toLowerCase();
-  const reportedHostname = machine.reportedHostname?.trim().toLowerCase();
-  if (requestedHostname !== machineHostname && requestedHostname !== reportedHostname) {
+  if (!classroomStorage.machineHostnameMatches(machine, requestedHostname)) {
     logger.warn(`${params.logContext} rejected: hostname mismatch`, {
       requestedHostname,
-      machineHostname,
-      reportedHostname,
+      machineHostname: machine.hostname.trim().toLowerCase(),
+      reportedHostname: machine.reportedHostname?.trim().toLowerCase(),
     });
     params.res.status(403).json({ success: false, error: 'Token is not valid for this hostname' });
     return { ok: false };
   }
 
   return { ok: true, machineHostname: machine.hostname, requestedHostname };
+}
+
+function sendRequestServiceError(res: Response, error: { code: string; message: string }): void {
+  const statusMap: Record<string, number> = {
+    CONFLICT: 409,
+    NOT_FOUND: 404,
+    FORBIDDEN: 403,
+    BAD_REQUEST: 400,
+  };
+  const statusCode = statusMap[error.code] ?? 400;
+  res.status(statusCode).json({
+    success: false,
+    error: error.message,
+  });
+}
+
+async function resolveMachineRequestContext(params: {
+  hostnameRaw: string;
+  token: string;
+  domainRaw: string;
+  logContext: string;
+  res: Response;
+}): Promise<
+  { ok: true; machineHostname: string; groupId: string; domain: string } | { ok: false }
+> {
+  const proof = await requireValidMachineToken({
+    hostnameRaw: params.hostnameRaw,
+    token: params.token,
+    logContext: params.logContext,
+    res: params.res,
+  });
+  if (!proof.ok) {
+    return { ok: false };
+  }
+
+  const domainParse = parseWhitelistDomain(params.domainRaw);
+  if (!domainParse.ok) {
+    params.res.status(400).json({ success: false, error: domainParse.error });
+    return { ok: false };
+  }
+
+  const policyContext = await classroomStorage.resolveEffectiveMachinePolicyContext(
+    proof.machineHostname
+  );
+  if (!policyContext) {
+    params.res.status(404).json({
+      success: false,
+      error: 'No active group found for machine hostname',
+    });
+    return { ok: false };
+  }
+
+  if (policyContext.mode === 'unrestricted' || !policyContext.groupId) {
+    params.res.status(400).json({
+      success: false,
+      error: 'Machine classroom is unrestricted and does not require access requests',
+    });
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    machineHostname: proof.machineHostname,
+    groupId: policyContext.groupId,
+    domain: domainParse.domain,
+  };
 }
 
 export function registerPublicRequestRoutes(app: Express): void {
@@ -62,61 +123,29 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const proof = await requireValidMachineToken({
+      const context = await resolveMachineRequestContext({
         hostnameRaw: body.hostnameRaw,
         token: body.token,
+        domainRaw: body.domainRaw,
         logContext: 'Auto request',
         res,
       });
-      if (!proof.ok) {
+      if (!context.ok) {
         return;
       }
-
-      const domainParse = parseWhitelistDomain(body.domainRaw);
-      if (!domainParse.ok) {
-        res.status(400).json({ success: false, error: domainParse.error });
-        return;
-      }
-
-      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.machineHostname);
-      if (!groupContext) {
-        res.status(404).json({
-          success: false,
-          error: 'No active group found for machine hostname',
-        });
-        return;
-      }
-      if (groupContext.groupId === UNRESTRICTED_GROUP_ID) {
-        res.status(400).json({
-          success: false,
-          error: 'Machine classroom is unrestricted and does not require access requests',
-        });
-        return;
-      }
-
-      const targetGroupId = groupContext.groupId;
+      const targetGroupId = context.groupId;
       if (!config.autoApproveMachineRequests) {
         const created = await RequestService.createRequest({
-          domain: domainParse.domain,
+          domain: context.domain,
           reason: body.reasonRaw.slice(0, 200) || 'Submitted via Firefox extension auto request',
           groupId: targetGroupId,
           source: 'auto_extension',
-          machineHostname: proof.machineHostname,
+          machineHostname: context.machineHostname,
           originPage: body.originPageRaw.slice(0, 2048) || undefined,
         });
 
         if (!created.ok) {
-          const statusMap: Record<string, number> = {
-            CONFLICT: 409,
-            NOT_FOUND: 404,
-            FORBIDDEN: 403,
-            BAD_REQUEST: 400,
-          };
-          const statusCode = statusMap[created.error.code] ?? 400;
-          res.status(statusCode).json({
-            success: false,
-            error: created.error.message,
-          });
+          sendRequestServiceError(res, created.error);
           return;
         }
 
@@ -127,7 +156,7 @@ export function registerPublicRequestRoutes(app: Express): void {
           autoApproved: false,
           status: created.data.status,
           groupId: targetGroupId,
-          domain: domainParse.domain,
+          domain: context.domain,
           source: 'auto_extension',
         });
         return;
@@ -142,7 +171,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         groupsStorage.createRule(
           targetGroupId,
           'whitelist',
-          domainParse.domain,
+          context.domain,
           sourceComment,
           'auto_extension',
           tx
@@ -160,7 +189,7 @@ export function registerPublicRequestRoutes(app: Express): void {
         autoApproved: true,
         status: created.error === 'Rule already exists' ? 'duplicate' : 'approved',
         groupId: targetGroupId,
-        domain: domainParse.domain,
+        domain: context.domain,
         source: 'auto_extension',
         duplicate: created.error === 'Rule already exists',
       });
@@ -190,44 +219,23 @@ export function registerPublicRequestRoutes(app: Express): void {
         return;
       }
 
-      const proof = await requireValidMachineToken({
+      const context = await resolveMachineRequestContext({
         hostnameRaw: body.hostnameRaw,
         token: body.token,
+        domainRaw: body.domainRaw,
         logContext: 'Request submit',
         res,
       });
-      if (!proof.ok) {
-        return;
-      }
-
-      const domainParse = parseWhitelistDomain(body.domainRaw);
-      if (!domainParse.ok) {
-        res.status(400).json({ success: false, error: domainParse.error });
-        return;
-      }
-
-      const groupContext = await classroomStorage.resolveMachineGroupContext(proof.machineHostname);
-      if (!groupContext) {
-        res.status(404).json({
-          success: false,
-          error: 'No active group found for machine hostname',
-        });
-        return;
-      }
-      if (groupContext.groupId === UNRESTRICTED_GROUP_ID) {
-        res.status(400).json({
-          success: false,
-          error: 'Machine classroom is unrestricted and does not require access requests',
-        });
+      if (!context.ok) {
         return;
       }
 
       const created = await RequestService.createRequest({
-        domain: domainParse.domain,
+        domain: context.domain,
         reason: body.reasonRaw.slice(0, 200) || 'Submitted via Firefox extension',
-        groupId: groupContext.groupId,
+        groupId: context.groupId,
         source: 'firefox-extension',
-        machineHostname: proof.machineHostname,
+        machineHostname: context.machineHostname,
         originHost: body.originHostRaw.slice(0, 255) || undefined,
         originPage: body.originPageRaw.slice(0, 2048) || undefined,
         clientVersion: body.clientVersionRaw.slice(0, 50) || undefined,
@@ -235,17 +243,7 @@ export function registerPublicRequestRoutes(app: Express): void {
       });
 
       if (!created.ok) {
-        const statusMap: Record<string, number> = {
-          CONFLICT: 409,
-          NOT_FOUND: 404,
-          FORBIDDEN: 403,
-          BAD_REQUEST: 400,
-        };
-        const statusCode = statusMap[created.error.code] ?? 400;
-        res.status(statusCode).json({
-          success: false,
-          error: created.error.message,
-        });
+        sendRequestServiceError(res, created.error);
         return;
       }
 
@@ -253,8 +251,8 @@ export function registerPublicRequestRoutes(app: Express): void {
         success: true,
         id: created.data.id,
         status: created.data.status,
-        groupId: groupContext.groupId,
-        domain: domainParse.domain,
+        groupId: context.groupId,
+        domain: context.domain,
         source: 'firefox-extension',
       });
     })().catch((error: unknown) => {

@@ -156,6 +156,7 @@ void describe('Enrollment API (secure tickets)', { timeout: 30000 }, async () =>
         method: 'POST',
         headers: {
           Cookie: `${cookieName}=${teacherAccessToken}`,
+          Origin: API_URL,
         },
       });
 

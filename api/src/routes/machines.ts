@@ -27,6 +27,8 @@ import {
   authenticateEnrollmentToken,
   authenticateMachineToken,
   getFirstParam,
+  getBearerTokenValue,
+  resolveMachineTokenAccess,
 } from '../lib/server-request-auth.js';
 import {
   buildLinuxAgentPackageManifest,
@@ -39,6 +41,13 @@ import {
 } from '../lib/server-assets.js';
 
 const FAIL_OPEN_RESPONSE = '#DESACTIVADO\n';
+
+function serializePolicyGroupId(params: {
+  mode: 'grouped' | 'unrestricted';
+  groupId: string | null;
+}) {
+  return params.mode === 'unrestricted' ? UNRESTRICTED_GROUP_ID : params.groupId;
+}
 
 export function registerMachineRoutes(
   app: Express,
@@ -423,18 +432,19 @@ export function registerMachineRoutes(
           return;
         }
 
-        const whitelistInfo = await classroomStorage.resolveMachineEnforcementContext(
-          machine.hostname,
-          deps.getCurrentEvaluationTime()
-        );
-        if (!whitelistInfo) {
+        const effectiveContext =
+          await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(
+            machine.hostname,
+            deps.getCurrentEvaluationTime()
+          );
+        if (!effectiveContext) {
           res.setHeader('Cache-Control', 'no-store, max-age=0');
           res.setHeader('Pragma', 'no-cache');
           res.type('text/plain').send(FAIL_OPEN_RESPONSE);
           return;
         }
 
-        if (whitelistInfo.groupId === UNRESTRICTED_GROUP_ID) {
+        if (effectiveContext.mode === 'unrestricted') {
           const etag = buildStaticEtag('openpath:unrestricted');
           res.setHeader('ETag', etag);
           res.setHeader('Cache-Control', 'private, no-cache');
@@ -449,7 +459,14 @@ export function registerMachineRoutes(
           return;
         }
 
-        const group = await groupsStorage.getGroupMetaById(whitelistInfo.groupId);
+        if (!effectiveContext.groupId) {
+          res.setHeader('Cache-Control', 'no-store, max-age=0');
+          res.setHeader('Pragma', 'no-cache');
+          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
+          return;
+        }
+
+        const group = await groupsStorage.getGroupMetaById(effectiveContext.groupId);
         if (!group) {
           res.setHeader('Cache-Control', 'no-store, max-age=0');
           res.setHeader('Pragma', 'no-cache');
@@ -470,7 +487,7 @@ export function registerMachineRoutes(
           return;
         }
 
-        const content = await groupsStorage.exportGroup(whitelistInfo.groupId);
+        const content = await groupsStorage.exportGroup(effectiveContext.groupId);
         if (!content) {
           res.setHeader('Cache-Control', 'no-store, max-age=0');
           res.setHeader('Pragma', 'no-cache');
@@ -492,12 +509,9 @@ export function registerMachineRoutes(
   app.get('/api/machines/events', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
-        const authHeader = req.headers.authorization;
-        const machineToken = authHeader?.startsWith('Bearer ')
-          ? authHeader.slice(7)
-          : typeof req.query.token === 'string'
-            ? req.query.token
-            : '';
+        const machineToken =
+          getBearerTokenValue(req.headers.authorization) ??
+          (typeof req.query.token === 'string' ? req.query.token.trim() : '');
         if (!machineToken) {
           res.status(401).json({
             success: false,
@@ -506,15 +520,21 @@ export function registerMachineRoutes(
           return;
         }
 
-        const tokenHash = hashMachineToken(machineToken);
-        const machine = await classroomStorage.getMachineByDownloadTokenHash(tokenHash);
+        const machine = await resolveMachineTokenAccess(machineToken);
         if (!machine) {
           res.status(403).json({ success: false, error: 'Invalid machine token' });
           return;
         }
 
-        const whitelistInfo = await classroomStorage.getWhitelistUrlForMachine(machine.hostname);
-        if (!whitelistInfo) {
+        const effectiveContext =
+          await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(machine.hostname);
+        if (!effectiveContext) {
+          res.status(404).json({ success: false, error: 'No active group for this machine' });
+          return;
+        }
+
+        const serializedGroupId = serializePolicyGroupId(effectiveContext);
+        if (!serializedGroupId) {
           res.status(404).json({ success: false, error: 'No active group for this machine' });
           return;
         }
@@ -532,22 +552,22 @@ export function registerMachineRoutes(
         res.write(
           `data: ${JSON.stringify({
             event: 'connected',
-            groupId: whitelistInfo.groupId,
+            groupId: serializedGroupId,
             hostname: machine.hostname,
           })}\n\n`
         );
 
         const unsubscribe = registerSseClient({
           hostname: machine.hostname,
-          classroomId: whitelistInfo.classroomId,
-          groupId: whitelistInfo.groupId,
+          classroomId: effectiveContext.classroomId,
+          groupId: serializedGroupId,
           stream: res,
         });
 
         logger.info('SSE client connected', {
           hostname: machine.hostname,
-          classroomId: whitelistInfo.classroomId,
-          groupId: whitelistInfo.groupId,
+          classroomId: effectiveContext.classroomId,
+          groupId: serializedGroupId,
           clients: getSseClientCount(),
         });
 
@@ -557,8 +577,8 @@ export function registerMachineRoutes(
           unsubscribe();
           logger.info('SSE client disconnected', {
             hostname: machine.hostname,
-            classroomId: whitelistInfo.classroomId,
-            groupId: whitelistInfo.groupId,
+            classroomId: effectiveContext.classroomId,
+            groupId: serializedGroupId,
             clients: getSseClientCount(),
           });
         });

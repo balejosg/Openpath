@@ -4,10 +4,15 @@ export interface SseStream {
   write: (chunk: string) => boolean;
 }
 
+interface ClassroomPolicyContextLike {
+  mode: 'grouped' | 'unrestricted';
+  groupId: string | null;
+}
+
 export type ClassroomGroupContextResolver = (
   classroomId: string,
   now: Date
-) => Promise<{ groupId: string } | null>;
+) => Promise<ClassroomPolicyContextLike | null>;
 
 export type ClassroomExemptHostnamesResolver = (
   classroomId: string,
@@ -182,7 +187,11 @@ export function createSseHub(params: {
     if (!baseContext && (!exemptHostnames || exemptHostnames.size === 0)) return;
 
     const unrestrictedGroupId = params.unrestrictedGroupId ?? '__unrestricted__';
-    const baseGroupId = baseContext?.groupId ?? null;
+    const baseGroupId = baseContext
+      ? baseContext.mode === 'unrestricted'
+        ? unrestrictedGroupId
+        : baseContext.groupId
+      : null;
 
     for (const id of Array.from(ids)) {
       const client = clientsById.get(id);

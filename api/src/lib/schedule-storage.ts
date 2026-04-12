@@ -6,7 +6,7 @@
  */
 
 import crypto from 'node:crypto';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, schedules } from '../db/index.js';
 import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
@@ -454,6 +454,65 @@ export async function getCurrentSchedule(
     .limit(1);
 
   return weekly[0] ?? null;
+}
+
+export async function getCurrentSchedulesByClassroomIds(
+  classroomIds: string[],
+  date: Date = new Date()
+): Promise<Map<string, DBSchedule>> {
+  const normalizedClassroomIds = [...new Set(classroomIds.filter((id) => id.length > 0))];
+  const result = new Map<string, DBSchedule>();
+
+  if (normalizedClassroomIds.length === 0) {
+    return result;
+  }
+
+  const oneOffRows = await db
+    .select()
+    .from(schedules)
+    .where(
+      and(
+        inArray(schedules.classroomId, normalizedClassroomIds),
+        eq(schedules.recurrence, 'one_off'),
+        sql`${schedules.startAt} <= ${date} AND ${schedules.endAt} > ${date}`
+      )
+    )
+    .orderBy(schedules.classroomId, schedules.startAt);
+
+  for (const row of oneOffRows) {
+    if (!result.has(row.classroomId)) {
+      result.set(row.classroomId, row);
+    }
+  }
+
+  const unresolvedClassroomIds = normalizedClassroomIds.filter((id) => !result.has(id));
+  const dayOfWeek = date.getDay();
+  if (unresolvedClassroomIds.length === 0 || dayOfWeek === 0 || dayOfWeek === 6) {
+    return result;
+  }
+
+  const currentTime = date.toTimeString().slice(0, 5);
+  const weeklyRows = await db
+    .select()
+    .from(schedules)
+    .where(
+      and(
+        inArray(schedules.classroomId, unresolvedClassroomIds),
+        weeklyRecurrenceWhereClause(),
+        eq(schedules.dayOfWeek, dayOfWeek),
+        sql`${schedules.startTime} <= ${currentTime}::time`,
+        sql`${schedules.endTime} > ${currentTime}::time`
+      )
+    )
+    .orderBy(schedules.classroomId, schedules.startTime);
+
+  for (const row of weeklyRows) {
+    if (!result.has(row.classroomId)) {
+      result.set(row.classroomId, row);
+    }
+  }
+
+  return result;
 }
 
 /**

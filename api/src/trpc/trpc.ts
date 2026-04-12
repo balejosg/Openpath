@@ -3,8 +3,12 @@ import type { Context } from './context.js';
 import * as auth from '../lib/auth.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
 import { verifyEnrollmentToken } from '../lib/enrollment-token.js';
-import { hashMachineToken } from '../lib/machine-download-token.js';
 import { logger } from '../lib/logger.js';
+import {
+  getBearerTokenValue,
+  resolveMachineTokenAccess,
+  type AuthenticatedMachine,
+} from '../lib/server-request-auth.js';
 
 function getRequestId(ctx?: Context): string | undefined {
   const raw = ctx?.req.headers['x-request-id'];
@@ -22,10 +26,6 @@ const t = initTRPC.context<Context>().create({
     };
   },
 });
-
-type AuthenticatedMachine = NonNullable<
-  Awaited<ReturnType<typeof classroomStorage.getMachineByDownloadTokenHash>>
->;
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
@@ -56,12 +56,7 @@ export const teacherProcedure = protectedProcedure.use(({ ctx, next }) => {
 });
 
 function getBearerToken(req: Context['req'], missingMessage: string): string {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: missingMessage });
-  }
-
-  const token = authHeader.slice(7).trim();
+  const token = getBearerTokenValue(req.headers.authorization);
   if (!token) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: missingMessage });
   }
@@ -93,7 +88,7 @@ export async function requireMachineTokenAccess(
   req: Context['req']
 ): Promise<AuthenticatedMachine> {
   const token = getBearerToken(req, 'Machine token required');
-  const machine = await classroomStorage.getMachineByDownloadTokenHash(hashMachineToken(token));
+  const machine = await resolveMachineTokenAccess(token);
   if (!machine) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid machine token' });
   }
@@ -105,15 +100,7 @@ export function machineMatchesHostname(
   machine: Pick<AuthenticatedMachine, 'hostname' | 'reportedHostname'>,
   hostname: string
 ): boolean {
-  const normalized = hostname.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  return (
-    machine.hostname.trim().toLowerCase() === normalized ||
-    machine.reportedHostname?.trim().toLowerCase() === normalized
-  );
+  return classroomStorage.machineHostnameMatches(machine, hostname);
 }
 
 // Shared secret procedure (for machines)

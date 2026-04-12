@@ -75,11 +75,19 @@ export function getFirstParam(value: string | string[] | undefined): string | un
   return Array.isArray(value) ? value[0] : value;
 }
 
+export function getBearerTokenValue(authHeader: string | undefined): string | null {
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.slice(7).trim();
+  return token.length > 0 ? token : null;
+}
+
 export async function verifyAccessTokenFromRequest(
   req: Pick<Request, 'headers'>
 ): Promise<Awaited<ReturnType<typeof verifyAccessToken>>> {
-  const authHeader = req.headers.authorization;
-  const bearerToken = authHeader?.startsWith('Bearer ') === true ? authHeader.slice(7) : null;
+  const bearerToken = getBearerTokenValue(req.headers.authorization);
 
   const cookieName = process.env.OPENPATH_ACCESS_TOKEN_COOKIE_NAME;
   const cookieToken = cookieName ? parseCookieValue(req.headers.cookie, cookieName) : null;
@@ -97,24 +105,30 @@ export async function verifyAccessTokenFromRequest(
 type MachineByToken = Awaited<ReturnType<typeof classroomStorage.getMachineByDownloadTokenHash>>;
 export type AuthenticatedMachine = NonNullable<MachineByToken>;
 
+export async function resolveMachineTokenAccess(
+  machineToken: string
+): Promise<AuthenticatedMachine | null> {
+  const normalizedToken = machineToken.trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const tokenHash = hashMachineToken(normalizedToken);
+  const machine = await classroomStorage.getMachineByDownloadTokenHash(tokenHash);
+  return machine ?? null;
+}
+
 export async function authenticateMachineToken(
   req: Request,
   res: Response
 ): Promise<AuthenticatedMachine | null> {
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ') !== true) {
+  const machineToken = getBearerTokenValue(req.headers.authorization);
+  if (!machineToken) {
     res.status(401).json({ success: false, error: 'Authorization header required' });
     return null;
   }
 
-  const machineToken = authHeader.slice(7);
-  if (!machineToken) {
-    res.status(401).json({ success: false, error: 'Machine token required' });
-    return null;
-  }
-
-  const tokenHash = hashMachineToken(machineToken);
-  const machine = await classroomStorage.getMachineByDownloadTokenHash(tokenHash);
+  const machine = await resolveMachineTokenAccess(machineToken);
   if (!machine) {
     res.status(403).json({ success: false, error: 'Invalid machine token' });
     return null;

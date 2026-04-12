@@ -24,6 +24,7 @@ import {
 } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
 import { computeMachineProofToken } from '../src/lib/machine-proof.js';
+import { stopDbEventBridge, stopScheduleBoundaryTicker } from '../src/lib/rule-events.js';
 
 let ADMIN_TOKEN = '';
 const SHARED_SECRET = 'test-shared-secret';
@@ -191,6 +192,9 @@ await describe('Machine authentication scope regressions', async () => {
   });
 
   after(async () => {
+    await stopDbEventBridge();
+    await stopScheduleBoundaryTicker();
+
     if (server !== undefined) {
       if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {
         server.closeAllConnections();
@@ -271,8 +275,18 @@ await describe('Machine authentication scope regressions', async () => {
     assert.strictEqual(contextResponse.status, 200);
     const contextData = (await contextResponse.json()) as {
       context?: { groupId?: string | null };
+      effectiveContext?: {
+        mode?: string;
+        reason?: string;
+        groupId?: string | null;
+        classroomId?: string;
+      };
     };
     assert.strictEqual(contextData.context?.groupId, '__unrestricted__');
+    assert.strictEqual(contextData.effectiveContext?.mode, 'unrestricted');
+    assert.strictEqual(contextData.effectiveContext?.reason, 'none');
+    assert.strictEqual(contextData.effectiveContext?.groupId, null);
+    assert.strictEqual(contextData.effectiveContext?.classroomId, grouplessClassroomId);
 
     const eventsResponse = await fetch(`${API_URL}/api/machines/events`, {
       headers: { Authorization: `Bearer ${registration.machineToken}` },

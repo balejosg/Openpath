@@ -19,6 +19,7 @@ let API_URL: string;
 let ADMIN_TOKEN = '';
 let cienciasGroupId = '';
 let lenguaGroupId = '';
+let testSuffix = '';
 
 let server: Server | undefined;
 let testDataDir: string | null = null;
@@ -91,6 +92,7 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
     API_URL = `http://localhost:${String(PORT)}`;
     process.env.PORT = String(PORT);
     process.env.JWT_SECRET = 'test-jwt-secret';
+    testSuffix = Date.now().toString(36);
 
     // Ensure test isolation (classrooms/machines persisted data)
     testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpath-classrooms-'));
@@ -112,7 +114,10 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
 
     const cienciasResponse = await trpcMutate(
       'groups.create',
-      { name: 'ciencias-3eso', displayName: 'ciencias-3eso' },
+      {
+        name: `ciencias-3eso-${testSuffix}`,
+        displayName: `ciencias-3eso-${testSuffix}`,
+      },
       { Authorization: `Bearer ${ADMIN_TOKEN}` }
     );
     assert.ok([200, 201].includes(cienciasResponse.status));
@@ -120,7 +125,10 @@ await describe('Classroom Management API Tests (tRPC)', async () => {
 
     const lenguaResponse = await trpcMutate(
       'groups.create',
-      { name: 'lengua-2eso', displayName: 'lengua-2eso' },
+      {
+        name: `lengua-2eso-${testSuffix}`,
+        displayName: `lengua-2eso-${testSuffix}`,
+      },
       { Authorization: `Bearer ${ADMIN_TOKEN}` }
     );
     assert.ok([200, 201].includes(lenguaResponse.status));

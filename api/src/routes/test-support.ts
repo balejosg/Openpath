@@ -59,6 +59,8 @@ export function registerTestSupportRoutes(
 
         const now = deps.getCurrentEvaluationTime();
         const machine = await classroomStorage.getMachineByHostname(hostname);
+        const effectiveContext =
+          await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(hostname, now);
         const context = await classroomStorage.resolveMachineEnforcementContext(hostname, now);
         const classroom = machine?.classroomId
           ? await classroomStorage.getClassroomById(machine.classroomId)
@@ -74,6 +76,7 @@ export function registerTestSupportRoutes(
                 classroomId: machine.classroomId,
               }
             : null,
+          effectiveContext,
           context,
           classroom: classroom
             ? {

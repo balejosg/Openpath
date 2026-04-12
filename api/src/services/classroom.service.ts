@@ -6,13 +6,11 @@
  */
 
 import * as classroomStorage from '../lib/classroom-storage.js';
-import * as scheduleStorage from '../lib/schedule-storage.js';
 import * as auth from '../lib/auth.js';
 
 import {
   calculateClassroomMachineStatus as calculateMachineStatus,
   calculateClassroomStatus,
-  resolveCurrentGroup,
   type ClassroomMachineStatus as SharedMachineStatus,
   type ClassroomStatus as SharedClassroomStatus,
   type CurrentGroupSource as SharedCurrentGroupSource,
@@ -120,74 +118,71 @@ function canAccessClassroomScope(
   return candidateGroupIds.some((groupId) => auth.canApproveGroup(user, groupId));
 }
 
+type ClassroomAccessPurpose = 'view' | 'enroll';
+
 async function resolveClassroomAccessScope(
   classroomId: string
 ): Promise<ClassroomAccessScope | null> {
-  const classroom = await classroomStorage.getClassroomById(classroomId);
-  if (!classroom) {
+  const scope = await classroomStorage.resolveClassroomPolicyScope(classroomId);
+  if (!scope) {
     return null;
   }
 
-  const currentSchedule = await scheduleStorage.getCurrentSchedule(classroom.id);
-  const currentGroup = resolveCurrentGroup({
-    activeGroupId: classroom.activeGroupId,
-    scheduleGroupId: currentSchedule?.groupId ?? null,
-    defaultGroupId: classroom.defaultGroupId,
-  });
-
-  const scope: ClassroomAccessScope = {
-    id: classroom.id,
-    name: classroom.name,
-    displayName: classroom.displayName,
-    defaultGroupId: classroom.defaultGroupId,
-    activeGroupId: classroom.activeGroupId,
-    currentGroupId: currentGroup.id,
-    currentGroupSource: currentGroup.source,
+  return {
+    id: scope.classroomId,
+    name: scope.classroomName,
+    displayName: scope.classroomDisplayName,
+    defaultGroupId: scope.defaultGroupId,
+    activeGroupId: scope.activeGroupId,
+    currentGroupId: scope.currentGroupId,
+    currentGroupSource: scope.currentGroupSource,
   };
+}
 
-  return scope;
+function canUseClassroomScope(
+  user: JWTPayload,
+  scope: ClassroomAccessScope,
+  purpose: ClassroomAccessPurpose
+): boolean {
+  if (purpose === 'enroll' && scope.currentGroupSource === 'none') {
+    return true;
+  }
+
+  return canAccessClassroomScope(user, scope);
+}
+
+async function ensureUserCanUseClassroom(
+  user: JWTPayload,
+  classroomId: string,
+  purpose: ClassroomAccessPurpose
+): Promise<ClassroomAccessResult> {
+  const scope = await resolveClassroomAccessScope(classroomId);
+  if (!scope) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
+  }
+
+  if (!canUseClassroomScope(user, scope, purpose)) {
+    return {
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'You do not have access to this classroom' },
+    };
+  }
+
+  return { ok: true, data: scope };
 }
 
 export async function ensureUserCanAccessClassroom(
   user: JWTPayload,
   classroomId: string
 ): Promise<ClassroomAccessResult> {
-  const scope = await resolveClassroomAccessScope(classroomId);
-  if (!scope) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
-  }
-
-  if (!canAccessClassroomScope(user, scope)) {
-    return {
-      ok: false,
-      error: { code: 'FORBIDDEN', message: 'You do not have access to this classroom' },
-    };
-  }
-
-  return { ok: true, data: scope };
+  return ensureUserCanUseClassroom(user, classroomId, 'view');
 }
 
 export async function ensureUserCanEnrollClassroom(
   user: JWTPayload,
   classroomId: string
 ): Promise<ClassroomAccessResult> {
-  const scope = await resolveClassroomAccessScope(classroomId);
-  if (!scope) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } };
-  }
-
-  if (scope.currentGroupSource === 'none') {
-    return { ok: true, data: scope };
-  }
-
-  if (!canAccessClassroomScope(user, scope)) {
-    return {
-      ok: false,
-      error: { code: 'FORBIDDEN', message: 'You do not have access to this classroom' },
-    };
-  }
-
-  return { ok: true, data: scope };
+  return ensureUserCanUseClassroom(user, classroomId, 'enroll');
 }
 
 /**
@@ -195,45 +190,43 @@ export async function ensureUserCanEnrollClassroom(
  */
 export async function listClassrooms(user?: JWTPayload): Promise<ClassroomWithMachines[]> {
   const classrooms = await classroomStorage.getAllClassrooms();
-  const result = await Promise.all(
-    classrooms.map(async (c) => {
-      const rawMachines = await classroomStorage.getMachinesByClassroom(c.id);
-      const machines: MachineInfo[] = rawMachines.map((m) => ({
-        id: m.id,
-        hostname: m.hostname,
-        lastSeen: m.lastSeen?.toISOString() ?? null,
-        status: calculateMachineStatus(m.lastSeen),
-      }));
+  const now = new Date();
+  const [machinesByClassroomId, scopeByClassroomId] = await Promise.all([
+    classroomStorage.getMachinesByClassroomIds(classrooms.map((classroom) => classroom.id)),
+    classroomStorage.resolveClassroomPolicyScopesForClassrooms(classrooms, now),
+  ]);
 
-      // Use schedule service for current group
-      const currentSchedule = await scheduleStorage.getCurrentSchedule(c.id);
-      const currentGroup = resolveCurrentGroup({
-        activeGroupId: c.activeGroupId,
-        scheduleGroupId: currentSchedule?.groupId ?? null,
-        defaultGroupId: c.defaultGroupId,
-      });
+  const result = classrooms.map((c) => {
+    const rawMachines = machinesByClassroomId.get(c.id) ?? [];
+    const machines: MachineInfo[] = rawMachines.map((m) => ({
+      id: m.id,
+      hostname: m.hostname,
+      lastSeen: m.lastSeen?.toISOString() ?? null,
+      status: calculateMachineStatus(m.lastSeen),
+    }));
 
-      // Calculate classroom status based on machine health
-      const status = calculateClassroomStatus(machines);
-      const onlineMachineCount = machines.filter((m) => m.status === 'online').length;
+    const scope = scopeByClassroomId.get(c.id);
 
-      return {
-        id: c.id,
-        name: c.name,
-        displayName: c.displayName,
-        defaultGroupId: c.defaultGroupId,
-        activeGroupId: c.activeGroupId,
-        createdAt: c.createdAt.toISOString(),
-        updatedAt: c.updatedAt.toISOString(),
-        currentGroupId: currentGroup.id,
-        currentGroupSource: currentGroup.source,
-        machines,
-        machineCount: machines.length,
-        status,
-        onlineMachineCount,
-      };
-    })
-  );
+    // Calculate classroom status based on machine health
+    const status = calculateClassroomStatus(machines);
+    const onlineMachineCount = machines.filter((m) => m.status === 'online').length;
+
+    return {
+      id: c.id,
+      name: c.name,
+      displayName: c.displayName,
+      defaultGroupId: c.defaultGroupId,
+      activeGroupId: c.activeGroupId,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+      currentGroupId: scope?.currentGroupId ?? null,
+      currentGroupSource: scope?.currentGroupSource ?? 'none',
+      machines,
+      machineCount: machines.length,
+      status,
+      onlineMachineCount,
+    };
+  });
 
   if (!user || auth.isAdminToken(user)) {
     return result;
@@ -260,13 +253,7 @@ export async function getClassroom(
     lastSeen: m.lastSeen?.toISOString() ?? null,
     status: calculateMachineStatus(m.lastSeen),
   }));
-
-  const currentSchedule = await scheduleStorage.getCurrentSchedule(id);
-  const currentGroup = resolveCurrentGroup({
-    activeGroupId: classroom.activeGroupId,
-    scheduleGroupId: currentSchedule?.groupId ?? null,
-    defaultGroupId: classroom.defaultGroupId,
-  });
+  const scope = await classroomStorage.resolveClassroomPolicyScope(id);
 
   // Calculate classroom status based on machine health
   const status = calculateClassroomStatus(machines);
@@ -280,8 +267,8 @@ export async function getClassroom(
     activeGroupId: classroom.activeGroupId,
     createdAt: (classroom.createdAt ?? new Date()).toISOString(),
     updatedAt: (classroom.updatedAt ?? new Date()).toISOString(),
-    currentGroupId: currentGroup.id,
-    currentGroupSource: currentGroup.source,
+    currentGroupId: scope?.currentGroupId ?? null,
+    currentGroupSource: scope?.currentGroupSource ?? 'none',
     machines,
     machineCount: machines.length,
     status,

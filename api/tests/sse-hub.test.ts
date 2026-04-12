@@ -52,7 +52,8 @@ await describe('SSE Hub', async () => {
   await test('publishClassroomChangedLocal updates group index and emits new groupId', async () => {
     const writes: string[] = [];
     const hub = createSseHub({
-      resolveClassroomGroupContext: () => Promise.resolve({ groupId: 'new-group' }),
+      resolveClassroomGroupContext: () =>
+        Promise.resolve({ mode: 'grouped', groupId: 'new-group' }),
     });
 
     const unsub = hub.registerSseClient({
@@ -85,7 +86,8 @@ await describe('SSE Hub', async () => {
     const writesB: string[] = [];
 
     const hub = createSseHub({
-      resolveClassroomGroupContext: () => Promise.resolve({ groupId: 'base-group' }),
+      resolveClassroomGroupContext: () =>
+        Promise.resolve({ mode: 'grouped', groupId: 'base-group' }),
       resolveExemptHostnamesByClassroom: () => Promise.resolve(new Set(['host-a'])),
       unrestrictedGroupId: '__unrestricted__',
     });
