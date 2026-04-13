@@ -54,6 +54,13 @@ cd api
 NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/groups-auth.test.ts tests/groups-teacher-access.test.ts tests/groups-rule-ops.test.ts tests/groups-export.test.ts
 ```
 
+Serial multi-file example for DB-reset-heavy suites:
+
+```bash
+cd api
+NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/service-coverage-user-storage.test.ts tests/service-coverage-setup.test.ts tests/service-coverage-schema.test.ts tests/service-coverage-user-service.test.ts tests/service-coverage-auth-service.test.ts
+```
+
 ## Anti-Patterns
 
 - direct DB queries in routers
