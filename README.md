@@ -6,7 +6,7 @@
 > Source of truth: `README.md`
 
 [![CI](https://github.com/balejosg/openpath/actions/workflows/ci.yml/badge.svg)](https://github.com/balejosg/openpath/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/balejosg/openpath/branch/main/graph/badge.svg)](https://codecov.io/gh/balejosg/openpath)
+[![codecov](https://codecov.io/github/balejosg/openpath/graph/badge.svg)](https://app.codecov.io/github/balejosg/openpath)
 
 OpenPath is the auditable OSS core for intentional internet access in education and other shared-device environments.
 It gives school IT teams and operators a transparent foundation for deciding what opens, what stays blocked, and how that policy reaches endpoints.

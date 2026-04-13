@@ -1,0 +1,69 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'dashboard/**'
+      - 'react-spa/**'
+      - 'shared/**'
+      - 'firefox-extension/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'codecov.yml'
+      - '.github/workflows/coverage.yml'
+      - '.github/workflows/reusable-test.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'dashboard/**'
+      - 'react-spa/**'
+      - 'shared/**'
+      - 'firefox-extension/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'codecov.yml'
+      - '.github/workflows/coverage.yml'
+      - '.github/workflows/reusable-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API Coverage
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      test-type: api
+    secrets: inherit
+
+  dashboard:
+    name: Dashboard Coverage
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      test-type: web
+    secrets: inherit
+
+  react-spa:
+    name: React SPA Coverage
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      test-type: spa
+    secrets: inherit
+
+  shared:
+    name: Shared Coverage
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      test-type: shared
+    secrets: inherit
+
+  firefox-extension:
+    name: Firefox Extension Coverage
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      test-type: extension
+    secrets: inherit

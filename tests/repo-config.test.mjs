@@ -170,6 +170,49 @@ describe('repository verification contract', () => {
     }
   });
 
+  test('Codecov coverage uploads stay wired to active workflows and the README badge targets the app UI', () => {
+    const readme = readText('README.md');
+    const reusableTestWorkflow = readText('.github/workflows/reusable-test.yml');
+
+    assert.ok(
+      existsSync(resolve(projectRoot, '.github/workflows/coverage.yml')),
+      'the repository should keep an active coverage workflow instead of a badge-only Codecov setup'
+    );
+
+    const coverageWorkflow = readText('.github/workflows/coverage.yml');
+
+    assert.ok(
+      readme.includes(
+        '[![codecov](https://codecov.io/github/balejosg/openpath/graph/badge.svg)](https://app.codecov.io/github/balejosg/openpath)'
+      ),
+      'README.md should point the Codecov badge at the current Codecov app URL and GitHub badge path'
+    );
+    assert.ok(
+      coverageWorkflow.includes('uses: ./.github/workflows/reusable-test.yml'),
+      'coverage.yml should invoke the reusable coverage test workflow'
+    );
+
+    for (const testType of ['api', 'web', 'spa', 'shared', 'extension']) {
+      assert.ok(
+        coverageWorkflow.includes(`test-type: ${testType}`),
+        `coverage.yml should run the ${testType} coverage lane`
+      );
+    }
+
+    assert.ok(
+      reusableTestWorkflow.includes('run: npm run test:coverage --workspace=@openpath/react-spa'),
+      'reusable-test.yml should collect React SPA coverage before uploading to Codecov'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes("inputs.test-type == 'web' && 'dashboard'"),
+      'reusable-test.yml should map the dashboard lane to the dashboard Codecov flag'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes("inputs.test-type == 'extension' && 'firefox-extension'"),
+      'reusable-test.yml should map the extension lane to the firefox-extension Codecov flag'
+    );
+  });
+
   test('required Windows CI keeps the direct Pester lane and emits bounded lineage diagnostics for lingering processes', () => {
     const ciWorkflow = readText('.github/workflows/ci.yml');
     const linuxJobBlock = extractWorkflowJobBlock(ciWorkflow, 'test-linux-dnsmasq');

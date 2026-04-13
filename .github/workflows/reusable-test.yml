@@ -105,7 +105,7 @@ jobs:
       # SPA Tests (React 19)
       - name: Run SPA tests
         if: inputs.test-type == 'spa'
-        run: npm run test --workspace=@openpath/react-spa
+        run: npm run test:coverage --workspace=@openpath/react-spa
 
       # Integration Tests
       - name: Run Integration tests
@@ -145,13 +145,9 @@ jobs:
         if: inputs.run-coverage && inputs.test-type != 'bash'
         uses: codecov/codecov-action@v5
         with:
-          files: |
-            api/coverage/lcov.info
-            dashboard/coverage/lcov.info
-            react-spa/coverage/lcov.info
-            shared/coverage/lcov.info
-            firefox-extension/coverage/lcov.info
-          flags: ${{ inputs.test-type }}
+          disable_search: true
+          files: ${{ inputs.test-type == 'api' && 'api/coverage/lcov.info' || inputs.test-type == 'web' && 'dashboard/coverage/lcov.info' || inputs.test-type == 'spa' && 'react-spa/coverage/lcov.info' || inputs.test-type == 'shared' && 'shared/coverage/lcov.info' || inputs.test-type == 'extension' && 'firefox-extension/coverage/lcov.info' || '' }}
+          flags: ${{ inputs.test-type == 'web' && 'dashboard' || inputs.test-type == 'extension' && 'firefox-extension' || inputs.test-type }}
           name: ${{ inputs.test-type }}-coverage
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
