@@ -75,6 +75,14 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "install.sh allows installer contract runs without a whitelist URL" {
+    run grep -nF 'if [ -n "$WHITELIST_URL" ]; then' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Whitelist URL no configurada todavía' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "apt bootstrap script exists" {
     run test -f "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -eq 0 ]
@@ -135,6 +143,9 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 
     run grep -n 'OPENPATH_INSTALLER_CONTRACT_MODE' "$PROJECT_DIR/tests/e2e/docker-e2e-runner.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n '/proc/1/environ' "$PROJECT_DIR/tests/e2e/docker-e2e-runner.sh"
     [ "$status" -eq 0 ]
 
     run grep -n '/usr/local/lib/openpath/uninstall.sh --auto-yes' "$PROJECT_DIR/tests/e2e/ci/run-linux-e2e.sh"

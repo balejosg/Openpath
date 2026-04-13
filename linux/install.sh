@@ -457,9 +457,13 @@ step_install_scripts() {
     chown root:root "$ETC_CONFIG_DIR" "$CONFIG_DIR" 2>/dev/null || true
     chmod 750 "$ETC_CONFIG_DIR" 2>/dev/null || true
 
-    if ! persist_openpath_whitelist_url "$WHITELIST_URL"; then
-        echo "✗ ERROR: whitelist URL inválida"
-        exit 1
+    if [ -n "$WHITELIST_URL" ]; then
+        if ! persist_openpath_whitelist_url "$WHITELIST_URL"; then
+            echo "✗ ERROR: whitelist URL inválida"
+            exit 1
+        fi
+    else
+        echo "  → Whitelist URL no configurada todavía"
     fi
 
     if persist_openpath_health_api_config "$HEALTH_API_URL" "$HEALTH_API_SECRET"; then

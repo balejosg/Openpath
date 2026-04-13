@@ -15,6 +15,22 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+resolve_installer_contract_mode() {
+    if [ -n "${OPENPATH_INSTALLER_CONTRACT_MODE:-}" ]; then
+        printf '%s\n' "$OPENPATH_INSTALLER_CONTRACT_MODE"
+        return 0
+    fi
+
+    if [ -r /proc/1/environ ]; then
+        tr '\0' '\n' < /proc/1/environ | sed -n 's/^OPENPATH_INSTALLER_CONTRACT_MODE=//p' | head -n 1
+        return 0
+    fi
+
+    printf '0\n'
+}
+
+INSTALLER_CONTRACT_MODE="$(resolve_installer_contract_mode)"
+
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Docker E2E Test Runner${NC}"
@@ -91,7 +107,7 @@ echo ""
 echo -e "${BLUE}[5/6]${NC} Running smoke tests..."
 ./linux/scripts/runtime/smoke-test.sh --quick || echo -e "${YELLOW}⚠${NC} Smoke tests had issues"
 
-if [ "${OPENPATH_INSTALLER_CONTRACT_MODE:-0}" = "1" ]; then
+if [ "$INSTALLER_CONTRACT_MODE" = "1" ]; then
     echo ""
     echo -e "${GREEN}✓${NC} Installer contract mode completed after install + smoke tests"
     exit 0
