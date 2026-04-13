@@ -48,7 +48,7 @@
     "db:setup:e2e": "npm run db:migrate && npm run db:seed:e2e",
     "lint": "npm --prefix .. run build --workspace=@openpath/shared && eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
-    "test:unit": "NODE_ENV=test node --import tsx --test tests/schedules.test.ts",
+    "test:unit": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/schedules-time-utils.test.ts tests/schedules-crud.test.ts tests/schedules-query.test.ts tests/schedules-current.test.ts",
     "test:mutation": "stryker run",
     "db:migrate": "tsx scripts/repair-group-fk-compat.ts && drizzle-kit push",
     "db:migrate:legacy-json": "node dist/scripts/migrate.js",
