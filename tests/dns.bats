@@ -171,7 +171,7 @@ github.com"
     mkdir -p "$(dirname "$DNSMASQ_CONF")" "$ETC_CONFIG_DIR"
 
     echo "https://downloads.example/w/token/whitelist.txt" > "$WHITELIST_URL_CONF"
-    echo "https://classroompath.example" > "$HEALTH_API_URL_CONF"
+    echo "https://control.example" > "$HEALTH_API_URL_CONF"
 
     WHITELIST_DOMAINS=("safe.example")
     BLOCKED_SUBDOMAINS=()
@@ -185,7 +185,7 @@ github.com"
 
     generate_dnsmasq_config
 
-    grep -q "server=/classroompath.example/8.8.8.8" "$DNSMASQ_CONF"
+    grep -q "server=/control.example/8.8.8.8" "$DNSMASQ_CONF"
     grep -q "server=/downloads.example/8.8.8.8" "$DNSMASQ_CONF"
     grep -q "server=/api.github.com/8.8.8.8" "$DNSMASQ_CONF"
     grep -q "server=/release-assets.githubusercontent.com/8.8.8.8" "$DNSMASQ_CONF"

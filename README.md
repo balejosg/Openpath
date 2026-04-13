@@ -14,13 +14,11 @@ It gives school IT teams and operators a transparent foundation for deciding wha
 It combines:
 
 - a Node.js/TypeScript API with tRPC and PostgreSQL
-- a React SPA consumed directly and through downstream wrappers
+- a React SPA consumed directly and through stable downstream integrations
 - Linux and Windows endpoint agents
 - a Firefox-focused browser extension with managed Firefox/Chromium distribution helpers
 
-OpenPath stays agnostic of ClassroomPath and any other downstream wrapper.
-
-Need pricing, a pilot, or a managed rollout instead of self-hosting? Start with [ClassroomPath](https://classroompath.eu/), the service built on top of OpenPath, then review the [OpenPath vs. ClassroomPath comparison](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md).
+OpenPath stays agnostic of downstream wrappers, managed distributions, and tenant-specific overlays.
 
 ![OpenPath dashboard overview](docs/evaluation/assets/dashboard-overview.png)
 
@@ -29,18 +27,18 @@ Need pricing, a pilot, or a managed rollout instead of self-hosting? Start with 
 - **Auditable core:** the engine, admin surface, endpoint agents, and browser integration live in this repository.
 - **Endpoint-first enforcement:** Linux and Windows agents apply policy locally instead of relying only on browser settings.
 - **Operational visibility:** the browser extension helps diagnose blocked resources during rollout and support workflows.
-- **Clear trust boundary:** downstream products such as ClassroomPath consume a documented public surface instead of deep, unstable internals.
+- **Clear trust boundary:** downstream integrations consume a documented public surface instead of deep, unstable internals.
 
 Maintained repo documentation is English-only and indexed from [`docs/INDEX.md`](docs/INDEX.md). Historical records such as [`CHANGELOG.md`](CHANGELOG.md) and most ADR files are useful context, but they are not install or operations runbooks.
 
-## Choose Your Adoption Path
+## Choose Your Starting Point
 
-| If you need...                                                                   | Start here                                                                                                                      |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| A self-hosted, modifiable core that your team can operate directly               | [`docs/evaluation/adoption-path.md`](docs/evaluation/adoption-path.md)                                                          |
-| A managed rollout, pricing guidance, or a lower operational burden for school IT | [ClassroomPath](https://classroompath.eu/)                                                                                      |
-| A quick comparison between OSS core and managed service                          | [OpenPath vs. ClassroomPath](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md)  |
-| A buyer-oriented security and trust checklist                                    | [ClassroomPath security and trust guide](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/security-trust.md) |
+| If you need...                                                     | Start here                                                             |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| A self-hosted, modifiable core that your team can operate directly | [`docs/evaluation/adoption-path.md`](docs/evaluation/adoption-path.md) |
+| The canonical architecture and public contracts                    | [`docs/ADR.md`](docs/ADR.md)                                           |
+| Operator hardening and rollout guidance                            | [`docs/SECURITY-HARDENING.md`](docs/SECURITY-HARDENING.md)             |
+| Package and platform entrypoints                                   | [`docs/INDEX.md`](docs/INDEX.md)                                       |
 
 ## What Ships Today
 

@@ -199,7 +199,7 @@ Describe "Common Module" {
         It "Builds protected domains from configured control-plane URLs and bootstrap hosts" {
             Mock Get-OpenPathConfig {
                 [PSCustomObject]@{
-                    apiUrl = 'https://classroompath.example'
+                    apiUrl = 'https://control.example'
                     whitelistUrl = 'https://downloads.example/w/token/whitelist.txt'
                 }
             } -ModuleName Common
@@ -208,7 +208,7 @@ Describe "Common Module" {
                 Get-OpenPathProtectedDomains
             }
 
-            $domains | Should -Contain 'classroompath.example'
+            $domains | Should -Contain 'control.example'
             $domains | Should -Contain 'downloads.example'
             $domains | Should -Contain 'raw.githubusercontent.com'
             $domains | Should -Contain 'api.github.com'
@@ -520,7 +520,7 @@ Describe "Common Module - Mocked Tests" {
         It "Protects control-plane hosts from blocked sections and injects them into the effective whitelist" {
             Mock Get-OpenPathConfig {
                 [PSCustomObject]@{
-                    apiUrl = 'https://classroompath.example'
+                    apiUrl = 'https://control.example'
                     whitelistUrl = 'https://downloads.example/w/token/whitelist.txt'
                 }
             } -ModuleName Common
@@ -531,7 +531,7 @@ Describe "Common Module - Mocked Tests" {
                     Content = @"
 safe.example
 ## BLOCKED-SUBDOMAINS
-classroompath.example
+control.example
 ## BLOCKED-PATHS
 downloads.example/blocked
 "@
@@ -542,9 +542,9 @@ downloads.example/blocked
             $result = Get-OpenPathFromUrl -Url "http://test.example.com/whitelist.txt"
 
             $result.Whitelist | Should -Contain 'safe.example'
-            $result.Whitelist | Should -Contain 'classroompath.example'
+            $result.Whitelist | Should -Contain 'control.example'
             $result.Whitelist | Should -Contain 'downloads.example'
-            $result.BlockedSubdomains | Should -Not -Contain 'classroompath.example'
+            $result.BlockedSubdomains | Should -Not -Contain 'control.example'
             $result.BlockedPaths | Should -Not -Contain 'downloads.example/blocked'
         }
     }
@@ -1087,7 +1087,7 @@ Describe "DNS Module" {
 
         It "Always includes configured control-plane domains in the essential Acrylic allowlist" {
             InModuleScope DNS {
-                Mock Get-OpenPathProtectedDomains { @('classroompath.example', 'downloads.example', 'raw.githubusercontent.com') }
+                Mock Get-OpenPathProtectedDomains { @('control.example', 'downloads.example', 'raw.githubusercontent.com') }
 
                 $definition = New-AcrylicHostsDefinition `
                     -WhitelistedDomains @('safe.example') `
@@ -1099,9 +1099,9 @@ Describe "DNS Module" {
 
                 $content = ConvertTo-AcrylicHostsContent -Definition $definition
 
-                $content | Should -Match 'FW classroompath\.example'
+                $content | Should -Match 'FW control\.example'
                 $content | Should -Match 'FW downloads\.example'
-                $definition.DomainAffinityMask | Should -Match 'classroompath\.example;\*\.classroompath\.example'
+                $definition.DomainAffinityMask | Should -Match 'control\.example;\*\.control\.example'
                 $definition.DomainAffinityMask | Should -Match 'downloads\.example;\*\.downloads\.example'
             }
         }

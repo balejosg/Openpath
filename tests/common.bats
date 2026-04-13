@@ -195,7 +195,7 @@ teardown() {
 safe.example
 
 ## BLOCKED-SUBDOMAINS
-classroompath.example
+control.example
 
 ## BLOCKED-PATHS
 downloads.example/blocked
@@ -206,7 +206,7 @@ EOF
     HEALTH_API_URL_CONF="$ETC_CONFIG_DIR/health-api-url.conf"
     mkdir -p "$ETC_CONFIG_DIR"
     echo "https://downloads.example/w/token/whitelist.txt" > "$WHITELIST_URL_CONF"
-    echo "https://classroompath.example" > "$HEALTH_API_URL_CONF"
+    echo "https://control.example" > "$HEALTH_API_URL_CONF"
 
     source "$PROJECT_DIR/linux/lib/common.sh"
     log() { echo "$1"; }
@@ -215,9 +215,9 @@ EOF
     parse_whitelist_sections "$wl_file"
 
     [[ " ${WHITELIST_DOMAINS[*]} " == *" safe.example "* ]]
-    [[ " ${WHITELIST_DOMAINS[*]} " == *" classroompath.example "* ]]
+    [[ " ${WHITELIST_DOMAINS[*]} " == *" control.example "* ]]
     [[ " ${WHITELIST_DOMAINS[*]} " == *" downloads.example "* ]]
-    [[ " ${BLOCKED_SUBDOMAINS[*]} " != *" classroompath.example "* ]]
+    [[ " ${BLOCKED_SUBDOMAINS[*]} " != *" control.example "* ]]
     [[ " ${BLOCKED_PATHS[*]} " != *" downloads.example/blocked "* ]]
 }
 

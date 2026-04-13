@@ -10,7 +10,7 @@ OpenPath is the right starting point when your team wants to evaluate the core t
 - you need to understand how policy reaches Linux or Windows endpoints
 - you want to inspect the admin UI, API surface, and browser integration before making a product decision
 - your organization prefers to self-host or keep the option open
-- you need an OSS foundation that remains separate from any managed wrapper
+- you need an OSS foundation that remains separate from any downstream overlay
 
 ## What You Can Verify In This Repository
 
@@ -27,17 +27,3 @@ Choose OpenPath if your team wants to:
 - operate the core service and endpoint agents itself
 - customize workflows under `AGPL-3.0-or-later`
 - integrate OpenPath into an existing infrastructure or internal support model
-
-## When To Start With ClassroomPath Instead
-
-Choose [ClassroomPath](https://classroompath.eu/) if your team wants:
-
-- a managed service instead of self-hosting
-- a pilot, pricing discussion, or guided rollout
-- buyer-oriented evaluation materials for school leadership and IT together
-
-Relevant ClassroomPath evaluation docs:
-
-- [OpenPath vs. ClassroomPath](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md)
-- [Security and trust guide](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/security-trust.md)
-- [IT evaluation checklist](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/it-evaluation-checklist.md)

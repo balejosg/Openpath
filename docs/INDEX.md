@@ -35,8 +35,8 @@
 ## Evaluation
 
 - OSS adoption path for technical evaluators: [`docs/evaluation/adoption-path.md`](evaluation/adoption-path.md)
-- Managed-service comparison: [`ClassroomPath/docs/evaluation/openpath-vs-classroompath.md`](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md)
-- Buyer-oriented trust checklist: [`ClassroomPath/docs/evaluation/security-trust.md`](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/security-trust.md)
+- Security and hardening baseline: [`docs/SECURITY-HARDENING.md`](SECURITY-HARDENING.md)
+- Public OSS security policy: [`SECURITY.md`](../SECURITY.md)
 
 ## Package-Specific Docs
 

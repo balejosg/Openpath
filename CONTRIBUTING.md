@@ -33,7 +33,7 @@ npm run dev --workspace=@openpath/dashboard
 
 ## Conventions
 
-- Keep OpenPath agnostic of ClassroomPath and any downstream wrapper.
+- Keep OpenPath agnostic of downstream wrappers, managed distributions, and tenant-specific overlays.
 - Prefer tRPC for new authenticated API/SPA flows unless a REST surface is intentionally public or compatibility-driven.
 - Use Conventional Commits.
 - Keep docs aligned with repo truth; maintained docs should stay listed in [`docs/INDEX.md`](docs/INDEX.md).

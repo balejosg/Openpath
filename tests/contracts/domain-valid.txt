@@ -3,4 +3,4 @@ google.com
 sub.example.org
 a-b.co
 xn--caf-dma.com
-classroompath.net
+school.example

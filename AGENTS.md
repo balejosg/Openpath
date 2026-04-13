@@ -4,13 +4,13 @@ This repository is the standalone OpenPath OSS core: Linux and Windows endpoint 
 
 ## Dependency Rule
 
-OpenPath must remain agnostic of ClassroomPath and any other downstream wrapper.
+OpenPath must remain agnostic of downstream wrappers, managed distributions, and tenant-specific overlays.
 
-- Do not add imports, configs, env vars, or runtime assumptions that require ClassroomPath.
+- Do not add imports, configs, env vars, or runtime assumptions that require any downstream wrapper.
 - Do not move downstream wrapper logic into OpenPath.
 - If functionality is genuinely shared, implement it here as a generic OpenPath capability.
 
-The dependency direction is one-way: `ClassroomPath -> OpenPath`.
+The dependency direction is one-way: `wrapper -> OpenPath`.
 
 ## Absolute Prohibitions
 

@@ -6,7 +6,7 @@ import { buildLinuxEnrollmentScript } from '../src/lib/enrollment-script.js';
 void describe('Linux enrollment bootstrap script generation', () => {
   void test('pins the requested linux agent version when one is available', () => {
     const script = buildLinuxEnrollmentScript({
-      publicUrl: 'https://classroompath.eu',
+      publicUrl: 'https://control.example',
       classroomId: 'cls_123',
       classroomName: 'Aula 1',
       enrollmentToken: 'token-123',
@@ -20,7 +20,7 @@ void describe('Linux enrollment bootstrap script generation', () => {
 
   void test('omits package pinning when no published linux agent version should be forced', () => {
     const script = buildLinuxEnrollmentScript({
-      publicUrl: 'https://classroompath.eu',
+      publicUrl: 'https://control.example',
       classroomId: 'cls_123',
       classroomName: 'Aula 1',
       enrollmentToken: 'token-123',

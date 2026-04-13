@@ -547,7 +547,7 @@ hostname() { printf 'max12\n'; }
 set +e
 (
     source "$extracted_script"
-    cmd_enroll --classroom 'Room 101' --api-url 'https://classroompath.eu' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
+    cmd_enroll --classroom 'Room 101' --api-url 'https://control.example' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
 )
 status=$?
 set -e
@@ -603,7 +603,7 @@ source "$project_dir/linux/lib/common.sh"
 
 normalize_machine_name_value() { printf '%s\n' "$1"; }
 register_machine() {
-    TOKENIZED_URL='https://classroompath.eu/w/token123/whitelist.txt'
+    TOKENIZED_URL='https://control.example/w/token123/whitelist.txt'
     REGISTERED_CLASSROOM_NAME='Room 201'
     REGISTERED_CLASSROOM_ID='cls_201'
     REGISTERED_MACHINE_NAME='max12-scoped'
@@ -625,7 +625,7 @@ hostname() { printf 'max12\n'; }
 set +e
 (
     source "$extracted_script"
-    cmd_enroll --classroom 'Room 101' --api-url 'https://classroompath.eu' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
+    cmd_enroll --classroom 'Room 101' --api-url 'https://control.example' --classroom-id 'cls_123' --enrollment-token 'enroll-token'
 )
 status=$?
 set -e
@@ -643,9 +643,9 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"status=0"* ]]
-    [[ "$output" == *"api_url=https://classroompath.eu"* ]]
+    [[ "$output" == *"api_url=https://control.example"* ]]
     [[ "$output" == *"classroom=Room 201"* ]]
     [[ "$output" == *"classroom_id=cls_201"* ]]
-    [[ "$output" == *"whitelist_url=https://classroompath.eu/w/token123/whitelist.txt"* ]]
+    [[ "$output" == *"whitelist_url=https://control.example/w/token123/whitelist.txt"* ]]
     [[ "$output" == *"machine_name=max12-scoped"* ]]
 }
