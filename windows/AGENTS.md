@@ -1,62 +1,40 @@
 # Windows AGENTS.md
 
-PowerShell endpoint agent: Acrylic DNS Proxy + Windows Firewall.
+PowerShell endpoint agent: Acrylic DNS Proxy, Windows Firewall, Task Scheduler automation, browser-extension rollout, and a unified CLI in `OpenPath.ps1`.
 
-## Module Structure
+## Structure
 
-```
-windows/
-├── lib/
-│   ├── DNS.psm1        # Acrylic DNS Proxy management
-│   ├── Firewall.psm1   # Windows Firewall rules
-│   ├── Browser.psm1    # Browser policy enforcement
-│   ├── Common.psm1     # Shared utilities, logging
-│   └── Services.psm1   # Task Scheduler management
-├── Install-OpenPath.ps1   # Main installer
-├── Uninstall-OpenPath.ps1 # Uninstaller
-└── tests/
-    └── *.Tests.ps1     # Pester tests
-```
-
-## Key Modules
-
-| Module          | Purpose                                                     |
-| --------------- | ----------------------------------------------------------- |
-| `DNS.psm1`      | Acrylic installation, host file generation, service control |
-| `Firewall.psm1` | Block external DNS, allow localhost only                    |
-| `Browser.psm1`  | Chrome/Edge/Firefox policy via registry                     |
-| `Services.psm1` | Scheduled tasks for updates, watchdog                       |
+- `lib/DNS.psm1`: Acrylic install/config/runtime helpers
+- `lib/Firewall.psm1`: outbound DNS firewall policy
+- `lib/Browser*.psm1`: Firefox/Chromium policy and staged artifact handling
+- `lib/Services.psm1`: scheduled task registration and status
+- `lib/Common.psm1`: shared config, logging, enrollment, and self-update helpers
+- `OpenPath.ps1`: operator CLI (`status`, `update`, `health`, `doctor`, `self-update`, `enroll`, `rotate-token`, `restart`)
+- `Install-OpenPath.ps1`: bootstrap/install flow
+- `Uninstall-OpenPath.ps1`: cleanup/removal flow
+- `scripts/Pre-Install-Validation.ps1`: machine readiness checks
+- `scripts/Enroll-Machine.ps1`: classroom enrollment helper
 
 ## Conventions
 
-- **Naming**: Approved verbs (`Get-`, `Set-`, `New-`, `Remove-`)
-- **Parameters**: PascalCase, mandatory validation
-- **Output**: Use `Write-Verbose`, `Write-Warning`, `Write-Error`
-- **Linting**: PSScriptAnalyzer-clean (CI enforces)
+- use approved PowerShell verbs
+- keep parameters PascalCase and validated
+- prefer shared helpers in `lib/` over duplicating logic in installers/scripts
+- use structured warnings/errors rather than ad hoc output for control flow
 
-## Installation
+`Write-Host` is acceptable for operator-facing CLI/install output in this repo; do not use it as a substitute for reusable logging or testable control flow.
 
-```powershell
-# Interactive
-.\Install-OpenPath.ps1
-
-# Unattended
-.\Install-OpenPath.ps1 -WhitelistUrl "https://..." -Unattended
-```
-
-## Testing
+## Verification
 
 ```powershell
-# Run Pester tests
-Invoke-Pester -Path tests/
-
-# Pre-install validation
 .\scripts\Pre-Install-Validation.ps1
+Invoke-Pester -Path tests\
 ```
+
+Use targeted browser and rollout tests under `windows/tests/` when touching Firefox/Chromium policy paths, scheduled tasks, or enrollment/self-update behavior.
 
 ## Anti-Patterns
 
-- Using unapproved verbs
-- Missing `[CmdletBinding()]`
-- Direct `Write-Host` (use Write-Verbose/Warning)
-- Hardcoded paths without variables
+- hardcoded filesystem locations when `$OpenPathRoot` or helper functions already exist
+- duplicate enrollment or self-update logic outside shared modules
+- changing scheduled task or firewall naming without updating tests

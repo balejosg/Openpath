@@ -1,81 +1,65 @@
 # Linux AGENTS.md
 
-Bash endpoint agent: dnsmasq DNS sinkhole + iptables firewall + systemd services.
+Bash endpoint agent: `dnsmasq` DNS sinkhole, firewall enforcement, browser policy helpers, and systemd-managed update/health flows.
 
-## Module Architecture
+## Structure
 
-All functionality in `lib/*.sh`, sourced by runtime scripts:
+Core modules live under `lib/`:
 
-| Module        | Purpose                                                |
-| ------------- | ------------------------------------------------------ |
-| `common.sh`   | Logging, config, whitelist parsing                     |
-| `dns.sh`      | Port 53 management, dnsmasq config, upstream detection |
-| `firewall.sh` | iptables rules, connection flushing                    |
-| `browser.sh`  | Firefox/Chromium policies, extension deployment        |
-| `services.sh` | Systemd service/timer creation                         |
-| `rollback.sh` | Safe uninstallation, error recovery                    |
+- `common.sh`: shared config, logging, and filesystem helpers
+- `dns.sh`: upstream DNS detection and `dnsmasq` config generation
+- `firewall.sh`: local DNS enforcement and bypass resistance
+- `browser.sh` and browser policy helpers: Firefox/Chromium policy and extension staging
+- `services.sh`: systemd services, timers, logrotate, dispatcher hooks
+- `runtime-cli.sh`: command implementations behind `openpath`
 
-## Runtime Scripts
+Runtime entrypoints live under `scripts/runtime/`:
 
-Located in `scripts/runtime/`:
-
-| Script                       | Trigger      | Purpose                          |
-| ---------------------------- | ------------ | -------------------------------- |
-| `openpath-update.sh`         | Timer (5min) | Download whitelist, apply config |
-| `dnsmasq-watchdog.sh`        | Timer (1min) | Health check, auto-recovery      |
-| `captive-portal-detector.sh` | Service      | Detect/handle captive portals    |
-| `openpath-cmd.sh`            | CLI          | Unified `openpath` command       |
-| `smoke-test.sh`              | Post-install | Validate DNS functionality       |
+- `openpath-update.sh`
+- `openpath-agent-update.sh`
+- `openpath-self-update.sh`
+- `dnsmasq-watchdog.sh`
+- `captive-portal-detector.sh`
+- `openpath-sse-listener.sh`
+- `openpath-cmd.sh`
 
 ## Installation Paths
 
-| Source                 | Installed To                   |
-| ---------------------- | ------------------------------ |
-| `lib/*.sh`             | `/usr/local/lib/openpath/lib/` |
-| `scripts/runtime/*.sh` | `/usr/local/bin/`              |
-| Config                 | `/etc/openpath/`               |
-| Logs                   | `/var/log/openpath.log`        |
-
-## Debian Package
-
-`debian-package/DEBIAN/` contains:
-
-- `control` - Package metadata, dependencies
-- `postinst` - Post-install configuration
-- `prerm` / `postrm` - Removal cleanup
-
-Build: `.github/workflows/build-deb.yml`
+- library modules: `/usr/local/lib/openpath/lib/`
+- runtime scripts: `/usr/local/bin/`
+- operator config: `/etc/openpath/`
+- state: `/var/lib/openpath/`
+- logs: `/var/log/openpath.log`, `/var/log/captive-portal-detector.log`
 
 ## Conventions
 
-- **Shebang**: `#!/bin/bash` always
-- **Error handling**: `set -eo pipefail`, explicit exit codes
-- **Quoting**: Always quote variables `"$var"`
-- **Conditionals**: Use `[[ ... ]]` not `[ ... ]`
-- **Functions**: `function_name() { ... }` style
-- **Linting**: ShellCheck-clean (CI enforces)
+- use `#!/bin/bash`
+- use `set -eo pipefail` where the script owns command flow
+- quote variables unless there is a deliberate shell-word-splitting need
+- prefer `[[ ... ]]` for conditionals
+- keep ShellCheck clean unless there is a narrow, justified exception
 
-## Critical Pattern: DNS Sinkhole
+## Critical Contract
 
-Order in dnsmasq config is CRITICAL:
+Order in generated `dnsmasq` config is critical:
 
+```text
+address=/#/                # block all first
+server=/allowed.com/8.8.8.8
 ```
-address=/#/           # MUST BE FIRST - blocks all
-server=/allowed.com/8.8.8.8  # Then allow specific
-```
 
-Reversed order breaks whitelist enforcement.
+Reversing that order breaks whitelist enforcement.
 
 ## Testing
 
 ```bash
-cd tests && bats *.bats      # All BATS tests
-./tests/run-tests.sh common  # Single suite
+cd tests && bats *.bats
+npm run test:installer:linux
+npm run test:installer:apt
 ```
 
 ## Anti-Patterns
 
-- Using `[ ]` instead of `[[ ]]`
-- Unquoted variables
-- Missing `set -eo pipefail`
-- ShellCheck disables without justification
+- direct edits to generated runtime files instead of fixing the generator
+- bypassing `openpath-update.sh` when validating install/update flows
+- unquoted variables or broad ShellCheck disables without justification

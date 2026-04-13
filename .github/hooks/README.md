@@ -1,32 +1,19 @@
-# Git Hooks Setup
+# Legacy Hook Notes
 
-This directory contains git hooks for the Whitelist project.
+The live local Git hook workflow for OpenPath is implemented in `.husky/`, not in `.github/hooks/`.
 
-## Installation
+Use these files as historical reference only. Do not install them into `.git/hooks/` for current development work.
 
-To install these hooks:
+Current source of truth:
 
-```bash
-# From project root
-cp .github/hooks/* .git/hooks/
-chmod +x .git/hooks/*
-```
+- `.husky/pre-commit`
+- `.husky/commit-msg`
+- `.husky/pre-push`
 
-## Available Hooks
+Current behavior:
 
-### pre-commit
+- `pre-commit` checks sensitive files and runs staged verification
+- `commit-msg` appends `Verified-by: pre-commit`
+- `pre-push` runs `npm run verify:full`
 
-Runs before each commit to check:
-
-- **ShellCheck** - Lints shell scripts for errors
-- **ESLint** - Lints JavaScript in Node.js projects
-- **Sensitive files** - Prevents committing keys, .env files
-- **Large files** - Warns about files >1MB
-
-## Skipping Hooks
-
-To skip hooks for a single commit (not recommended):
-
-```bash
-git commit --no-verify
-```
+Do not bypass hooks with `--no-verify`.

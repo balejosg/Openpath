@@ -1,26 +1,18 @@
-# Licensing Strategy
+# Licensing
 
-OpenPath is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-or-later)** to ensure community freedom and transparency.
+> Status: maintained
+> Applies to: OpenPath repository
+> Last verified: 2026-04-13
+> Source of truth: `LICENSING.md`
 
-## Upstream License: AGPL-3.0
+OpenPath is licensed under `AGPL-3.0-or-later`.
 
-The open-source version of OpenPath is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-or-later)**.
+Key implications:
 
-### Why AGPL-3.0?
+- if you modify and redistribute OpenPath, you must preserve the AGPL terms
+- if you run a modified network service based on OpenPath, the AGPL network-use clause applies
+- contributions submitted to this repository are understood to be contributed under the same license
 
-- **Transparency**: Requires full source code disclosure for any modifications.
-- **Network Protection**: If you run a modified version of OpenPath as a network service, you **must** make your source code available to your users.
-- **Traceability**: Ensures that derivative works acknowledge the original source and maintain the same freedoms.
+Unless a file states otherwise, repository documentation and examples are distributed under the same repo license terms.
 
-### Perfect for
-
-- Educational institutions (K-12, Universities)
-- Non-profits
-- Internal use in companies
-- Individuals and hobbyists
-
----
-
-## Contributing
-
-By contributing to OpenPath, you agree that your contributions will be licensed under the AGPL-3.0.
+See the repo `LICENSE` file for the full legal text.

@@ -2,78 +2,61 @@
 
 Express + tRPC API with PostgreSQL/Drizzle. Service-oriented architecture.
 
-## Architecture
+## Execution Boundary
 
+```text
+Routers / routes -> services -> storage helpers -> PostgreSQL
 ```
-Routers (tRPC) → Services (business logic) → Storage (Drizzle ORM)
-```
 
-## tRPC Routers (10)
+Source-of-truth files:
 
-| Router          | Procedures       | Purpose                             |
-| --------------- | ---------------- | ----------------------------------- |
-| `auth`          | public/protected | Login, register, refresh, logout    |
-| `users`         | admin            | User CRUD, role assignment          |
-| `requests`      | mixed            | Domain whitelist requests workflow  |
-| `classrooms`    | teacher          | Classroom/machine registration      |
-| `schedules`     | teacher          | Time-based classroom reservations   |
-| `push`          | protected        | Web push notification subscriptions |
-| `healthReports` | sharedSecret     | Endpoint health monitoring          |
-| `setup`         | public           | First-time admin creation           |
-| `healthcheck`   | public           | Liveness/readiness probes           |
-| `groups`        | mixed            | Whitelist group/rule management     |
+- `src/server.ts`: Express middleware and REST route mounting
+- `src/routes/`: public REST surfaces
+- `src/trpc/routers/index.ts`: current app router inventory
+- `src/services/`: business logic and transaction boundaries
+- `src/db/schema.ts`: schema shape
 
-## Procedure Types
+## Router And Procedure Guidance
 
-| Type                    | Auth              | Use Case                      |
-| ----------------------- | ----------------- | ----------------------------- |
-| `publicProcedure`       | None              | Health, setup, auth endpoints |
-| `protectedProcedure`    | JWT               | Any authenticated user        |
-| `adminProcedure`        | JWT+admin         | User management, groups       |
-| `teacherProcedure`      | JWT+teacher/admin | Classroom management          |
-| `sharedSecretProcedure` | Machine secret    | Endpoint-to-server auth       |
+The exact router list changes over time. Use `src/trpc/routers/index.ts` instead of relying on stale counts.
 
-## Database (13 tables)
+Current procedure types:
 
-Core: `users`, `roles`, `requests`, `classrooms`, `machines`, `schedules`
-Supporting: `tokens`, `settings`, `push_subscriptions`, `health_reports`, `whitelist_groups`, `whitelist_rules`, `dashboard_users`
-
-Schema: `src/db/schema.ts` (Drizzle ORM)
-Migrations: `drizzle/` via `drizzle-kit`
-
-## Key Files
-
-| Path                        | Purpose                           |
-| --------------------------- | --------------------------------- |
-| `src/server.ts`             | Express entry, middleware stack   |
-| `src/trpc/trpc.ts`          | Procedure definitions, middleware |
-| `src/trpc/context.ts`       | Request context, JWT extraction   |
-| `src/trpc/routers/index.ts` | Main AppRouter aggregation        |
-| `src/services/`             | Business logic (8 services)       |
-| `src/lib/auth.ts`           | JWT management, blacklist         |
-| `src/lib/logger.ts`         | Winston structured logging        |
+- `publicProcedure`: health, setup, and other unauthenticated flows
+- `protectedProcedure`: authenticated user flows
+- `adminProcedure`: admin-only flows
+- `teacherProcedure`: teacher/admin classroom flows
+- `sharedSecretProcedure`: machine-auth or shared-secret flows
 
 ## Conventions
 
-- **Errors**: `TRPCError` in routers, `APIError` subclasses in Express middleware
-- **Logging**: Winston only, never `console.*`
-- **Validation**: Zod schemas from `@openpath/shared` at boundaries
-- **Imports**: `.js` extensions required (NodeNext)
+- Keep routers thin; business logic belongs in services.
+- Multi-write flows should use service-owned transaction boundaries.
+- Use Zod validation from `@openpath/shared` at API boundaries.
+- Use Winston-based logging, not `console.*`.
+- Keep `.js` import extensions for NodeNext compatibility.
 
 ## Testing
 
+Prefer existing scripts because they already assign stable ports:
+
 ```bash
-npm run test:auth    # Auth suite (PORT 3001)
-npm run test:e2e     # E2E suite (PORT 3002)
-npm run test:setup   # Setup suite (PORT 3003)
-npm run test:security # Security suite (PORT 3004)
+npm run test:auth --workspace=@openpath/api      # PORT 3001
+npm run test:e2e --workspace=@openpath/api       # PORT 3002
+npm run test:security --workspace=@openpath/api  # PORT 3004
+npm run test:setup --workspace=@openpath/api     # PORT 3005
 ```
 
-Single file: `NODE_ENV=test PORT=3005 node --import tsx --test tests/groups.test.ts`
+Single-file example:
+
+```bash
+cd api
+NODE_ENV=test PORT=3007 node --import tsx --test --test-force-exit tests/groups.test.ts
+```
 
 ## Anti-Patterns
 
-- Direct DB queries in routers (use services)
-- `console.*` in production code
-- Missing Zod validation on inputs
-- Hardcoded ports in tests (use env)
+- direct DB queries in routers
+- side effects inside transaction bodies
+- missing Zod validation on request input/output boundaries
+- `console.*` in production paths

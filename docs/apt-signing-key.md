@@ -1,8 +1,13 @@
 # Persistent APT Signing Key
 
+> Status: maintained
+> Applies to: OpenPath release workflow
+> Last verified: 2026-04-13
+> Source of truth: `docs/apt-signing-key.md`
+
 OpenPath APT publishes must reuse a single repository signing key. Ephemeral keys break existing machines because `apt update` fails after the repository fingerprint changes.
 
-## Secret bootstrap
+## Secret Bootstrap
 
 Generate a dedicated key on a maintainer machine:
 
@@ -25,20 +30,25 @@ gpg --armor --export-secret-keys 'OpenPath System APT <apt@openpath.local>' > /t
 gpg --armor --export 'OpenPath System APT <apt@openpath.local>' > /tmp/openpath-apt-public.asc
 ```
 
-Install the private key as the GitHub Actions secret used by both publish workflows:
+Install the private key as the GitHub Actions secret used by the publish workflows:
 
 ```bash
 gh secret set APT_GPG_PRIVATE_KEY --repo balejosg/openpath < /tmp/openpath-apt-private.asc
 gh secret list --repo balejosg/openpath
 ```
 
-After the secret is present, republish `stable` once. The workflow re-signs both `stable` and `unstable`, so both suites move to the persistent fingerprint during that publish.
+Clean up the temporary secret material after the upload succeeds:
 
-## Intentional rotation
+```bash
+rm -f /tmp/openpath-apt-gpg-batch.txt /tmp/openpath-apt-private.asc /tmp/openpath-apt-public.asc
+rm -rf "$GNUPGHOME"
+```
+
+## Intentional Rotation
 
 If rotation is required:
 
 1. Generate the replacement key.
 2. Update `APT_GPG_PRIVATE_KEY`.
-3. Republish `stable` to re-sign both suites and refresh `pubkey.gpg`.
-4. Announce the new fingerprint to operators before any managed fleet rollout.
+3. Republish `stable` so both served suites move to the new fingerprint.
+4. Announce the new fingerprint before managed fleet rollout.

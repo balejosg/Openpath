@@ -2,7 +2,8 @@
 
 > Status: maintained
 > Applies to: `@openpath/react-spa`
-> Last verified: 2026-04-01
+> Last verified: 2026-04-13
+> Source of truth: `react-spa/README.md`
 
 OpenPath's React SPA is the OSS administration UI for dashboard, classrooms, groups, rules, requests, and settings flows.
 
@@ -48,7 +49,7 @@ From `OpenPath/`:
 
 ```bash
 npm run test:react-spa
-npm run test:e2e
+npm run test:e2e:smoke
 ```
 
 From `OpenPath/react-spa/`:

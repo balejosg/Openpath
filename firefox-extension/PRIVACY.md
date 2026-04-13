@@ -1,66 +1,31 @@
-# Privacy Policy - Monitor de Bloqueos de Red
+# OpenPath Extension Privacy Policy
 
-**Last updated:** December 2024
+> Status: maintained
+> Applies to: `firefox-extension/`
+> Last verified: 2026-04-13
+> Source of truth: `firefox-extension/PRIVACY.md`
 
 ## Overview
 
-"Monitor de Bloqueos de Red" is a Firefox browser extension that helps identify domains blocked by DNS whitelists or firewalls. This privacy policy explains how the extension handles your data.
+The OpenPath extension is designed to operate locally in the browser. It is used to detect blocked resources and help operators inspect whitelist-related failures.
 
-## Data Collection
+## Data Handling
 
-**We do not collect any personal data.**
+- no analytics or telemetry are sent to third-party services
+- blocked-resource state is kept in browser-local runtime state
+- clipboard access is used only when the user copies a blocked-domain list
+- optional `nativeMessaging` communicates only with a local native host on the same machine
 
-The extension operates entirely locally within your browser and does not transmit any information to external servers.
+## Current Permissions
 
-## Data Storage
+| Permission           | Purpose                                        |
+| -------------------- | ---------------------------------------------- |
+| `webRequest`         | Observe blocked-resource failures              |
+| `webRequestBlocking` | Support blocking-related request handling      |
+| `webNavigation`      | Reset tab state on navigation                  |
+| `tabs`               | Scope badge/popup data to the active tab       |
+| `clipboardWrite`     | Copy blocked-domain lists                      |
+| `nativeMessaging`    | Optional local host integration                |
+| `<all_urls>`         | Observe blocked resources regardless of origin |
 
-| Data Type            | Storage Location     | Retention               |
-| -------------------- | -------------------- | ----------------------- |
-| Blocked domains list | Browser memory (RAM) | Cleared when tab closes |
-| Tab-specific state   | Browser memory (RAM) | Cleared on navigation   |
-| User preferences     | None stored          | N/A                     |
-
-## Permissions Explained
-
-| Permission        | Purpose                                            |
-| ----------------- | -------------------------------------------------- |
-| `webRequest`      | Monitor network errors to detect blocked domains   |
-| `webNavigation`   | Reset state when navigating to new pages           |
-| `tabs`            | Display blocked domain count per tab               |
-| `clipboardWrite`  | Allow copying domain list to clipboard             |
-| `nativeMessaging` | Optional local communication with whitelist system |
-| `<all_urls>`      | Monitor all websites for blocked resources         |
-
-### Why `<all_urls>`?
-
-This extension needs access to all URLs because blocked resources can come from any domain. Without this permission, the extension could not detect third-party resources being blocked on websites you visit.
-
-## Native Messaging
-
-If you enable the optional native messaging feature:
-
-- Communication occurs **only** with a local Python script on your computer
-- The script queries your local whitelist configuration
-- **No data leaves your computer**
-
-## Third-Party Services
-
-This extension does **not** use any third-party services, analytics, or tracking.
-
-## Data Sharing
-
-We do **not** share, sell, or transfer any data to third parties.
-
-## Changes to This Policy
-
-Any changes to this privacy policy will be reflected in the extension's repository and the "Last updated" date above.
-
-## Contact
-
-For questions about this privacy policy, please open an issue at:
-https://github.com/balejosg/openpath/issues
-
-## Open Source
-
-This extension is open source. You can review the complete source code at:
-https://github.com/balejosg/openpath/tree/main/firefox-extension
+Questions or changes to this policy should stay aligned with the source in this repository and the current extension manifest.

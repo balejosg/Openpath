@@ -2,13 +2,16 @@
 
 > Status: maintained
 > Applies to: OpenPath repository
-> Last verified: 2026-04-01
+> Last verified: 2026-04-13
 > Source of truth: `docs/INDEX.md`
 
 ## Start Here
 
 - Repo overview: [`README.md`](../README.md)
 - LLM agent workflow: [`AGENTS.md`](../AGENTS.md)
+- Contribution guide: [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+- Security policy: [`SECURITY.md`](../SECURITY.md)
+- Licensing: [`LICENSING.md`](../LICENSING.md)
 
 ## Canonical Architecture And Contracts
 
@@ -17,22 +20,33 @@
 - Public SPA extension surface: [`docs/adr/0010-public-spa-extension-surface.md`](adr/0010-public-spa-extension-surface.md)
 - API package guide: [`api/README.md`](../api/README.md)
 - Shared package guide: [`shared/README.md`](../shared/README.md)
+- Dashboard package guide: [`dashboard/README.md`](../dashboard/README.md)
 
 ## Operations And Troubleshooting
 
 - How-to guide: [`docs/HOWTO.md`](HOWTO.md)
 - Troubleshooting: [`docs/TROUBLESHOOTING.md`](TROUBLESHOOTING.md)
 - Migration notes: [`docs/MIGRATION.md`](MIGRATION.md)
+- Security hardening: [`docs/SECURITY-HARDENING.md`](SECURITY-HARDENING.md)
+- APT signing key workflow: [`docs/apt-signing-key.md`](apt-signing-key.md)
 - Linux deployment notes: [`linux/DEPLOYMENT.md`](../linux/DEPLOYMENT.md)
-- Firefox extension release notes: [`firefox-extension/README.md`](../firefox-extension/README.md)
+- Linux troubleshooting: [`linux/TROUBLESHOOTING.md`](../linux/TROUBLESHOOTING.md)
 
 ## Package-Specific Docs
 
 - React SPA: [`react-spa/README.md`](../react-spa/README.md)
 - Linux agent: [`linux/README.md`](../linux/README.md)
 - Windows agent: [`windows/README.md`](../windows/README.md)
+- Firefox extension: [`firefox-extension/README.md`](../firefox-extension/README.md)
+- Firefox AMO submission notes: [`firefox-extension/AMO.md`](../firefox-extension/AMO.md)
+- Firefox extension privacy policy: [`firefox-extension/PRIVACY.md`](../firefox-extension/PRIVACY.md)
+- E2E/contract test inventory: [`tests/e2e/README.md`](../tests/e2e/README.md)
 
-## Non-Authoritative / Context Only
+## Notes
 
-- Plans and design notes: [`docs/plans/`](plans/) (drafts; may be stale)
-- Proposals or historical notes in `docs/` that are not linked above should be treated as context, not as the current contract
+- Canonical docs are maintained in English.
+- Historical files such as [`../CHANGELOG.md`](../CHANGELOG.md) and most ADR records provide context, not current operator instructions.
+- Active plan files under `docs/plans/` are working artifacts and are not part of the canonical doc set.
+- Repo-process docs under `.github/` and package `AGENTS.md` files are workflow references, not product runbooks.
+- `docs/adr/template.md` is a template, not a current architecture contract.
+- ADR numbering is inherited and not strictly sequential; use titles and links, not numeric assumptions.

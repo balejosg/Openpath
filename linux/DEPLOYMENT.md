@@ -1,198 +1,64 @@
-# OpenPath Linux Agent — Deployment Guide
+# OpenPath Linux Agent Deployment
 
-## Prerequisites
+> Status: maintained
+> Applies to: `linux/`
+> Last verified: 2026-04-13
+> Source of truth: `linux/DEPLOYMENT.md`
 
-- Debian/Ubuntu-based Linux (Debian 11+, Ubuntu 20.04+)
-- Root/sudo access
-- Network connectivity to OpenPath API server
-- `curl`, `dnsmasq`, `iptables` (installed automatically)
+## Supported Delivery Paths
 
----
+### 1. APT Bootstrap
 
-## Installation Methods
+The APT bootstrap flow is generated from `linux/scripts/build/apt-bootstrap.sh` and is the primary operator-facing install path for packaged Linux deployments.
 
-### Method 1: Debian Package (Recommended)
-
-```bash
-# Download latest .deb from GitHub Releases
-curl -LO https://github.com/balejosg/Whitelist/releases/latest/download/openpath-dnsmasq.deb
-
-# Install
-sudo dpkg -i openpath-dnsmasq.deb
-sudo apt-get -f install  # resolve any dependencies
-```
-
-### Method 2: Manual Install from Source
+Typical published usage:
 
 ```bash
-git clone https://github.com/balejosg/Whitelist.git
-cd Whitelist/linux
-
-# Basic install (provide whitelist URL)
-sudo ./install.sh --whitelist-url "https://your-api.example.com/w/TOKEN/whitelist.txt"
-
-# Classroom mode (auto-enrollment)
-sudo ./install.sh \
-  --classroom "Aula101" \
-  --api-url "https://your-api.example.com" \
-  --shared-secret "your-shared-secret"
+curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash
 ```
 
-The installer is quiet by default and shows compact progress. Add `--verbose` when you need detailed per-step output.
+Useful flags supported by the bootstrap include:
 
-### Method 3: Unattended / Mass Deployment
+- `--skip-setup`
+- `--package-version <version>`
+
+### 2. Source Installer
+
+For local development or direct source installs:
 
 ```bash
-# Non-interactive install with all parameters
-# HEALTH_API_URL must be the API base URL (agent posts to /trpc/healthReports.submit)
-sudo WHITELIST_URL="https://api.example.com/w/TOKEN/whitelist.txt" \
-     HEALTH_API_URL="https://api.example.com" \
-     HEALTH_API_SECRET="secret123" \
-     ./install.sh --unattended
+cd linux
+sudo ./install.sh
 ```
 
----
+The installer supports explicit setup flags and an unattended mode; verify current options against `linux/install.sh` before documenting new deployment recipes.
 
-## Mass Deployment (Ansible Example)
+### 3. API-Served Agent Delivery
 
-```yaml
-# playbook.yml
-- hosts: lab_computers
-  become: true
-  vars:
-    openpath_api: 'https://openpath.school.edu'
-    classroom: "{{ inventory_hostname | regex_replace('pc-', '') }}"
-    shared_secret: '{{ vault_shared_secret }}'
+The API exposes Linux delivery endpoints used by managed flows:
 
-  tasks:
-    - name: Copy OpenPath deb package
-      copy:
-        src: openpath-dnsmasq.deb
-        dest: /tmp/openpath-dnsmasq.deb
+- `/api/agent/linux/latest.json`
+- `/api/agent/linux/package?version=<version>`
 
-    - name: Install OpenPath
-      apt:
-        deb: /tmp/openpath-dnsmasq.deb
+## Package and Runtime Artifacts
 
-    - name: Enroll in classroom
-      command: >
-        openpath enroll
-        --classroom {{ classroom }}
-        --api-url {{ openpath_api }}
-        --shared-secret {{ shared_secret }}
-      args:
-        creates: /etc/openpath/classroom.conf
-```
+Current Linux build/runtime pieces include:
 
----
+- Debian package namespace: `openpath-dnsmasq`
+- package builder: `linux/scripts/build/build-deb.sh`
+- whitelist updater: `linux/scripts/runtime/openpath-update.sh`
+- scheduled self-update wrapper: `linux/scripts/runtime/openpath-agent-update.sh`
+- self-update engine: `linux/scripts/runtime/openpath-self-update.sh`
+- watchdog: `linux/scripts/runtime/dnsmasq-watchdog.sh`
+- SSE listener: `linux/scripts/runtime/openpath-sse-listener.sh`
 
-## Post-Installation Verification
+## Deployment Verification
+
+After deployment, verify:
 
 ```bash
-# Run smoke tests
-sudo /usr/local/lib/openpath/smoke-test.sh
-
-# Full status check
 sudo openpath status
-
-# Verify DNS filtering
-sudo openpath test
-
-# Check health
 sudo openpath health
+sudo openpath test
+systemctl status dnsmasq openpath-dnsmasq.timer openpath-agent-update.timer dnsmasq-watchdog.timer
 ```
-
----
-
-## Configuration Overrides
-
-Create `/etc/openpath/overrides.conf` to customize behavior:
-
-```bash
-# Example overrides.conf
-
-# Use Cloudflare as fallback DNS instead of Google
-OPENPATH_FALLBACK_DNS=1.1.1.1
-OPENPATH_FALLBACK_DNS_SECONDARY=1.0.0.1
-
-# Increase whitelist expiration to 48 hours for unreliable networks
-OPENPATH_WHITELIST_MAX_AGE_HOURS=48
-
-# Limit max domains to 200
-OPENPATH_MAX_DOMAINS=200
-
-# Adjust update polling interval (minutes)
-OPENPATH_TIMER_INTERVAL=10
-
-# Custom captive portal detection URL
-OPENPATH_CAPTIVE_PORTAL_URL=http://connectivitycheck.gstatic.com/generate_204
-```
-
----
-
-## Updating the Agent
-
-```bash
-# Check for updates
-sudo openpath self-update --check
-
-# Install update
-sudo openpath self-update
-
-# Force reinstall same version
-sudo openpath self-update --force
-```
-
----
-
-## Uninstallation
-
-```bash
-# Interactive uninstall
-sudo /usr/local/lib/openpath/uninstall.sh
-
-# Non-interactive (for automation)
-sudo /usr/local/lib/openpath/uninstall.sh --auto-yes
-
-# Via dpkg
-sudo dpkg -r openpath-dnsmasq
-```
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  OpenPath Agent                      │
-├──────────────────┬──────────────────────────────────┤
-│  openpath CLI    │  Unified command interface        │
-├──────────────────┼──────────────────────────────────┤
-│  SSE Listener    │  Real-time rule updates           │
-│  Update Timer    │  5-min fallback polling           │
-│  Watchdog Timer  │  1-min health check + recovery    │
-│  Captive Portal  │  WiFi login auto-detection        │
-├──────────────────┼──────────────────────────────────┤
-│  dnsmasq         │  DNS sinkhole (whitelist-only)    │
-│  iptables        │  Firewall (block bypass methods)  │
-│  Browser Policy  │  Chrome/Firefox URL enforcement   │
-└──────────────────┴──────────────────────────────────┘
-```
-
-### Services
-
-| Service                           | Type         | Purpose                    |
-| --------------------------------- | ------------ | -------------------------- |
-| `openpath-dnsmasq.timer`          | Timer (5min) | Fallback whitelist polling |
-| `dnsmasq-watchdog.timer`          | Timer (1min) | Health check + integrity   |
-| `openpath-sse-listener.service`   | Persistent   | Real-time SSE updates      |
-| `captive-portal-detector.service` | Persistent   | WiFi portal detection      |
-| `dnsmasq.service`                 | Persistent   | DNS filtering engine       |
-
-### Security Layers
-
-1. **DNS Sinkhole** — Only whitelisted domains resolve
-2. **Firewall** — Blocks external DNS (53), DoT (853), DoH IPs, VPNs, Tor
-3. **Browser Policies** — Chrome/Firefox URL allowlists enforced
-4. **Anti-Tampering** — SHA-256 integrity checks every minute
-5. **Sudoers Hardening** — Only read-only commands run passwordless

@@ -1,70 +1,51 @@
 # Firefox Extension AGENTS.md
 
-WebExtension for detecting DNS/firewall blocks and submitting domain requests.
+WebExtension for detecting blocked resources, showing operator-facing diagnostics, and supporting optional native-host flows.
 
 ## Structure
 
-```
-firefox-extension/
-├── src/
-│   ├── background.ts   # Service worker entry
-│   ├── content.ts      # Content script (injected)
-│   ├── popup/          # Browser action popup
-│   └── lib/            # Shared utilities
-├── native/             # Native messaging host
-│   ├── openpath-native-host.py
-│   └── install-native-host.sh
-├── manifest.json       # Extension manifest (MV2)
-└── tests/              # Unit tests
-```
+- `src/background.ts`: background script logic and request monitoring
+- `src/popup.ts`: popup behavior
+- `src/blocked-page.ts`: blocked-page contract and rendering support
+- `src/lib/`: shared helpers
+- `manifest.json`: manifest source of truth
+- `native/`: optional native-host assets
+- `build-firefox-release.mjs`, `sign-firefox-release.mjs`, `build-chromium-managed.mjs`, `build-xpi.sh`: release/build tooling
 
-## Key Components
+## Current Contract
 
-| Component       | Purpose                                             |
-| --------------- | --------------------------------------------------- |
-| `background.ts` | webRequest interception, badge updates              |
-| `content.ts`    | Page-level block detection                          |
-| `native/`       | Local whitelist verification via native messaging   |
-| `popup/`        | UI for viewing blocked domains, submitting requests |
+- manifest version: `3`
+- Firefox extension ID: `monitor-bloqueos@openpath`
+- host permissions: `<all_urls>`
+- optional native host: `native/openpath-native-host.py`
 
-## Manifest
-
-- **Manifest Version**: 2 (Firefox compatibility)
-- **Permissions**: `webRequest`, `webRequestBlocking`, `tabs`, `storage`, `nativeMessaging`
-- **Content scripts**: Injected on all URLs
-
-## Native Messaging
-
-Python host for local whitelist verification:
-
-```bash
-./native/install-native-host.sh  # Installs host manifest
-```
-
-Host location: `~/.mozilla/native-messaging-hosts/`
+Use `manifest.json` and the build scripts as source of truth instead of older assumptions about MV2 or removed content-script layouts.
 
 ## Conventions
 
-- **Logging**: Use `lib/logger.ts`, not raw `console.*`
-- **Storage**: `browser.storage.local` for persistence
-- **Errors**: Graceful degradation if native host unavailable
+- use `src/lib/logger.ts` rather than ad hoc logging
+- prefer `browser.storage.local` for persisted config/state
+- degrade gracefully when native-host capabilities are unavailable
+- keep AMO/release docs aligned with manifest permissions and artifact outputs
 
 ## Testing
 
 ```bash
-npm test                                    # All tests
-npx tsx --test tests/background.test.ts    # Single file
+npm test
+npx tsx --test tests/background.test.ts
 ```
 
-## Build
+## Build And Release
 
 ```bash
-npm run build      # Compile TS → dist/
-./build-xpi.sh     # Create .xpi package
+npm run build --workspace=@openpath/firefox-extension
+./build-xpi.sh
+npm run build:firefox-release --workspace=@openpath/firefox-extension
+npm run sign:firefox-release --workspace=@openpath/firefox-extension
 ```
 
 ## Anti-Patterns
 
-- Using Manifest V3 features (Firefox support incomplete)
-- Blocking requests without user feedback
-- Storing sensitive data in `storage.sync`
+- reintroducing deep assumptions about MV2-only behavior
+- changing extension IDs, native-host names, or artifact contracts without updating tests and release docs
+- storing sensitive data in sync storage or remote telemetry paths

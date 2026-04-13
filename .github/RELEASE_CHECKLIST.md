@@ -4,7 +4,8 @@ Use this checklist before releasing changes to student machines.
 
 ## Pre-Release
 
-- [ ] All CI checks pass (BATS, E2E, lint)
+- [ ] All required CI checks pass
+- [ ] Local pre-push verification passed on the release commit set
 - [ ] E2E tests pass on real hardware (not just CI VMs)
 - [ ] Tested on Ubuntu 22.04 LTS
 - [ ] Tested on Ubuntu 24.04 LTS
@@ -17,6 +18,7 @@ Use this checklist before releasing changes to student machines.
 
 ## Documentation
 
+- [ ] `npm run verify:docs` passes
 - [ ] Release notes written
 - [ ] Breaking changes documented
 

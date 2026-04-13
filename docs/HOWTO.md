@@ -1,207 +1,63 @@
-# How-To Guide: OpenPath DNS System
+# OpenPath How-To
 
-## Quick Start
+> Status: maintained
+> Applies to: OpenPath repository
+> Last verified: 2026-04-13
+> Source of truth: `docs/HOWTO.md`
 
-### Install on a Single PC
+## Install the Linux Agent
+
+Published APT bootstrap:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash
 ```
 
-The bootstrap installs OpenPath and launches `openpath setup` (classroom wizard).
-It is quiet by default and shows compact progress. For detailed output, pass `--verbose`:
+Source install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash -s -- --verbose
-```
-
----
-
-## Configure After Installation
-
-### Classroom Setup (Recommended)
-
-```bash
+cd linux
+sudo ./install.sh
 sudo openpath setup
 ```
 
-The wizard asks for API URL, classroom name, and registration token.
+## Install the Windows Agent
 
-### Change Whitelist URL
+Run as Administrator:
+
+```powershell
+.\Install-OpenPath.ps1 -WhitelistUrl "http://your-server:3000/export/group.txt"
+```
+
+Enrollment-token bootstrap:
+
+```powershell
+.\Install-OpenPath.ps1 -ApiUrl "https://api.example.com" -ClassroomId "<classroom-id>" -EnrollmentToken "<token>" -Unattended
+```
+
+The enrollment flow requires `-ApiUrl`; the installer still supports direct `-WhitelistUrl` bootstrap when you are not using API-backed enrollment.
+
+## Run Core Services Locally
 
 ```bash
-echo "https://your-url.com/whitelist.txt" | sudo tee /etc/openpath/whitelist-url.conf
-sudo openpath update
+npm run dev --workspace=@openpath/api
+npm run dev --workspace=@openpath/react-spa
+npm run dev --workspace=@openpath/dashboard
 ```
 
-### Use Interactive Configuration
+## Build Extension Release Artifacts
 
 ```bash
-sudo dpkg-reconfigure openpath-dnsmasq
+npm run build:chromium-managed --workspace=@openpath/firefox-extension
+npm run build:firefox-release --workspace=@openpath/firefox-extension -- --signed-xpi /path/to/signed.xpi
 ```
 
----
-
-## Deploy to Multiple PCs (Classroom Setup)
-
-### Option 1: One-liner via SSH
+## Run Common Checks
 
 ```bash
-ssh user@pc-01 "curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash"
+npm run verify:agent
+npm run verify:quick
+npm run verify:docs
 ```
 
-### Option 2: Ansible Playbook
-
-```yaml
-# openpath-install.yml
-- hosts: classroom_pcs
-  become: yes
-  tasks:
-    - name: Add GPG key
-      apt_key:
-        url: https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/pubkey.gpg
-        keyring: /usr/share/keyrings/openpath.gpg
-
-    - name: Add APT repository
-      apt_repository:
-        repo: 'deb [signed-by=/usr/share/keyrings/openpath.gpg] https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt stable main'
-        filename: openpath
-
-    - name: Install openpath-dnsmasq
-      apt:
-        name: openpath-dnsmasq
-        state: present
-        update_cache: yes
-
-    - name: Set whitelist URL
-      copy:
-        content: 'https://your-url.com/whitelist.txt'
-        dest: /etc/openpath/whitelist-url.conf
-
-    - name: Apply configuration
-      command: openpath update
-```
-
-Run with:
-
-```bash
-ansible-playbook -i inventory.ini openpath-install.yml
-```
-
----
-
-## Common Tasks
-
-### Check System Status
-
-```bash
-openpath status
-```
-
-### Test DNS Resolution
-
-```bash
-openpath test
-```
-
-### Force Whitelist Update
-
-```bash
-sudo openpath update
-```
-
-### View Logs
-
-```bash
-sudo journalctl -u dnsmasq -f
-sudo tail -f /var/log/openpath.log
-```
-
-### Temporarily Disable (Fail-open)
-
-Add `# DESACTIVADO` as the first line of your remote whitelist file.
-The system will automatically enter fail-open mode.
-
----
-
-## Troubleshooting
-
-### DNS Not Resolving
-
-```bash
-# Check dnsmasq status
-sudo systemctl status dnsmasq
-
-# Check port 53
-sudo ss -ulnp | grep :53
-
-# Verify resolv.conf
-cat /etc/resolv.conf
-```
-
-### Firewall Blocking Everything
-
-```bash
-# Check firewall rules
-sudo iptables -L OUTPUT -n
-
-# Temporarily disable
-sudo iptables -P OUTPUT ACCEPT
-```
-
-### Whitelist Not Updating
-
-```bash
-# Check timer status
-systemctl status openpath-dnsmasq.timer
-
-# Manual update
-sudo /usr/local/bin/openpath-update.sh
-```
-
----
-
-## Configuration Files
-
-| File                                   | Purpose                        |
-| -------------------------------------- | ------------------------------ |
-| `/etc/openpath/whitelist-url.conf`     | URL to fetch whitelist from    |
-| `/etc/openpath/health-api-url.conf`    | Health API endpoint (optional) |
-| `/etc/openpath/health-api-secret.conf` | Health API secret (optional)   |
-| `/var/lib/openpath/whitelist.txt`      | Downloaded whitelist (cache)   |
-| `/etc/dnsmasq.d/openpath.conf`         | dnsmasq configuration          |
-
----
-
-## Update to Latest Version
-
-```bash
-sudo apt update
-sudo apt upgrade openpath-dnsmasq
-```
-
----
-
-## Uninstall
-
-### Keep configuration (can reinstall later)
-
-```bash
-sudo apt remove openpath-dnsmasq
-```
-
-### Complete removal
-
-```bash
-sudo apt purge openpath-dnsmasq
-```
-
----
-
-## APT Repository Details
-
-- **URL**: https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/
-- **Distribution**: stable
-- **Component**: main
-- **Architecture**: amd64
-- **GPG Key**: https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/pubkey.gpg
+Subsystem-specific workflows are documented in the package READMEs linked from [`INDEX.md`](INDEX.md).

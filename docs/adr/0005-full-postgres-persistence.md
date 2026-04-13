@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Supersedes [ADR 0002](0002-json-file-storage-over-database.md))
+Accepted (supersedes the retired JSON-file storage decision)
 
 ## Context
 

@@ -1,71 +1,72 @@
 # OpenPath Linux Agent
 
-The Linux endpoint agent for the OpenPath DNS whitelist system.
+> Status: maintained
+> Applies to: `linux/`
+> Last verified: 2026-04-13
+> Source of truth: `linux/README.md`
 
-## Overview
+The Linux agent enforces OpenPath policy on Debian/Ubuntu-class machines using `dnsmasq`, firewall rules, browser policy helpers, SSE updates, and a local operational CLI.
 
-The Linux agent enforces DNS whitelisting at the network level using `dnsmasq` as a DNS sinkhole and `iptables` for traffic filtering. It is designed to run on classroom machines or local gateways to ensure that only approved domains are accessible.
+## Installation Paths
 
-## Features
+Supported entrypoints today:
 
-- **DNS Sinkhole**: Uses `dnsmasq` to block all DNS requests except for those on the whitelist.
-- **Firewall Enforcement**: Uses `iptables`/`nftables` to prevent DNS bypassing via external servers.
-- **Captive Portal Detection**: Automatically detects and handles network environments with captive portals.
-- **Instant Rule Updates**: Uses Server-Sent Events (SSE) to receive real-time notifications when rules change, triggering immediate whitelist refresh.
-- **Auto-Update Fallback**: 5-minute periodic sync with the API as a safety net if the SSE connection drops.
-- **Watchdog**: Monitoring scripts that ensure system services are healthy and running.
+- source installer: `linux/install.sh`
+- APT bootstrap flow: `linux/scripts/build/apt-bootstrap.sh`
+- package build/publish flow documented in [`DEPLOYMENT.md`](DEPLOYMENT.md)
 
-## Installation
-
-### Requirements
-
-- Ubuntu 22.04 / 24.04 or compatible Debian-based distribution.
-- Root privileges (sudo).
-
-### Quick Install
+Quick local/source install:
 
 ```bash
+cd linux
 sudo ./install.sh
 ```
 
-The installer runs a preflight validation before making changes (systemd, disk space, network, tooling).
-It is quiet by default and shows a compact progress indicator so unattended runs still show liveness.
-Use `--verbose` to show detailed per-step output.
-Use `--skip-preflight` only for controlled environments where those checks are intentionally bypassed.
-
-### Advanced Installation
-
-Use the `quick-install.sh` script for non-interactive installations:
+Classroom-oriented setup after install:
 
 ```bash
-sudo ./quick-install.sh --url "http://your-api-server:3000/export/group.txt"
+sudo openpath setup
 ```
 
-Add `--verbose` to `quick-install.sh` when you need the full download and installer trace.
+## Runtime Commands
 
-## Structure
+The installed CLI exposes:
 
-- `lib/`: Core shell library modules (`dns.sh`, `firewall.sh`, `browser.sh`, etc.).
-- `scripts/runtime/`: Periodic tasks and monitoring scripts (watchdog, updater).
-- `debian-package/`: Files used for building the `.deb` package.
+- `openpath status`
+- `openpath update`
+- `openpath test`
+- `openpath logs`
+- `openpath log [N]`
+- `openpath domains [text]`
+- `openpath check <domain>`
+- `openpath health`
+- `openpath force`
+- `openpath enable`
+- `openpath disable`
+- `openpath restart`
+- `openpath setup`
+- `openpath rotate-token`
+- `openpath enroll`
+- `openpath self-update`
 
-## Configuration
+## Installed Services
 
-Configuration is stored in `/etc/openpath/config.default` (or your custom config path).
+Current systemd units include:
 
-- `WHITELIST_URL`: The URL to fetch the domain list from.
-- `UPDATE_INTERVAL`: How often to sync the whitelist (in minutes).
-- `ENABLE_FIREWALL`: Whether to enable iptables filtering.
+- `dnsmasq`
+- `openpath-dnsmasq.timer`
+- `openpath-agent-update.timer`
+- `dnsmasq-watchdog.timer`
+- `captive-portal-detector.service`
+- `openpath-sse-listener.service`
 
-## Testing
-
-The Linux agent uses BATS (Bash Automated Testing System) for testing.
+## Verification
 
 ```bash
-cd tests
-bats *.bats
+cd tests && bats *.bats
+npm run test:installer:linux
+npm run test:installer:apt
+npm run test:student-policy:linux
 ```
 
-## License
-
-AGPL-3.0-or-later
+Operator-facing deployment details live in [`DEPLOYMENT.md`](DEPLOYMENT.md). Linux-specific diagnosis steps live in [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).

@@ -27,11 +27,11 @@
 
 ### Required
 
-- [ ] `npm run verify:full` passes locally
+- [ ] Local verification hooks passed for the commits in this PR
 - [ ] Test files exist for all new source files
 - [ ] No `test.skip()` or `.only()` in tests
 - [ ] New/modified files have 80%+ test coverage
-- [ ] Commit includes `Verified-by: pre-commit` trailer
+- [ ] Commit includes `Verified-by: pre-commit` trailer (added by hook)
 
 ### If Applicable
 

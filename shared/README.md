@@ -1,56 +1,41 @@
 # OpenPath Shared
 
-Shared utilities, Zod schemas, and TypeScript types used across the OpenPath monorepo.
+> Status: maintained
+> Applies to: `@openpath/shared`
+> Last verified: 2026-04-13
+> Source of truth: `shared/README.md`
 
-## Overview
+`@openpath/shared` holds the shared contracts used across the OpenPath monorepo.
 
-This workspace acts as the "Single Source of Truth" for data models and validation logic. By sharing schemas between the API, Dashboard, SPA, and other clients, we ensure end-to-end type safety and consistent validation.
+## Exported Surface
 
-## Features
+The package root exports:
 
-- **Zod Schemas**: Pre-defined validation schemas for all major entities (Classrooms, Machines, Users, etc.).
-- **TypeScript Types**: Automatically inferred types from Zod schemas.
-- **Constants**: Shared system constants used throughout the project.
+- Zod schemas and inferred types from `src/schemas/index.ts`
+- normalization helpers from `src/utils.ts`
+- classroom status contracts from `src/classroom-status.ts`
+- schedule-time helpers
+- domain/root-domain helpers from `src/domain.ts`
+- rule validation helpers from `src/rules-validation.ts`
+- role-related types from `src/roles.ts`
+- slug helpers from `src/slug.ts`
 
-## Usage
+It also exposes stable subpath exports for:
 
-Add as a dependency in your `package.json`:
+- `@openpath/shared/classroom-status`
+- `@openpath/shared/domain`
+- `@openpath/shared/rules-validation`
+- `@openpath/shared/roles`
+- `@openpath/shared/slug`
 
-```json
-"dependencies": {
-  "@openpath/shared": "workspace:*"
-}
-```
-
-Import schemas and types:
-
-```typescript
-import { Classroom, User, DomainRequest } from '@openpath/shared';
-import type { Classroom as ClassroomType } from '@openpath/shared';
-```
-
-## Quick Start
-
-### Build
+## Local Workflow
 
 ```bash
-npm run build
+npm run build --workspace=@openpath/shared
+npm run typecheck --workspace=@openpath/shared
+npm run lint --workspace=@openpath/shared
+npm test --workspace=@openpath/shared
 ```
 
-### Typecheck
-
-```bash
-npm run typecheck
-```
-
-## Testing
-
-Schema validation logic is tested to ensure it correctly identifies valid and invalid data.
-
-```bash
-npm test
-```
-
-## License
-
-AGPL-3.0-or-later
+Use this workspace for contracts that must remain consistent between API, dashboard, SPA, and other consumers.
+Import from the documented package root or exported subpaths, not from private source files under `src/`.

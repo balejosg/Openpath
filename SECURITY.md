@@ -1,62 +1,32 @@
 # Security Policy
 
+> Status: maintained
+> Applies to: OpenPath repository
+> Last verified: 2026-04-13
+> Source of truth: `SECURITY.md`
+
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability, please **do not open a public issue**. Instead, contact us directly by email or through a private security advisory.
+Do not open a public issue for a suspected vulnerability. Use a GitHub private security advisory for this repository or contact the maintainers directly.
 
-## Secrets Management
+## Operational Security Baseline
 
-### JWT_SECRET
+- Set a strong `JWT_SECRET` outside test mode.
+- Use explicit `CORS_ORIGINS` in production; the API rejects `*` in production.
+- Treat registration and enrollment material as sensitive and rotate it when compromised:
+  - `POST /api/setup/regenerate-token`
+  - enrollment tickets under `/api/enroll/:classroomId/ticket`
+- Use HTTPS for public API URLs that agents or browser delivery routes consume.
+- Keep the APT signing key stable across releases. See [`docs/apt-signing-key.md`](docs/apt-signing-key.md).
 
-The `JWT_SECRET` is used to sign authentication tokens.
-
-**Best Practices:**
-
-- Generate a strong, random secret (min 256 bits)
-- Store in environment variables, never in code
-- Rotate annually or immediately if compromised
-
-**Rotation Procedure:**
-
-1. Generate a new secret: `openssl rand -hex 32`
-2. Update the `JWT_SECRET` environment variable
-3. Restart the API server
-4. Users will need to re-authenticate (tokens become invalid)
-
-### Registration Token
-
-Used for client PC registration in classroom deployments.
-
-**Rotation Procedure:**
-
-1. Access Dashboard → Settings → Regenerate Token
-2. Or via API: `POST /api/setup/regenerate-token`
-3. Distribute new token to authorized installers
-4. Previously registered PCs continue to work
-
-### VAPID Keys
-
-Used for web push notifications.
-
-**Generation:**
+## Useful Local Checks
 
 ```bash
-npx web-push generate-vapid-keys
+npm run security:audit
+npm run security:secrets
+npm run verify:security
 ```
 
-Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` environment variables.
+When touching auth or public request flows, also run targeted API tests from [`api/README.md`](api/README.md).
 
-## Security Headers
-
-The API uses Helmet.js with security headers including:
-
-- Content-Security-Policy
-- X-Content-Type-Options
-- X-Frame-Options
-- Strict-Transport-Security (when behind HTTPS proxy)
-
-## Dependencies
-
-- Run `npm audit` regularly
-- Security scanning is automated via GitHub Actions weekly
-- Container images are scanned with Trivy
+This file describes the current disclosure and hardening baseline. Historical release notes and ADRs should not be used as the primary incident-response guide.

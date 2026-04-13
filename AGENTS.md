@@ -1,476 +1,127 @@
 # AGENTS.md (Repository Instructions for Coding Agents)
 
-This repo is a multi-platform DNS whitelist enforcement system (Linux Bash, Windows PowerShell)
-plus a Node.js/TypeScript monorepo (npm workspaces) for API + web tooling.
+This repository is the standalone OpenPath OSS core: Linux and Windows endpoint agents plus a Node.js/TypeScript monorepo for the API, dashboard proxy, shared contracts, React SPA, and browser extension.
 
-## ⛔ Dependency Rule (CRITICAL)
+## Dependency Rule
 
-**This repository MUST remain completely agnostic of ClassroomPath.**
+OpenPath must remain agnostic of ClassroomPath and any other downstream wrapper.
 
-OpenPath is the standalone OSS core. It must:
+- Do not add imports, configs, env vars, or runtime assumptions that require ClassroomPath.
+- Do not move downstream wrapper logic into OpenPath.
+- If functionality is genuinely shared, implement it here as a generic OpenPath capability.
 
-- Work independently without any wrapper/distribution
-- Never import, reference, or depend on ClassroomPath
-- Never contain ClassroomPath-specific code or configurations
-- Never mention "ClassroomPath" in source code
+The dependency direction is one-way: `ClassroomPath -> OpenPath`.
 
-If you're asked to add ClassroomPath-specific functionality:
+## Absolute Prohibitions
 
-1. **STOP** — This violates the architecture
-2. Add it to ClassroomPath instead (it consumes OpenPath, not vice versa)
-3. If shared functionality is needed, add it here as a generic feature
+These rules have no exceptions for agent work:
 
-The dependency flows ONE direction only: `ClassroomPath → OpenPath`
+- Do not use `git commit --no-verify` or `git commit -n`.
+- Do not use `HUSKY=0 git commit`.
+- Do not skip failing tests or disable checks just to get a commit through.
+- Do not use `@ts-ignore` or broad lint disables as a shortcut around a real problem.
 
-## 🚫 PROHIBICIONES ABSOLUTAS - VIOLACIÓN = SESIÓN TERMINADA
+If a hook fails, fix the issue and retry. Do not bypass the workflow.
 
-**Estas reglas NO tienen excepciones. El incumplimiento termina la sesión inmediatamente.**
+## Branch And Git Policy
 
-### Commits Sin Verificación (PROHIBIDO)
+OpenPath uses a trunk-based workflow.
 
-| ❌ PROHIBIDO                                    | ⚠️ CONSECUENCIA      |
-| ----------------------------------------------- | -------------------- |
-| `git commit --no-verify` o `-n`                 | **SESIÓN TERMINADA** |
-| `HUSKY=0 git commit`                            | **SESIÓN TERMINADA** |
-| Saltar tests porque "tardan mucho"              | **SESIÓN TERMINADA** |
-| Comentar tests que fallan                       | **SESIÓN TERMINADA** |
-| Usar `@ts-ignore` o `eslint-disable` para pasar | **SESIÓN TERMINADA** |
+- Work on `main`.
+- Do not create feature branches or PR branches.
+- Do not push from detached HEAD.
+- If you need an isolated checkout, use a detached worktree based on `main`.
 
-### Proceso de Commit
+Technical enforcement lives in `.husky/pre-commit`, `.husky/pre-push`, and `scripts/require-main-branch.sh`.
 
-```bash
-# 1. COMMIT NORMAL (el pre-commit hook ejecuta la verificación rápida)
-git add <files>
-git commit -m "mensaje"
+## Hook Behavior
 
-# 2. ANTES DE COMPARTIR/PUSH:
-#    El pre-push ejecuta verify:full automáticamente
-git push origin main
+- `pre-commit`: checks sensitive files and runs staged verification through `scripts/agent-verify.js --staged`
+- `commit-msg`: appends `Verified-by: pre-commit`
+- `pre-push`: runs `npm run verify:full`
 
-# 3. SI ALGÚN HOOK FALLA:
-#    - NO usar --no-verify
-#    - ARREGLAR el problema
-#    - REINTENTAR el commit/push
-#    - REPETIR hasta que PASE
-```
+Do not run `npm run verify:full` manually immediately before every push just to duplicate the hook. Run it manually only when debugging a failure or when the user explicitly asks for it.
 
-**⚠️ NO ejecutar `npm run verify:full` manualmente antes de push** - el hook `pre-push` ya lo hace automáticamente. Ejecutarlo dos veces es redundante.
+## Repo Map
 
-### ¿Por Qué Esta Política Existe?
+- `linux/`: Bash endpoint agent (`dnsmasq`, firewall rules, systemd, browser policy helpers)
+- `windows/`: PowerShell endpoint agent (Acrylic DNS Proxy, Windows Firewall, Task Scheduler, browser rollout)
+- `api/`: Express + tRPC service with PostgreSQL/Drizzle
+- `dashboard/`: REST compatibility proxy over API tRPC routes
+- `react-spa/`: React SPA and Playwright/Vitest coverage
+- `shared/`: shared Zod schemas, helpers, and contract types
+- `firefox-extension/`: browser extension and release artifact tooling
 
-Un agente hizo commit con `--no-verify`, causando:
+Start with:
 
-- Código roto en producción
-- Tiempo perdido debuggeando
-- Pérdida de confianza en el proceso
+- [`README.md`](README.md)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`docs/INDEX.md`](docs/INDEX.md)
 
-**NO HAY EXCUSAS. NO HAY ATAJOS. ARREGLA EL PROBLEMA.**
+## Environment And Tooling
 
-## ⛔ Trunk-Based Workflow (CRITICAL)
+- Node.js `>= 20`
+- npm workspaces from repo root
+- `bats` for Bash tests
+- PowerShell/Pester for Windows-oriented validation
 
-**LLM work in OpenPath is trunk-based: `main` is the only allowed working branch.**
+Common root commands:
 
-- ❌ Do not create feature branches, integration branches, or PR branches
-- ❌ Do not commit from detached HEAD
-- ❌ Do not push to any remote branch other than `main`
-- ✅ If you need a parallel clean checkout, use a detached worktree based on `main`
-- ✅ If you find the repo on a non-`main` branch, preserve any needed work with a stash/patch, switch back to `main`, and continue there
+- `npm install`
+- `npm run build --workspaces --if-present`
+- `npm run lint`
+- `npm run typecheck`
+- `npm test`
+- `npm run verify:docs`
+- `npm run verify:agent`
+- `npm run verify:quick`
 
-**Technical enforcement:** `.husky/pre-commit` and `.husky/pre-push` call `scripts/require-main-branch.sh`.
+## Testing Guide
 
-## Quick Context (Architecture Cheatsheet)
+Use the smallest relevant test surface first.
 
-- `linux/`: Bash endpoint agent (dnsmasq/iptables, systemd)
-- `windows/`: PowerShell endpoint agent (Acrylic DNS Proxy + Windows Firewall)
-- `api/`: Express + tRPC API, PostgreSQL/Drizzle, Winston logging
-- `dashboard/`: Node/TS dashboard service (Express)
-- `react-spa/`: React SPA + Playwright E2E tests
-- `shared/`: shared Zod schemas/types for other packages
-- `firefox-extension/`: browser extension
+### API
 
-Primary docs:
+- all: `npm test --workspace=@openpath/api`
+- focused: `npm run test:auth --workspace=@openpath/api`
+- focused: `npm run test:setup --workspace=@openpath/api`
+- focused: `npm run test:e2e --workspace=@openpath/api`
+- focused: `npm run test:security --workspace=@openpath/api`
 
-- `CLAUDE.md` (project overview + ops)
-- `CONTRIBUTING.md` (conventions + tests)
+### Dashboard
 
-## Requirements
+- all: `npm test --workspace=@openpath/dashboard`
 
-- Node.js >= 20 (repo `package.json` engines)
-- npm workspaces (install from repo root)
-- Bash tests require `bats` installed (see `tests/run-tests.sh`)
+### React SPA
 
-## Install / Build
+- unit: `npm test --workspace=@openpath/react-spa`
+- smoke e2e: `npm run test:e2e:smoke`
+- full e2e: `npm run test:e2e`
 
-From repo root:
+### Shared
 
-- Install deps: `npm install`
-- Build all workspaces (where present): `npm run build --workspaces --if-present`
-- Clean: `npm run clean`
+- all: `npm test --workspace=@openpath/shared`
 
-Per workspace examples:
+### Firefox Extension
 
-- API: `npm run build --workspace=@openpath/api`
-- React SPA: `npm run build --workspace=@openpath/react-spa`
-- Shared: `npm run build --workspace=@openpath/shared`
-- Extension: `npm run build --workspace=@openpath/firefox-extension`
+- all: `npm test --workspace=@openpath/firefox-extension`
 
-## Lint / Typecheck
+### Linux Agent Contracts
 
-From repo root:
+- shell: `cd tests && bats *.bats`
+- installer contracts: `npm run test:installer:linux`
+- APT contracts: `npm run test:installer:apt`
+- student-policy flow: `npm run test:student-policy:linux`
 
-- ESLint (all): `npm run lint`
-- Fix ESLint: `npm run lint:fix`
-- Typecheck (all workspaces that define it): `npm run typecheck`
-- Full local gate (used by pre-push): `npm run verify`
+### Windows Agent Contracts
 
-Shell scripts:
+- student-policy flow: `npm run test:student-policy:windows`
+- broader Windows checks run through the Windows test suites under `windows/tests/`
 
-- ShellCheck (subset): `npm run lint:shell`
-  - CI runs ShellCheck across `linux/**/*.sh`
+## Documentation Rules
 
-Windows scripts (in CI):
-
-- PSScriptAnalyzer runs in `.github/workflows/ci.yml`
-
-## Tests (All)
-
-From repo root:
-
-- All tests: `npm test`
-  - Includes `test:shell`, `test:api`, `test:dashboard`, `test:react-spa`
-
-### Run a Single Test (Cookbook)
-
-#### Bash (BATS)
-
-- All: `cd tests && bats *.bats`
-- Single file: `cd tests && bats common.bats`
-- Helper script:
-  - All: `./tests/run-tests.sh`
-  - Single (by basename): `./tests/run-tests.sh common`
-
-#### API (`api/`)
-
-API tests use Node’s test runner + `tsx` loader and require a free `PORT`.
-Prefer the existing scripts where possible (ports are pre-chosen):
-
-- One suite (scripted):
-  - `npm run test:auth --workspace=@openpath/api`
-  - `npm run test:setup --workspace=@openpath/api`
-  - `npm run test:e2e --workspace=@openpath/api`
-  - `npm run test:security --workspace=@openpath/api`
-
-- One file (direct runner; pick a free port):
-  - `cd api && NODE_ENV=test PORT=3001 node --import tsx --test --test-force-exit tests/auth.test.ts`
-
-#### Dashboard (`dashboard/`)
-
-- All: `npm test --workspace=dashboard`
-- Single file:
-  - `cd dashboard && node --import tsx --test --test-force-exit --test-concurrency=1 tests/api.test.ts`
-
-#### React SPA (`react-spa/`)
-
-Unit tests:
-
-- All: `npm test --workspace=@openpath/react-spa`
-- Single file:
-  - `cd react-spa && npx vitest run src/views/__tests__/Settings.test.tsx`
-
-Playwright E2E (split into smoke/comprehensive):
-
-- Smoke only (14 tests, fast CI):
-  - `cd react-spa && npx playwright test --grep @smoke --project=chromium`
-- All tests (279+ tests):
-  - `cd react-spa && npm run test:e2e`
-- Single test by name:
-  - `cd react-spa && npx playwright test --grep "blocked-domain"`
-- Single spec:
-  - `cd react-spa && npx playwright test e2e/blocked-domain.spec.ts`
-
-CI runs `@smoke` tests on every PR. Full suite runs on main/nightly/`e2e` label.
-
-#### Linux Agent E2E (`tests/e2e/`)
-
-- All: `bats tests/e2e/agent-integration.bats`
-- Runs in `e2e-comprehensive.yml` workflow
-
-#### Firefox Extension (`firefox-extension/`)
-
-- All: `npm test --workspace=@openpath/firefox-extension`
-- Single file:
-  - `cd firefox-extension && npx tsx --test tests/background.test.ts`
-
-## ⛔ MANDATORY LOCAL VERIFICATION (CRITICAL - READ THIS)
-
-**All agents MUST pass a fast local guard on commit and the full local suite before ANY push to `main`.**
-
-Remote CI adds only a small contract layer on top of that local policy:
-
-- Linux dnsmasq agent tests
-- Windows Pester agent tests
-- a lightweight Firefox delivery contract lane (`test:token-delivery` + Firefox extension tests)
-
-### Verification Layers (Use the Right Level)
-
-For **fast feedback during development**, use the layered verification system:
-
-| Command                   | Time    | What It Runs                              | When to Use                           |
-| ------------------------- | ------- | ----------------------------------------- | ------------------------------------- |
-| `npm run verify:agent`    | ~5-30s  | Auto-detects changes, runs minimal checks | **Default for iterative development** |
-| `npm run verify:quick`    | ~15-30s | Typecheck + ESLint + Prettier             | After code changes, before deep dive  |
-| `npm run verify:affected` | ~30-60s | Quick + tests for affected workspaces     | After changing tests or shared/       |
-| `npm run verify:full`     | ~3-5min | **COMPLETE suite (full local gate)**      | **Final local guard before sharing**  |
-
-#### verify:agent (Recommended for Agents)
-
-Automatically chooses the fastest verification based on what changed:
-
-- Docs/code changes → `verify:staged` (~2-5s)
-- Test/shared changes → `verify:staged:affected` (~15-45s)
-
-```bash
-# During iterative development:
-npm run verify:agent
-
-# On commit: pre-commit runs the fast staged guard
-# On push: pre-push runs verify:full
-```
-
-#### Watch Mode (Continuous Feedback)
-
-For continuous feedback while coding:
-
-```bash
-npm run test:watch:spa    # Vitest watch for react-spa
-```
-
-#### E2E Smoke Tests (Quick Sanity Check)
-
-```bash
-npm run test:e2e:smoke    # Only @smoke tagged tests (~20s vs ~2min)
-```
-
-### What verify:full Runs (via pre-push hook)
-
-The pre-push hook automatically runs `verify:full`, which includes:
-
-1. `npm run verify:static` - Turbo typecheck + ESLint across workspaces
-2. `npm run verify:checks` - ShellCheck, Prettier, sensitive-file scan, repo contract tests, repo-wide test-file checks
-3. `npm run verify:coverage` and `npm run verify:unit` in parallel
-4. `npm run e2e:full` and `npm run verify:security` in parallel
-
-### E2E Prerequisites
-
-E2E tests require backend services running:
-
-```bash
-# Start API + PostgreSQL (via Docker Compose or locally)
-docker compose up -d  # Or: npm run dev --workspace=@openpath/api
-
-# Then run E2E
-npm run test:e2e
-```
-
-If E2E fails with "login failed" or similar, ensure API is accessible.
-
-### What CI Runs
-
-GitHub Actions CI is **minimal by design**. It only runs tests requiring specific OS:
-
-- **Linux dnsmasq tests** - Require Ubuntu with dnsmasq/systemd installed
-- **Windows agent tests** - Require Windows with Pester
-
-Everything else (lint, typecheck, unit tests, E2E) runs **locally only**.
-
-### Policy: Fix Without Shortcuts
-
-| Situation        | ✅ CORRECT           | ❌ FORBIDDEN                          |
-| ---------------- | -------------------- | ------------------------------------- |
-| Test fails       | Fix the test or code | `--no-verify`, skip test, comment out |
-| Lint error       | Fix the code         | `eslint-disable`, `--no-verify`       |
-| Typecheck error  | Fix the types        | `@ts-ignore`, `any`, `--no-verify`    |
-| E2E flaky        | Fix the flakiness    | Skip test, retry until pass           |
-| "Takes too long" | Wait for it          | `--no-verify`, partial run            |
-
-**NO EXCEPTIONS. NO SHORTCUTS. FIX THE PROBLEM.**
-
-### Why This Policy Exists
-
-- CI minutes are expensive and limited
-- Local verification gives faster feedback (seconds vs minutes)
-- Agents must take responsibility for code quality
-- Pushing broken code wastes everyone's time
-
-### Verification Workflow
-
-```bash
-# 1. Make changes
-# 2. Commit (pre-commit runs the fast staged guard)
-git add .
-git commit -m "your message"
-
-# 3. Push (pre-push runs verify:full automatically)
-git push origin main
-
-# 4. If hook fails:
-#    - Fix the issue
-#    - Retry the commit/push
-#    - Repeat until hook passes
-```
-
-**DO NOT run `npm run verify:full` manually before push** - the hook does it automatically.
-
-## Git Hooks (Enforced)
-
-- **branch gate**: `scripts/require-main-branch.sh` blocks commits/pushes outside `main`
-- **pre-commit**: `.husky/pre-commit` runs the fast staged guard (`security:files`, `agent-verify --staged`)
-- **commit-msg**: `.husky/commit-msg` runs `commitlint` (conventional commits format)
-- **pre-push**: `.husky/pre-push` re-checks trunk policy, validates repo-wide test-file coverage, and runs `npm run verify:full`
-
-**NEVER use `--no-verify`.** If the hook fails, fix the issue.
-
-## 🧪 Mandatory Test Requirements (NEW)
-
-**Every new source file MUST have a corresponding test file.**
-
-### Test File Mapping
-
-| Source Location              | Test Location                               |
-| ---------------------------- | ------------------------------------------- |
-| `api/src/*.ts`               | `api/tests/*.test.ts`                       |
-| `api/src/services/foo.ts`    | `api/tests/foo.test.ts`                     |
-| `react-spa/src/lib/utils.ts` | `react-spa/src/lib/__tests__/utils.test.ts` |
-| `shared/src/*.ts`            | `shared/tests/*.test.ts`                    |
-| `dashboard/src/*.ts`         | `dashboard/tests/*.test.ts`                 |
-| `firefox-extension/src/*.ts` | `firefox-extension/tests/*.test.ts`         |
-
-### Excluded from Test Requirement
-
-These files don't require tests:
-
-- `index.ts` (barrel/re-export files)
-- `types.ts`, `*.types.ts` (type-only files)
-- `constants.ts`, `*.constants.ts` (pure data)
-- `*.d.ts` (type declarations)
-- `*.config.ts` (configuration)
-- `main.ts`, `App.tsx` (entry points)
-- Files in `drizzle/`, `migrations/`, `generated/`
-
-### Coverage Threshold
-
-**New/modified files must have 80%+ line coverage.**
-
-The pre-push verification pipeline runs `scripts/check-new-file-coverage.js` which:
-
-1. Identifies files changed in the commit
-2. Checks their coverage from JSON reports
-3. Fails if any file is below 80%
-
-### ESLint Test Rules
-
-The following test anti-patterns are **blocked by ESLint**:
-
-| Pattern           | Rule                          | Effect                        |
-| ----------------- | ----------------------------- | ----------------------------- |
-| `test.only()`     | `no-only-tests/no-only-tests` | Prevents skipping other tests |
-| `it.only()`       | `no-only-tests/no-only-tests` | Prevents skipping other tests |
-| `describe.only()` | `no-only-tests/no-only-tests` | Prevents skipping other tests |
-
-### Pre-commit Verification Flow
-
-```
-1. Check sensitive files     (security:files)
-2. Run staged guard          (agent-verify --staged -> verify:staged/verify:staged:affected)
-3. Repo-wide test-file checks and coverage run in pre-push verify:full
-```
-
-### Policy Violations
-
-| Violation                        | Consequence                       |
-| -------------------------------- | --------------------------------- |
-| Missing test file for new source | **Commit blocked**                |
-| Using `test.skip()`              | **Commit blocked** (ESLint error) |
-| Using `.only()`                  | **Commit blocked** (ESLint error) |
-| Coverage < 80% on new file       | **Commit blocked**                |
-
-## Code Style (TypeScript)
-
-Keep changes consistent with ESLint + tsconfig settings.
-
-### Formatting
-
-- Semicolons required.
-- Single quotes required.
-- Let ESLint do formatting: run `npm run lint:fix` when applicable.
-
-### Imports
-
-Preferred order (match existing code where possible):
-
-1. Node built-ins (`node:*`)
-2. External packages
-3. Internal modules (relative or workspace packages like `@openpath/*`)
-
-Rules:
-
-- Use `import type { ... }` for type-only imports.
-- Keep ESM style consistent; NodeNext packages commonly use `.js` specifiers
-  in TS source imports (do not “fix” to extensionless).
-
-### Types / Safety
-
-- `any` is forbidden by ESLint in most packages.
-- No non-null assertions (`!`)—handle null/undefined explicitly.
-- Prefer `unknown` over `any`, then narrow with Zod/type guards.
-- Use `_` prefix for intentionally unused parameters (allowed by ESLint).
-
-### Naming
-
-- Types/interfaces: `PascalCase`
-- Functions/variables: `camelCase`
-- Constants/env vars: `SCREAMING_SNAKE_CASE`
-- Filenames: match existing directory conventions; avoid gratuitous renames.
-
-### Errors & Logging
-
-- API (`api/`):
-  - Prefer `TRPCError` in tRPC routers for client-facing errors.
-  - Prefer structured errors (`APIError` and subclasses) for Express middleware paths.
-  - Use Winston logger (`api/src/lib/logger.ts`), not `console.*`, in production code.
-- Browser/extension (`react-spa/`, `firefox-extension/`):
-  - Prefer local logger wrappers over raw `console.*` when available.
-
-### Validation
-
-- Prefer Zod schemas (from `shared/`) at boundaries (API inputs, config, parsing).
-- Never trust client input; validate and return a typed error.
-
-## Shell Script Style (Linux)
-
-- Keep scripts ShellCheck-clean (CI enforces).
-- Quote variables (`"$var"`), prefer `[[ ... ]]`.
-- Avoid bashisms unless file is explicitly bash; use `#!/bin/bash` consistently.
-
-## PowerShell Style (Windows)
-
-- Use approved verbs (`Get-`, `Set-`, `New-`, `Remove-`, etc.).
-- PascalCase for functions/parameters.
-- Keep scripts compliant with PSScriptAnalyzer (CI).
-
-## Stable Directory Contracts
-
-These directories are **stable API surfaces** consumed by downstream distributions:
-
-| Directory    | Contract                         | Breaking Change Policy                     |
-| ------------ | -------------------------------- | ------------------------------------------ |
-| `api/`       | Dockerfile builds from this path | Coordinate with downstream before renaming |
-| `react-spa/` | Web UI assets (Vite build)       | Coordinate with downstream before renaming |
-| `shared/`    | Shared types/schemas             | Coordinate with downstream before renaming |
-
-Renaming these directories requires updating downstream Dockerfiles and compose files.
-
-## Repo-specific Rules Files
-
-- Cursor rules: none present.
-- Copilot instructions: none present.
+- Maintained and process docs are English-only.
+- Keep maintained docs aligned with repo truth.
+- If you add a maintained doc, link it from [`docs/INDEX.md`](docs/INDEX.md).
+- Delete obsolete docs instead of leaving contradictory stubs.
+- Treat `CHANGELOG.md` and most ADRs as historical context, not current runbooks.
