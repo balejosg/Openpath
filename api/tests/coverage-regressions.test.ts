@@ -19,6 +19,7 @@ import {
   uniqueDomain,
   uniqueEmail,
 } from './test-utils.js';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 
 type RawStorageModule = typeof import('../src/lib/storage.js');
 
@@ -228,7 +229,7 @@ await describe('coverage regressions', async () => {
     const firstRole = await roleStorage.assignRole({
       userId: firstUser.id,
       role: 'teacher',
-      groupIds: ['group-a'],
+      groupIds: [CANONICAL_GROUP_IDS.groupA],
       createdBy: 'legacy_admin',
     });
     assert.strictEqual((await roleStorage.getUserRoles(firstUser.id)).length, 1);
@@ -237,27 +238,43 @@ await describe('coverage regressions', async () => {
     assert.strictEqual(await roleStorage.hasAnyAdmins(), false);
     assert.strictEqual(await roleStorage.hasRole(firstUser.id, 'teacher'), true);
     assert.strictEqual(await roleStorage.isAdmin(firstUser.id), false);
-    assert.strictEqual(await roleStorage.canApproveForGroup(firstUser.id, 'group-a'), true);
-    assert.deepStrictEqual(await roleStorage.getApprovalGroups(firstUser.id), ['group-a']);
-    const expandedRole = await roleStorage.addGroupsToRole(firstRole.id, ['group-b']);
-    assert.deepStrictEqual([...(expandedRole?.groupIds ?? [])].sort(), ['group-a', 'group-b']);
-    const trimmedRole = await roleStorage.removeGroupsFromRole(firstRole.id, ['group-a']);
-    assert.deepStrictEqual(trimmedRole?.groupIds, ['group-b']);
+    assert.strictEqual(
+      await roleStorage.canApproveForGroup(firstUser.id, CANONICAL_GROUP_IDS.groupA),
+      true
+    );
+    assert.deepStrictEqual(await roleStorage.getApprovalGroups(firstUser.id), [
+      CANONICAL_GROUP_IDS.groupA,
+    ]);
+    const expandedRole = await roleStorage.addGroupsToRole(firstRole.id, [
+      CANONICAL_GROUP_IDS.groupB,
+    ]);
+    assert.deepStrictEqual([...(expandedRole?.groupIds ?? [])].sort(), [
+      CANONICAL_GROUP_IDS.groupA,
+      CANONICAL_GROUP_IDS.groupB,
+    ]);
+    const trimmedRole = await roleStorage.removeGroupsFromRole(firstRole.id, [
+      CANONICAL_GROUP_IDS.groupA,
+    ]);
+    assert.deepStrictEqual(trimmedRole?.groupIds, [CANONICAL_GROUP_IDS.groupB]);
     assert.strictEqual((await roleStorage.getRolesByUser(firstUser.id)).length, 1);
     assert.strictEqual((await roleStorage.getRoleById(firstRole.id))?.id, firstRole.id);
     assert.deepStrictEqual(
-      (await roleStorage.updateRole(firstRole.id, { groupIds: ['group-c'], role: 'teacher' }))
-        ?.groupIds,
-      ['group-c']
+      (
+        await roleStorage.updateRole(firstRole.id, {
+          groupIds: [CANONICAL_GROUP_IDS.groupC],
+          role: 'teacher',
+        })
+      )?.groupIds,
+      [CANONICAL_GROUP_IDS.groupC]
     );
-    assert.strictEqual(await roleStorage.removeGroupFromAllRoles('group-c'), 1);
+    assert.strictEqual(await roleStorage.removeGroupFromAllRoles(CANONICAL_GROUP_IDS.groupC), 1);
     assert.ok((await roleStorage.getStats()).total >= 1);
     assert.strictEqual(await roleStorage.revokeRole(firstRole.id), true);
 
     await roleStorage.assignRole({
       userId: secondUser.id,
       role: 'admin',
-      groupIds: ['group-z'],
+      groupIds: [CANONICAL_GROUP_IDS.groupZ],
       createdBy: 'legacy_admin',
     });
     assert.strictEqual((await roleStorage.getAllAdmins()).length, 1);

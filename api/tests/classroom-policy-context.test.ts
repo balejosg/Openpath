@@ -1,8 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert';
-import { sql } from 'drizzle-orm';
 
-import { closeConnection, db } from '../src/db/index.js';
+import { closeConnection } from '../src/db/index.js';
 import * as classroomStorage from '../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../src/lib/schedule-storage.js';
 import { createMachineExemption } from '../src/lib/exemption-storage.js';
@@ -12,16 +11,7 @@ import {
 } from '../src/services/classroom.service.js';
 import { resetDb } from './test-utils.js';
 import type { JWTPayload } from '../src/types/index.js';
-
-async function ensureGroupExists(groupId: string): Promise<void> {
-  await db.execute(
-    sql.raw(`
-      INSERT INTO whitelist_groups (id, name, display_name)
-      VALUES ('${groupId}', '${groupId}', '${groupId}')
-      ON CONFLICT (id) DO NOTHING
-    `)
-  );
-}
+import { ensureWhitelistGroup } from './fixtures.js';
 
 function teacherPayload(groupIds: string[]): JWTPayload {
   return {
@@ -73,7 +63,7 @@ await describe('classroom effective policy context', async () => {
 
   await test('resolveEffectiveMachineEnforcementPolicyContext preserves grouped base context and flags exemptions as unrestricted', async () => {
     const groupId = `policy-default-group-${Date.now().toString()}`;
-    await ensureGroupExists(groupId);
+    await ensureWhitelistGroup(groupId);
 
     const classroom = await classroomStorage.createClassroom({
       name: `policy-room-exempt-${Date.now().toString()}`,

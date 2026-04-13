@@ -1,6 +1,7 @@
 import { describe, test, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { resetDb, TEST_RUN_ID } from './test-utils.js';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 import { createScheduleBoundaryTicker } from '../src/lib/schedule-boundary-ticker.js';
 import * as classroomStorage from '../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../src/lib/schedule-storage.js';
@@ -19,7 +20,7 @@ await describe('Schedule Boundary Ticker', async () => {
     await scheduleStorage.createSchedule({
       classroomId: classroom.id,
       teacherId: 'legacy_admin',
-      groupId: 'group-a',
+      groupId: CANONICAL_GROUP_IDS.groupA,
       dayOfWeek: 1,
       startTime: '09:00',
       endTime: '10:00',
@@ -53,7 +54,7 @@ await describe('Schedule Boundary Ticker', async () => {
     await scheduleStorage.createOneOffSchedule({
       classroomId: classroom.id,
       teacherId: 'legacy_admin',
-      groupId: 'group-b',
+      groupId: CANONICAL_GROUP_IDS.groupB,
       startAt,
       endAt,
     });

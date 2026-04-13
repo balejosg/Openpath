@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 import { createSseHub } from '../src/lib/sse-hub.js';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 import { firstSseDataPayload } from './sse-test-utils.js';
 
 await describe('SSE Hub', async () => {
@@ -15,7 +16,7 @@ await describe('SSE Hub', async () => {
     const unsubA = hub.registerSseClient({
       hostname: 'host-a',
       classroomId: 'room-a',
-      groupId: 'group-a',
+      groupId: CANONICAL_GROUP_IDS.groupA,
       stream: {
         write: (chunk: string) => {
           writesA.push(chunk);
@@ -27,7 +28,7 @@ await describe('SSE Hub', async () => {
     const unsubB = hub.registerSseClient({
       hostname: 'host-b',
       classroomId: 'room-b',
-      groupId: 'group-b',
+      groupId: CANONICAL_GROUP_IDS.groupB,
       stream: {
         write: (chunk: string) => {
           writesB.push(chunk);
@@ -36,14 +37,14 @@ await describe('SSE Hub', async () => {
       },
     });
 
-    hub.publishGroupChangedLocal('group-a');
+    hub.publishGroupChangedLocal(CANONICAL_GROUP_IDS.groupA);
 
     assert.ok(writesA.length > 0);
     assert.strictEqual(writesB.length, 0);
 
     const parsed = JSON.parse(firstSseDataPayload(writesA)) as { event?: string; groupId?: string };
     assert.strictEqual(parsed.event, 'whitelist-changed');
-    assert.strictEqual(parsed.groupId, 'group-a');
+    assert.strictEqual(parsed.groupId, CANONICAL_GROUP_IDS.groupA);
 
     unsubA();
     unsubB();

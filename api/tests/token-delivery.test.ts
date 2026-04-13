@@ -14,7 +14,6 @@ import type { Server } from 'node:http';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sanitizeSlug } from '@openpath/shared';
 import {
   bearerAuth,
   getAvailablePort,
@@ -22,6 +21,7 @@ import {
   trpcMutate as _trpcMutate,
   parseTRPC,
 } from './test-utils.js';
+import { CANONICAL_GROUP_IDS, createFixtureClassroom } from './fixtures.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { clearLinuxAgentAptMetadataCache } from '../src/lib/server-assets.js';
 import { sql } from 'drizzle-orm';
@@ -111,28 +111,6 @@ async function getEnrollmentToken(classroomId: string): Promise<string> {
   assert.ok(ticketData.enrollmentToken);
 
   return ticketData.enrollmentToken;
-}
-
-async function ensureGroupExists(groupId: string): Promise<void> {
-  await db.execute(
-    sql.raw(`
-        INSERT INTO whitelist_groups (id, name, display_name) VALUES ('${groupId}', '${groupId}', '${groupId}')
-        ON CONFLICT (id) DO NOTHING
-    `)
-  );
-}
-
-async function createTestClassroom(name: string, groupId: string): Promise<string> {
-  await ensureGroupExists(groupId);
-  const id = `classroom-${String(Date.now())}`;
-  const slug = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
-  await db.execute(
-    sql.raw(`
-        INSERT INTO classrooms (id, name, display_name, default_group_id, active_group_id)
-        VALUES ('${id}', '${slug}', '${name}', '${groupId}', '${groupId}')
-    `)
-  );
-  return id;
 }
 
 function extractMachineToken(whitelistUrl: string): string {
@@ -237,7 +215,10 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
     });
 
     await test('should register machine and return tokenized URL', async () => {
-      await createTestClassroom('TestClassroom', 'test-group');
+      await createFixtureClassroom({
+        name: 'TestClassroom',
+        groupId: CANONICAL_GROUP_IDS.testGroup,
+      });
 
       const response = await fetch(`${API_URL}/api/machines/register`, {
         method: 'POST',
@@ -325,7 +306,7 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
     let machineToken: string;
 
     before(async () => {
-      await createTestClassroom('RotateTestClassroom', 'rotate-group');
+      await createFixtureClassroom({ name: 'RotateTestClassroom', groupId: 'rotate-group' });
 
       const response = await fetch(`${API_URL}/api/machines/register`, {
         method: 'POST',
@@ -417,7 +398,10 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
     let machineToken: string;
 
     before(async () => {
-      await createTestClassroom('WindowsAgentClassroom', 'windows-agent-group');
+      await createFixtureClassroom({
+        name: 'WindowsAgentClassroom',
+        groupId: 'windows-agent-group',
+      });
 
       const registerResponse = await fetch(`${API_URL}/api/machines/register`, {
         method: 'POST',
@@ -521,7 +505,10 @@ void describe('Token Delivery REST API Tests', { timeout: 30000 }, async () => {
     let classroomId: string;
 
     before(async () => {
-      classroomId = await createTestClassroom('LinuxAgentClassroom', 'linux-agent-group');
+      classroomId = await createFixtureClassroom({
+        name: 'LinuxAgentClassroom',
+        groupId: 'linux-agent-group',
+      });
 
       mkdirSync(linuxAgentBuildRoot, { recursive: true });
       writeFileSync(linuxAgentPackageFilePath, 'fake-linux-agent-package');
@@ -756,10 +743,10 @@ Version: 4.1.10-1
     let classroomId: string;
 
     before(async () => {
-      classroomId = await createTestClassroom(
-        'WindowsBootstrapClassroom',
-        'windows-bootstrap-group'
-      );
+      classroomId = await createFixtureClassroom({
+        name: 'WindowsBootstrapClassroom',
+        groupId: 'windows-bootstrap-group',
+      });
       enrollmentToken = await getEnrollmentToken(classroomId);
     });
 
@@ -785,10 +772,10 @@ Version: 4.1.10-1
     });
 
     await test('should reject Windows enrollment script with mismatched classroom', async () => {
-      const otherClassroomId = await createTestClassroom(
-        'WindowsBootstrapMismatchClassroom',
-        'windows-bootstrap-mismatch-group'
-      );
+      const otherClassroomId = await createFixtureClassroom({
+        name: 'WindowsBootstrapMismatchClassroom',
+        groupId: 'windows-bootstrap-mismatch-group',
+      });
 
       const response = await fetch(`${API_URL}/api/enroll/${otherClassroomId}/windows.ps1`, {
         headers: {
@@ -979,7 +966,7 @@ Version: 4.1.10-1
     let machineToken: string;
 
     before(async () => {
-      await createTestClassroom('WhitelistETagClassroom', 'etag-group');
+      await createFixtureClassroom({ name: 'WhitelistETagClassroom', groupId: 'etag-group' });
 
       const registerResponse = await fetch(`${API_URL}/api/machines/register`, {
         method: 'POST',
@@ -1082,7 +1069,7 @@ Version: 4.1.10-1
 
   await describe('GET /export/:name.txt', async () => {
     before(async () => {
-      await createTestClassroom('ExportETagClassroom', 'etag-export-group');
+      await createFixtureClassroom({ name: 'ExportETagClassroom', groupId: 'etag-export-group' });
 
       // Anonymous /export should only work for instance_public groups.
       await db.execute(

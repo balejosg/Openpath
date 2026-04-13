@@ -9,6 +9,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { db } from '../src/db/index.js';
 import { ensureTestSchema } from './test-utils.js';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 import {
   users,
   classrooms,
@@ -23,11 +24,11 @@ import * as scheduleStorage from '../src/lib/schedule-storage.js';
 // Test data
 const testClassroomId = 'test-classroom-1';
 const testTeacherId = 'teacher-1';
-const defaultClassroomGroupId = 'default';
-const testGroupId = 'group-a';
-const secondaryGroupId = 'group-b';
-const oneOffGroupId = 'group-c';
-const weeklyGroupId = 'group-z';
+const defaultClassroomGroupId = CANONICAL_GROUP_IDS.default;
+const testGroupId = CANONICAL_GROUP_IDS.groupA;
+const secondaryGroupId = CANONICAL_GROUP_IDS.groupB;
+const oneOffGroupId = CANONICAL_GROUP_IDS.groupC;
+const weeklyGroupId = CANONICAL_GROUP_IDS.groupZ;
 
 await describe('Schedule Storage', async () => {
   before(async () => {

@@ -12,6 +12,7 @@ import { it, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
 import jwt from 'jsonwebtoken';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 
 // Set env vars BEFORE any imports that load config.ts
 process.env.JWT_SECRET = 'test-secret-123';
@@ -117,7 +118,7 @@ await describe('Security and Hardening Tests', async () => {
           domain,
           reason: 'test',
           requesterEmail: 'student@school.edu',
-          groupId: 'group-a',
+          groupId: CANONICAL_GROUP_IDS.groupA,
         }),
       });
       assert.strictEqual(createResp.status, 200);
@@ -129,7 +130,7 @@ await describe('Security and Hardening Tests', async () => {
           sub: 'student-1',
           email: 'student@school.edu',
           name: 'Student',
-          roles: [{ role: 'student', groupIds: ['group-a'] }],
+          roles: [{ role: 'student', groupIds: [CANONICAL_GROUP_IDS.groupA] }],
           type: 'access',
         },
         JWT_SECRET,
@@ -162,7 +163,7 @@ await describe('Security and Hardening Tests', async () => {
           domain,
           reason: 'test',
           requesterEmail: 'user@school.edu',
-          groupId: 'group-b',
+          groupId: CANONICAL_GROUP_IDS.groupB,
         }),
       });
       assert.strictEqual(createResp.status, 200);
@@ -174,7 +175,7 @@ await describe('Security and Hardening Tests', async () => {
           sub: 'teacher-1',
           email: 'teacher@school.edu',
           name: 'Teacher',
-          roles: [{ role: 'teacher', groupIds: ['group-a'] }],
+          roles: [{ role: 'teacher', groupIds: [CANONICAL_GROUP_IDS.groupA] }],
           type: 'access',
         },
         JWT_SECRET,

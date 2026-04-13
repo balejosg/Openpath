@@ -8,6 +8,7 @@ import {
   parseTRPC,
   registerAndVerifyUser,
 } from './test-utils.js';
+import { CANONICAL_GROUP_IDS, createFixtureClassroom } from './fixtures.js';
 import { closeConnection, db } from '../src/db/index.js';
 import { sql } from 'drizzle-orm';
 
@@ -18,34 +19,13 @@ let server: Server | undefined;
 let teacherAccessToken: string;
 let classroomId: string;
 let teacherEmail: string;
-const TEACHER_GROUP_ID = 'test-group';
+const TEACHER_GROUP_ID = CANONICAL_GROUP_IDS.testGroup;
 
 const trpcMutate = (
   procedure: string,
   input: unknown,
   headers: Record<string, string> = {}
 ): Promise<Response> => _trpcMutate(API_URL, procedure, input, headers);
-
-async function ensureGroupExists(groupId: string): Promise<void> {
-  await db.execute(
-    sql.raw(`
-      INSERT INTO whitelist_groups (id, name, display_name) VALUES ('${groupId}', '${groupId}', '${groupId}')
-      ON CONFLICT (id) DO NOTHING
-    `)
-  );
-}
-
-async function createTestClassroom(name: string, groupId: string): Promise<string> {
-  await ensureGroupExists(groupId);
-  const id = `room_${String(Date.now())}`;
-  await db.execute(
-    sql.raw(`
-      INSERT INTO classrooms (id, name, display_name, default_group_id, active_group_id)
-      VALUES ('${id}', '${name}', '${name}', '${groupId}', '${groupId}')
-    `)
-  );
-  return id;
-}
 
 void describe('Enrollment API (secure tickets)', { timeout: 30000 }, async () => {
   before(async () => {
@@ -100,7 +80,12 @@ void describe('Enrollment API (secure tickets)', { timeout: 30000 }, async () =>
     teacherAccessToken = loginData2.accessToken;
 
     // Create classroom
-    classroomId = await createTestClassroom('testclassroom', TEACHER_GROUP_ID);
+    classroomId = await createFixtureClassroom({
+      name: 'testclassroom',
+      displayName: 'testclassroom',
+      groupId: TEACHER_GROUP_ID,
+      id: `room_${String(Date.now())}`,
+    });
   });
 
   after(async () => {

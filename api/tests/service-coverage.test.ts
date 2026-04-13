@@ -22,6 +22,7 @@ import {
   whitelistGroups,
 } from '../src/db/index.js';
 import { resetDb, uniqueEmail } from './test-utils.js';
+import { CANONICAL_GROUP_IDS } from './fixtures.js';
 
 const DEFAULT_PASSWORD = 'SecurePassword123!';
 const originalGoogleClientId = config.googleClientId;
@@ -363,7 +364,9 @@ void describe('Coverage-oriented service and storage tests', { concurrency: fals
 
       const userId = registered.data.user.id;
 
-      const assigned = await userService.assignRole(userId, 'teacher', ['group-a']);
+      const assigned = await userService.assignRole(userId, 'teacher', [
+        CANONICAL_GROUP_IDS.groupA,
+      ]);
       if (!assigned.ok) {
         throw new Error('Expected role assignment to succeed');
       }
