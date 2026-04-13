@@ -37,7 +37,7 @@ void describe('Windows bootstrap delivery', { timeout: 30000 }, async () => {
 
       const body = await response.text();
       assert.match(body, /Install-OpenPath\.ps1/);
-      assert.match(body, /bootstrap\/latest\.json/);
+      assert.match(body, /bootstrap\/manifest/);
       assert.match(body, /-EnrollmentToken/);
       assert.match(body, /-ClassroomId/);
       assert.match(body, /\$installExitCode\s*=\s*0/);
@@ -61,13 +61,13 @@ void describe('Windows bootstrap delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should require enrollment token for bootstrap manifest', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/windows/bootstrap/latest.json`);
+      const response = await fetch(`${harness.apiUrl}/api/agent/windows/bootstrap/manifest`);
       assert.strictEqual(response.status, 401);
     });
 
     await test('should return bootstrap manifest and files for enrollment token', async () => {
       const manifestResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/latest.json`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/manifest`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }
@@ -86,7 +86,7 @@ void describe('Windows bootstrap delivery', { timeout: 30000 }, async () => {
       assert.ok(manifest.files.some((file) => file.path === 'scripts/Enroll-Machine.ps1'));
 
       const fileResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('Install-OpenPath.ps1')}`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/files/Install-OpenPath.ps1`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }
@@ -96,7 +96,7 @@ void describe('Windows bootstrap delivery', { timeout: 30000 }, async () => {
       assert.match(await fileResponse.text(), /OpenPath DNS para Windows - Instalador/);
 
       const preflightResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/file?path=${encodeURIComponent('scripts/Pre-Install-Validation.ps1')}`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/files/scripts/Pre-Install-Validation.ps1`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }
@@ -108,7 +108,7 @@ void describe('Windows bootstrap delivery', { timeout: 30000 }, async () => {
 
     await test('should include Windows Firefox native host runtime files in the bootstrap manifest', async () => {
       const manifestResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/latest.json`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/manifest`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }

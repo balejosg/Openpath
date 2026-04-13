@@ -1804,7 +1804,7 @@ function Invoke-OpenPathAgentSelfUpdate {
 
     $manifest = $null
     try {
-        $manifest = Invoke-RestMethod -Uri "$apiBaseUrl/api/agent/windows/latest.json" -Method Get -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+        $manifest = Invoke-RestMethod -Uri "$apiBaseUrl/api/agent/windows/manifest" -Method Get -Headers $headers -TimeoutSec 30 -ErrorAction Stop
     }
     catch {
         $message = "Manifest download failed: $_"
@@ -1912,8 +1912,8 @@ function Invoke-OpenPathAgentSelfUpdate {
                 New-Item -ItemType Directory -Path $stagedDirectory -Force | Out-Null
             }
 
-            $encodedPath = [System.Uri]::EscapeDataString($manifestPath)
-            $fileUrl = "$apiBaseUrl/api/agent/windows/file?path=$encodedPath"
+            $encodedPath = (($manifestPath -split '/') | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
+            $fileUrl = "$apiBaseUrl/api/agent/windows/files/$encodedPath"
 
             Invoke-WebRequest -Uri $fileUrl -Method Get -Headers $headers -OutFile $stagedPath -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
 

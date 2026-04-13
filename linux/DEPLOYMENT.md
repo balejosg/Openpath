@@ -37,8 +37,8 @@ The installer supports explicit setup flags and an unattended mode; verify curre
 
 The API exposes Linux delivery endpoints used by managed flows:
 
-- `/api/agent/linux/latest.json`
-- `/api/agent/linux/package?version=<version>`
+- `/api/agent/linux/manifest`
+- `/api/agent/linux/packages/<version>`
 
 ## Package and Runtime Artifacts
 

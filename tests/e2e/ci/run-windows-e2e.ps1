@@ -119,8 +119,8 @@ function Start-TestWhitelistServer {
                         }
                     }
 
-                    if ($relativePath -eq 'api/agent/windows/file') {
-                        $requestedPath = $context.Request.QueryString['path']
+                    if ($relativePath.StartsWith('api/agent/windows/files/', [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $requestedPath = $relativePath.Substring('api/agent/windows/files/'.Length)
                         if ([string]::IsNullOrWhiteSpace($requestedPath) -or $requestedPath.Contains('..')) {
                             $context.Response.StatusCode = 400
                             $context.Response.OutputStream.Close()
@@ -543,7 +543,7 @@ function Set-TestAgentUpdateContent {
         [Parameter(Mandatory = $true)][string]$TargetVersion
     )
 
-    $manifestPath = Join-Path $RootPath 'api\agent\windows\latest.json'
+    $manifestPath = Join-Path $RootPath 'api\agent\windows\manifest'
     $updateFilesRoot = Join-Path $RootPath 'update-files'
     $openPathSource = 'C:\OpenPath\OpenPath.ps1'
 

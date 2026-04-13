@@ -56,12 +56,12 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should require machine bearer token for linux manifest', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/linux/latest.json`);
+      const response = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`);
       assert.strictEqual(response.status, 401);
     });
 
     await test('should return linux package metadata and hash from the API manifest', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/linux/latest.json`, {
+      const response = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`, {
         headers: { Authorization: `Bearer ${machineToken}` },
       });
 
@@ -85,9 +85,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
       assert.ok(data.minSupportedVersion.length > 0);
       assert.ok(data.minDirectUpgradeVersion.length > 0);
       assert.ok(
-        data.downloadPath.includes(
-          `/api/agent/linux/package?version=${encodeURIComponent(data.version)}`
-        )
+        data.downloadPath.includes(`/api/agent/linux/packages/${encodeURIComponent(data.version)}`)
       );
     });
 
@@ -95,7 +93,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
       process.env.OPENPATH_LINUX_AGENT_BRIDGE_VERSIONS = '3.8.0, 3.9.0';
 
       try {
-        const response = await fetch(`${harness.apiUrl}/api/agent/linux/latest.json`, {
+        const response = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`, {
           headers: { Authorization: `Bearer ${machineToken}` },
         });
 
@@ -118,7 +116,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
       process.env.OPENPATH_LINUX_AGENT_VERSION = pinnedVersion;
 
       try {
-        const response = await fetch(`${harness.apiUrl}/api/agent/linux/latest.json`, {
+        const response = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`, {
           headers: { Authorization: `Bearer ${machineToken}` },
         });
 
@@ -133,7 +131,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
         assert.strictEqual(data.packageFileName, packageFileName);
         assert.ok(
           data.downloadPath.includes(
-            `/api/agent/linux/package?version=${encodeURIComponent(pinnedVersion)}`
+            `/api/agent/linux/packages/${encodeURIComponent(pinnedVersion)}`
           )
         );
       } finally {
@@ -147,7 +145,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should download the linux agent package through the API path', async () => {
-      const manifestResponse = await fetch(`${harness.apiUrl}/api/agent/linux/latest.json`, {
+      const manifestResponse = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`, {
         headers: { Authorization: `Bearer ${machineToken}` },
       });
       assert.strictEqual(manifestResponse.status, 200);
@@ -170,7 +168,7 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
 
       try {
         const response = await fetch(
-          `${harness.apiUrl}/api/agent/linux/package?version=${encodeURIComponent(bridgeVersion)}`,
+          `${harness.apiUrl}/api/agent/linux/packages/${encodeURIComponent(bridgeVersion)}`,
           {
             headers: { Authorization: `Bearer ${machineToken}` },
           }

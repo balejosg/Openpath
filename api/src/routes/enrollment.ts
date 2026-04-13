@@ -191,7 +191,7 @@ Write-Host ' OpenPath Enrollment (Windows)'
 Write-Host '==============================================='
 Write-Host ''
 
-$manifest = Invoke-RestMethod -Uri "$ApiUrl/api/agent/windows/bootstrap/latest.json" -Headers $Headers -Method Get
+$manifest = Invoke-RestMethod -Uri "$ApiUrl/api/agent/windows/bootstrap/manifest" -Headers $Headers -Method Get
 if (-not $manifest.success -or -not $manifest.files) {
     throw 'Bootstrap manifest unavailable'
 }
@@ -212,8 +212,8 @@ foreach ($file in $manifest.files) {
         $null = New-Item -ItemType Directory -Path $destinationDir -Force
     }
 
-    $encodedPath = [uri]::EscapeDataString($relativePath)
-    $fileUrl = "$ApiUrl/api/agent/windows/bootstrap/file?path=$encodedPath"
+    $encodedPath = (($relativePath -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
+    $fileUrl = "$ApiUrl/api/agent/windows/bootstrap/files/$encodedPath"
     Invoke-WebRequest -Uri $fileUrl -Headers $Headers -OutFile $destinationPath -UseBasicParsing
 
     if ($file.sha256) {

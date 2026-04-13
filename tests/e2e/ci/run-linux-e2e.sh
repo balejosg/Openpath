@@ -388,19 +388,19 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         parsed = urlparse(self.path)
-        if parsed.path == "/api/agent/linux/latest.json":
+        if parsed.path == "/api/agent/linux/manifest":
             self._write_json(200, {
                 "success": True,
                 "version": TARGET_VERSION,
-                "downloadPath": f"/api/agent/linux/package?version={TARGET_VERSION}",
+                "downloadPath": f"/api/agent/linux/packages/{TARGET_VERSION}",
                 "minSupportedVersion": "0.0.0",
                 "minDirectUpgradeVersion": BRIDGE_VERSION,
                 "bridgeVersions": [BRIDGE_VERSION],
             })
             return
 
-        if parsed.path == "/api/agent/linux/package":
-            version = parse_qs(parsed.query).get("version", [""])[0]
+        if parsed.path.startswith("/api/agent/linux/packages/"):
+            version = parsed.path.rsplit("/", 1)[-1]
             package_path = RELEASE_DIR / f"openpath-dnsmasq_{version}-1_amd64.deb"
             if not package_path.exists():
                 self._write_json(404, {"success": False, "error": "Package not found"})

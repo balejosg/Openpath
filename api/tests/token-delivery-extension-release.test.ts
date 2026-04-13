@@ -34,7 +34,7 @@ void describe('Extension and release delivery', { timeout: 30000 }, async () => 
 
     await test('should include Firefox extension assets in the Windows bootstrap manifest', async () => {
       const manifestResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/latest.json`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/manifest`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }
@@ -59,7 +59,7 @@ void describe('Extension and release delivery', { timeout: 30000 }, async () => 
       writeFirefoxReleaseArtifacts('2.0.0', 'fake-signed-firefox-xpi');
 
       const manifestResponse = await fetch(
-        `${harness.apiUrl}/api/agent/windows/bootstrap/latest.json`,
+        `${harness.apiUrl}/api/agent/windows/bootstrap/manifest`,
         {
           headers: { Authorization: `Bearer ${enrollmentToken}` },
         }

@@ -1,7 +1,16 @@
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -17,37 +26,55 @@ import { clearLinuxAgentAptMetadataCache } from '../src/lib/server-assets.js';
 const currentFilePath = fileURLToPath(import.meta.url);
 const apiTestsDir = dirname(currentFilePath);
 const apiRoot = resolve(apiTestsDir, '..');
-const serverVersionFilePath = resolve(apiRoot, '../VERSION');
-
-export const tokenDeliveryArtifacts = {
-  linuxAgentVersion: readFileSync(serverVersionFilePath, 'utf8').trim() || '0.0.0',
-  linuxAgentBuildRoot: resolve(apiRoot, '../build'),
+const repoArtifactSources = {
+  versionFile: resolve(apiRoot, '../VERSION'),
+  windowsAgentRoot: resolve(apiRoot, '../windows'),
+  sharedRuntimeRoot: resolve(apiRoot, '../runtime'),
   firefoxExtensionRoot: resolve(apiRoot, '../firefox-extension'),
 };
 
+export const tokenDeliveryArtifacts = {
+  linuxAgentVersion: readFileSync(repoArtifactSources.versionFile, 'utf8').trim() || '0.0.0',
+  tempRoot: '',
+  windowsAgentRoot: '',
+  sharedRuntimeRoot: '',
+  windowsAgentVersionFile: '',
+  linuxAgentBuildRoot: '',
+  firefoxExtensionRoot: '',
+};
+
 export const linuxAgentPackageFileName = `openpath-dnsmasq_${tokenDeliveryArtifacts.linuxAgentVersion}-1_amd64.deb`;
-export const linuxAgentPackageFilePath = resolve(
-  tokenDeliveryArtifacts.linuxAgentBuildRoot,
-  linuxAgentPackageFileName
-);
-export const firefoxReleaseBuildRoot = resolve(
-  tokenDeliveryArtifacts.firefoxExtensionRoot,
-  'build/firefox-release'
-);
-export const firefoxReleaseMetadataPath = resolve(firefoxReleaseBuildRoot, 'metadata.json');
-export const firefoxReleaseXpiPath = resolve(
-  firefoxReleaseBuildRoot,
-  'openpath-firefox-extension.xpi'
-);
-export const chromiumManagedBuildRoot = resolve(
-  tokenDeliveryArtifacts.firefoxExtensionRoot,
-  'build/chromium-managed'
-);
-export const chromiumManagedMetadataPath = resolve(chromiumManagedBuildRoot, 'metadata.json');
-export const chromiumManagedCrxPath = resolve(
-  chromiumManagedBuildRoot,
-  'openpath-chromium-extension.crx'
-);
+
+function linuxAgentPackageFilePath(version = tokenDeliveryArtifacts.linuxAgentVersion): string {
+  return resolve(
+    tokenDeliveryArtifacts.linuxAgentBuildRoot,
+    `openpath-dnsmasq_${version}-1_amd64.deb`
+  );
+}
+
+function firefoxReleaseBuildRoot(): string {
+  return resolve(tokenDeliveryArtifacts.firefoxExtensionRoot, 'build/firefox-release');
+}
+
+function firefoxReleaseMetadataPath(): string {
+  return resolve(firefoxReleaseBuildRoot(), 'metadata.json');
+}
+
+function firefoxReleaseXpiPath(): string {
+  return resolve(firefoxReleaseBuildRoot(), 'openpath-firefox-extension.xpi');
+}
+
+function chromiumManagedBuildRoot(): string {
+  return resolve(tokenDeliveryArtifacts.firefoxExtensionRoot, 'build/chromium-managed');
+}
+
+function chromiumManagedMetadataPath(): string {
+  return resolve(chromiumManagedBuildRoot(), 'metadata.json');
+}
+
+function chromiumManagedCrxPath(): string {
+  return resolve(chromiumManagedBuildRoot(), 'openpath-chromium-extension.crx');
+}
 
 export interface TokenDeliveryHarness {
   apiUrl: string;
@@ -94,10 +121,51 @@ export function mockStableAptPackagesManifest(content: string): () => void {
   };
 }
 
+function copyArtifactEntry(sourcePath: string, destinationPath: string): void {
+  if (!existsSync(sourcePath)) {
+    return;
+  }
+
+  cpSync(sourcePath, destinationPath, { recursive: true });
+}
+
+function prepareTokenDeliveryArtifactRoots(): void {
+  tokenDeliveryArtifacts.tempRoot = mkdtempSync(join(tmpdir(), 'openpath-token-delivery-'));
+  tokenDeliveryArtifacts.windowsAgentRoot = join(tokenDeliveryArtifacts.tempRoot, 'windows');
+  tokenDeliveryArtifacts.sharedRuntimeRoot = join(tokenDeliveryArtifacts.tempRoot, 'runtime');
+  tokenDeliveryArtifacts.windowsAgentVersionFile = join(tokenDeliveryArtifacts.tempRoot, 'VERSION');
+  tokenDeliveryArtifacts.linuxAgentBuildRoot = join(tokenDeliveryArtifacts.tempRoot, 'build');
+  tokenDeliveryArtifacts.firefoxExtensionRoot = join(
+    tokenDeliveryArtifacts.tempRoot,
+    'firefox-extension'
+  );
+
+  mkdirSync(tokenDeliveryArtifacts.tempRoot, { recursive: true });
+  mkdirSync(tokenDeliveryArtifacts.linuxAgentBuildRoot, { recursive: true });
+  mkdirSync(tokenDeliveryArtifacts.firefoxExtensionRoot, { recursive: true });
+
+  copyArtifactEntry(repoArtifactSources.windowsAgentRoot, tokenDeliveryArtifacts.windowsAgentRoot);
+  copyArtifactEntry(
+    repoArtifactSources.sharedRuntimeRoot,
+    tokenDeliveryArtifacts.sharedRuntimeRoot
+  );
+  writeFileSync(
+    tokenDeliveryArtifacts.windowsAgentVersionFile,
+    readFileSync(repoArtifactSources.versionFile, 'utf8')
+  );
+
+  for (const entry of ['manifest.json', 'dist', 'popup', 'icons', 'blocked', 'native'] as const) {
+    copyArtifactEntry(
+      resolve(repoArtifactSources.firefoxExtensionRoot, entry),
+      resolve(tokenDeliveryArtifacts.firefoxExtensionRoot, entry)
+    );
+  }
+}
+
 export function cleanTokenDeliveryArtifacts(): void {
-  rmSync(tokenDeliveryArtifacts.linuxAgentBuildRoot, { recursive: true, force: true });
-  rmSync(firefoxReleaseBuildRoot, { recursive: true, force: true });
-  rmSync(chromiumManagedBuildRoot, { recursive: true, force: true });
+  if (tokenDeliveryArtifacts.tempRoot) {
+    rmSync(tokenDeliveryArtifacts.tempRoot, { recursive: true, force: true });
+  }
 }
 
 export function writeLinuxAgentPackage(
@@ -108,47 +176,65 @@ export function writeLinuxAgentPackage(
   packageFilePath: string;
 } {
   const packageFileName = `openpath-dnsmasq_${version}-1_amd64.deb`;
-  const packageFilePath = resolve(tokenDeliveryArtifacts.linuxAgentBuildRoot, packageFileName);
+  const packageFilePath = linuxAgentPackageFilePath(version);
   mkdirSync(tokenDeliveryArtifacts.linuxAgentBuildRoot, { recursive: true });
   writeFileSync(packageFilePath, content);
   return { packageFileName, packageFilePath };
 }
 
 export function writeFirefoxReleaseArtifacts(version: string, payload: string): void {
-  mkdirSync(firefoxReleaseBuildRoot, { recursive: true });
+  mkdirSync(firefoxReleaseBuildRoot(), { recursive: true });
   writeFileSync(
-    firefoxReleaseMetadataPath,
+    firefoxReleaseMetadataPath(),
     JSON.stringify({
       extensionId: 'monitor-bloqueos@openpath',
       version,
     })
   );
-  writeFileSync(firefoxReleaseXpiPath, payload);
+  writeFileSync(firefoxReleaseXpiPath(), payload);
 }
 
 export function writeChromiumManagedArtifacts(version: string, payload: string): void {
-  mkdirSync(chromiumManagedBuildRoot, { recursive: true });
+  mkdirSync(chromiumManagedBuildRoot(), { recursive: true });
   writeFileSync(
-    chromiumManagedMetadataPath,
+    chromiumManagedMetadataPath(),
     JSON.stringify({
       extensionId: 'abcdefghijklmnopabcdefghijklmnop',
       version,
     })
   );
-  writeFileSync(chromiumManagedCrxPath, payload);
+  writeFileSync(chromiumManagedCrxPath(), payload);
 }
 
 export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness> {
   await resetDb();
-  cleanTokenDeliveryArtifacts();
+  prepareTokenDeliveryArtifactRoots();
 
   const port = await getAvailablePort();
   const apiUrl = `http://localhost:${String(port)}`;
   const previousPort = process.env.PORT;
   const previousSharedSecret = process.env.SHARED_SECRET;
+  const previousArtifactEnv = new Map<string, string | undefined>(
+    [
+      'OPENPATH_WINDOWS_AGENT_ROOT',
+      'OPENPATH_SHARED_RUNTIME_ROOT',
+      'OPENPATH_AGENT_VERSION_FILE',
+      'OPENPATH_LINUX_AGENT_BUILD_ROOT',
+      'OPENPATH_FIREFOX_EXTENSION_ROOT',
+      'OPENPATH_FIREFOX_RELEASE_ROOT',
+      'OPENPATH_CHROMIUM_MANAGED_ROOT',
+    ].map((key) => [key, process.env[key]])
+  );
 
   process.env.PORT = String(port);
   process.env.SHARED_SECRET = 'test-shared-secret';
+  process.env.OPENPATH_WINDOWS_AGENT_ROOT = tokenDeliveryArtifacts.windowsAgentRoot;
+  process.env.OPENPATH_SHARED_RUNTIME_ROOT = tokenDeliveryArtifacts.sharedRuntimeRoot;
+  process.env.OPENPATH_AGENT_VERSION_FILE = tokenDeliveryArtifacts.windowsAgentVersionFile;
+  process.env.OPENPATH_LINUX_AGENT_BUILD_ROOT = tokenDeliveryArtifacts.linuxAgentBuildRoot;
+  process.env.OPENPATH_FIREFOX_EXTENSION_ROOT = tokenDeliveryArtifacts.firefoxExtensionRoot;
+  process.env.OPENPATH_FIREFOX_RELEASE_ROOT = firefoxReleaseBuildRoot();
+  process.env.OPENPATH_CHROMIUM_MANAGED_ROOT = chromiumManagedBuildRoot();
 
   const { app } = await import('../src/server.js');
   const server = await new Promise<Server>((resolve) => {
@@ -214,6 +300,14 @@ export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness>
     } else {
       process.env.SHARED_SECRET = previousSharedSecret;
     }
+
+    for (const [key, value] of previousArtifactEnv.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   };
 
   return {
@@ -226,7 +320,6 @@ export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness>
     getEnrollmentToken,
     close: async () => {
       await resetDb();
-      cleanTokenDeliveryArtifacts();
 
       if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {
         server.closeAllConnections();
@@ -240,6 +333,7 @@ export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness>
       });
 
       restoreEnv();
+      cleanTokenDeliveryArtifacts();
       await closeConnection();
     },
   };

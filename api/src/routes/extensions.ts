@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import type { Express, Request, Response } from 'express';
 
 import {
-  CHROMIUM_MANAGED_CRX_FILE,
-  FIREFOX_RELEASE_XPI_FILE,
+  getChromiumManagedCrxFile,
+  getFirefoxReleaseXpiFile,
   getPublicBaseUrl,
   readChromiumManagedMetadata,
   readFirefoxReleaseMetadata,
@@ -17,7 +17,7 @@ export function registerExtensionRoutes(app: Express): void {
       return;
     }
 
-    res.type('application/x-xpinstall').send(fs.readFileSync(FIREFOX_RELEASE_XPI_FILE));
+    res.type('application/x-xpinstall').send(fs.readFileSync(getFirefoxReleaseXpiFile()));
   });
 
   app.get('/api/extensions/chromium/updates.xml', (req: Request, res: Response): void => {
@@ -40,11 +40,12 @@ export function registerExtensionRoutes(app: Express): void {
   });
 
   app.get('/api/extensions/chromium/openpath.crx', (_req, res) => {
-    if (!fs.existsSync(CHROMIUM_MANAGED_CRX_FILE)) {
+    const chromiumManagedCrxFile = getChromiumManagedCrxFile();
+    if (!fs.existsSync(chromiumManagedCrxFile)) {
       res.status(404).type('text/plain').send('Chromium managed extension package unavailable');
       return;
     }
 
-    res.type('application/x-chrome-extension').send(fs.readFileSync(CHROMIUM_MANAGED_CRX_FILE));
+    res.type('application/x-chrome-extension').send(fs.readFileSync(chromiumManagedCrxFile));
   });
 }

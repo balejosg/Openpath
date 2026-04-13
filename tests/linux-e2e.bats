@@ -11,7 +11,7 @@ load 'test_helper'
 }
 
 @test "linux self-update script supports api-hosted package manifests for managed clients" {
-    run grep -nF '/api/agent/linux/latest.json' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    run grep -nF '/api/agent/linux/manifest' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF 'get_machine_token_from_whitelist_url_file' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
@@ -49,7 +49,7 @@ load 'test_helper'
     run grep -nF 'attempt_agent_package_rollback()' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF '/api/agent/linux/package?version=' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
+    run grep -nF '/api/agent/linux/packages/' "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -157,13 +157,13 @@ EOF
         cp "$PROJECT_DIR/linux/lib/"*.sh "$INSTALL_DIR/lib/"
 
         export OPENPATH_SELF_UPDATE_SOURCE_ONLY=1
-        export OPENPATH_SELF_UPDATE_API="https://managed.example/api/agent/linux/latest.json"
+        export OPENPATH_SELF_UPDATE_API="https://managed.example/api/agent/linux/manifest"
         # shellcheck source=/dev/null
         source "$PROJECT_DIR/linux/scripts/runtime/openpath-self-update.sh"
 
         curl() {
             local url="${*: -1}"
-            if [ "$url" = "https://managed.example/api/agent/linux/latest.json" ]; then
+            if [ "$url" = "https://managed.example/api/agent/linux/manifest" ]; then
                 printf "%s" "{\"success\":false,\"error\":\"Linux agent package unavailable\"}"
                 return 0
             fi

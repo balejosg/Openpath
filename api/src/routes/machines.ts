@@ -38,9 +38,21 @@ import {
   matchesIfNoneMatch,
   readServerVersion,
   resolveLinuxAgentPackagePath,
+  resolveWindowsAgentManifestFile,
 } from '../lib/server-assets.js';
 
 const FAIL_OPEN_RESPONSE = '#DESACTIVADO\n';
+
+function getWildcardPathParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join('/');
+  }
+
+  return value?.trim() ?? '';
+}
 
 export function registerMachineRoutes(
   app: Express,
@@ -172,7 +184,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/windows/bootstrap/latest.json', (req: Request, res: Response): void => {
+  app.get('/api/agent/windows/bootstrap/manifest', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const enrollment = await authenticateEnrollmentToken(req, res);
@@ -208,7 +220,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/windows/bootstrap/file', (req: Request, res: Response): void => {
+  app.get('/api/agent/windows/bootstrap/files/*path', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const authenticated = await authenticateEnrollmentToken(req, res);
@@ -216,14 +228,15 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedPath = typeof req.query.path === 'string' ? req.query.path.trim() : '';
+        const requestedPath = getWildcardPathParam(req.params.path);
         if (!requestedPath) {
-          res.status(400).json({ success: false, error: 'path query parameter required' });
+          res.status(400).json({ success: false, error: 'file path required' });
           return;
         }
 
-        const files = buildWindowsAgentFileManifest({ includeBootstrapFiles: true });
-        const file = files.find((entry) => entry.relativePath === requestedPath);
+        const file = resolveWindowsAgentManifestFile(requestedPath, {
+          includeBootstrapFiles: true,
+        });
         if (!file) {
           res.status(404).json({ success: false, error: 'File not found in bootstrap package' });
           return;
@@ -243,7 +256,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/windows/latest.json', (req: Request, res: Response): void => {
+  app.get('/api/agent/windows/manifest', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const machine = await authenticateMachineToken(req, res);
@@ -280,7 +293,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/windows/file', (req: Request, res: Response): void => {
+  app.get('/api/agent/windows/files/*path', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const machine = await authenticateMachineToken(req, res);
@@ -288,14 +301,13 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedPath = typeof req.query.path === 'string' ? req.query.path.trim() : '';
+        const requestedPath = getWildcardPathParam(req.params.path);
         if (!requestedPath) {
-          res.status(400).json({ success: false, error: 'path query parameter required' });
+          res.status(400).json({ success: false, error: 'file path required' });
           return;
         }
 
-        const files = buildWindowsAgentFileManifest();
-        const file = files.find((entry) => entry.relativePath === requestedPath);
+        const file = resolveWindowsAgentManifestFile(requestedPath);
         if (!file) {
           res.status(404).json({ success: false, error: 'File not found in agent package' });
           return;
@@ -317,7 +329,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/linux/latest.json', (req: Request, res: Response): void => {
+  app.get('/api/agent/linux/manifest', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const machine = await authenticateMachineToken(req, res);
@@ -356,7 +368,7 @@ export function registerMachineRoutes(
     })();
   });
 
-  app.get('/api/agent/linux/package', (req: Request, res: Response): void => {
+  app.get('/api/agent/linux/packages/:version', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
         const machine = await authenticateMachineToken(req, res);
@@ -364,10 +376,9 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedVersion =
-          typeof req.query.version === 'string' ? req.query.version.trim() : '';
+        const requestedVersion = getFirstParam(req.params.version)?.trim() ?? '';
         if (!requestedVersion) {
-          res.status(400).json({ success: false, error: 'version query parameter required' });
+          res.status(400).json({ success: false, error: 'version path parameter required' });
           return;
         }
 

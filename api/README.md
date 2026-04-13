@@ -66,7 +66,7 @@ Current REST endpoints include:
 - setup: `/api/setup/status`, `/api/setup/first-admin`, `/api/setup/registration-token`, `/api/setup/regenerate-token`, `/api/setup/validate-token`
 - public requests: `/api/requests/auto`, `/api/requests/submit`
 - enrollment/bootstrap: `/api/enroll/:classroomId`, `/api/enroll/:classroomId/ticket`, `/api/enroll/:classroomId/windows.ps1`
-- agent delivery: `/api/agent/windows/bootstrap/latest.json`, `/api/agent/windows/latest.json`, `/api/agent/linux/latest.json`, `/api/agent/linux/package`
+- agent delivery: `/api/agent/windows/bootstrap/manifest`, `/api/agent/windows/manifest`, `/api/agent/linux/manifest`, `/api/agent/linux/packages/:version`
 - machine whitelist delivery: `/w/whitelist.txt`, `/w/:machineToken/whitelist.txt`
 - extension delivery: `/api/extensions/firefox/openpath.xpi`, `/api/extensions/chromium/updates.xml`, `/api/extensions/chromium/openpath.crx`
 - exports: `/export/:name.txt`

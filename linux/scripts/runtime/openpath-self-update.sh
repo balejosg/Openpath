@@ -51,7 +51,7 @@ DOWNLOAD_DIR="/tmp/openpath-update"
 BACKUP_DIR="/tmp/openpath-update-backup"
 CURRENT_VERSION="${VERSION:-0.0.0}"
 API_URL_CONF="${ETC_CONFIG_DIR}/api-url.conf"
-LINUX_AGENT_MANIFEST_PATH="${OPENPATH_LINUX_AGENT_MANIFEST_PATH:-/api/agent/linux/latest.json}"
+LINUX_AGENT_MANIFEST_PATH="${OPENPATH_LINUX_AGENT_MANIFEST_PATH:-/api/agent/linux/manifest}"
 PACKAGE_CACHE_DIR="${OPENPATH_AGENT_PACKAGE_CACHE_DIR:-$VAR_STATE_DIR/packages}"
 LATEST_VERSION=""
 DOWNLOAD_URL=""
@@ -333,7 +333,7 @@ build_managed_package_url_for_version() {
         return 1
     fi
 
-    printf '%s/api/agent/linux/package?version=%s\n' "${UPDATE_API_BASE_URL%/}" "$version"
+    printf '%s/api/agent/linux/packages/%s\n' "${UPDATE_API_BASE_URL%/}" "$version"
 }
 
 ensure_cached_package_for_version() {

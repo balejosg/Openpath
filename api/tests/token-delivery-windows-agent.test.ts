@@ -47,12 +47,12 @@ void describe('Windows agent delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should require machine bearer token for manifest', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/windows/latest.json`);
+      const response = await fetch(`${harness.apiUrl}/api/agent/windows/manifest`);
       assert.strictEqual(response.status, 401);
     });
 
     await test('should return manifest using server version and file hashes', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/windows/latest.json`, {
+      const response = await fetch(`${harness.apiUrl}/api/agent/windows/manifest`, {
         headers: { Authorization: `Bearer ${machineToken}` },
       });
 
@@ -72,7 +72,7 @@ void describe('Windows agent delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should download manifest file by relative path', async () => {
-      const manifestResponse = await fetch(`${harness.apiUrl}/api/agent/windows/latest.json`, {
+      const manifestResponse = await fetch(`${harness.apiUrl}/api/agent/windows/manifest`, {
         headers: { Authorization: `Bearer ${machineToken}` },
       });
       assert.strictEqual(manifestResponse.status, 200);
@@ -84,7 +84,10 @@ void describe('Windows agent delivery', { timeout: 30000 }, async () => {
       assert.ok(filePath);
 
       const response = await fetch(
-        `${harness.apiUrl}/api/agent/windows/file?path=${encodeURIComponent(filePath)}`,
+        `${harness.apiUrl}/api/agent/windows/files/${filePath
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/')}`,
         {
           headers: { Authorization: `Bearer ${machineToken}` },
         }
@@ -95,7 +98,7 @@ void describe('Windows agent delivery', { timeout: 30000 }, async () => {
     });
 
     await test('should include Firefox browser extension assets in the Windows agent manifest', async () => {
-      const response = await fetch(`${harness.apiUrl}/api/agent/windows/latest.json`, {
+      const response = await fetch(`${harness.apiUrl}/api/agent/windows/manifest`, {
         headers: { Authorization: `Bearer ${machineToken}` },
       });
 

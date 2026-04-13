@@ -9,30 +9,7 @@ import { getErrorMessage } from '@openpath/shared';
 import { logger } from './logger.js';
 import { config } from '../config.js';
 
-const WINDOWS_AGENT_ROOT = path.resolve(process.cwd(), '../windows');
-const SHARED_RUNTIME_ROOT = path.resolve(process.cwd(), '../runtime');
-const LINUX_AGENT_BUILD_ROOT = path.resolve(process.cwd(), '../build');
-const WINDOWS_AGENT_VERSION_FILE = path.resolve(process.cwd(), '../VERSION');
-const FIREFOX_EXTENSION_ROOT = path.resolve(process.cwd(), '../firefox-extension');
-const FIREFOX_RELEASE_ROOT = path.join(FIREFOX_EXTENSION_ROOT, 'build', 'firefox-release');
-export const FIREFOX_RELEASE_METADATA_FILE = path.join(FIREFOX_RELEASE_ROOT, 'metadata.json');
-export const FIREFOX_RELEASE_XPI_FILE = path.join(
-  FIREFOX_RELEASE_ROOT,
-  'openpath-firefox-extension.xpi'
-);
-const CHROMIUM_MANAGED_ROOT = path.join(FIREFOX_EXTENSION_ROOT, 'build', 'chromium-managed');
-export const CHROMIUM_MANAGED_METADATA_FILE = path.join(CHROMIUM_MANAGED_ROOT, 'metadata.json');
-export const CHROMIUM_MANAGED_CRX_FILE = path.join(
-  CHROMIUM_MANAGED_ROOT,
-  'openpath-chromium-extension.crx'
-);
 const WINDOWS_AGENT_DIRECTORIES = ['lib', 'scripts'] as const;
-const WINDOWS_AGENT_SHARED_FILES = [
-  {
-    relativePath: 'runtime/browser-policy-spec.json',
-    absolutePath: path.join(SHARED_RUNTIME_ROOT, 'browser-policy-spec.json'),
-  },
-] as const;
 const WINDOWS_AGENT_RUNTIME_ROOT_FILES = ['OpenPath.ps1', 'Rotate-Token.ps1'] as const;
 const WINDOWS_AGENT_BOOTSTRAP_ROOT_FILES = [
   'Install-OpenPath.ps1',
@@ -74,6 +51,82 @@ export interface LinuxAgentPackageEntry {
   downloadPath: string;
 }
 
+export interface AgentArtifactRoots {
+  windowsAgentRoot: string;
+  sharedRuntimeRoot: string;
+  linuxAgentBuildRoot: string;
+  windowsAgentVersionFile: string;
+  firefoxExtensionRoot: string;
+  firefoxReleaseRoot: string;
+  chromiumManagedRoot: string;
+}
+
+function resolveArtifactRoot(envVarName: string, fallbackPath: string): string {
+  const configuredPath = process.env[envVarName]?.trim();
+  if (!configuredPath) {
+    return fallbackPath;
+  }
+
+  return path.resolve(configuredPath);
+}
+
+export function getAgentArtifactRoots(): AgentArtifactRoots {
+  const windowsAgentRoot = resolveArtifactRoot(
+    'OPENPATH_WINDOWS_AGENT_ROOT',
+    path.resolve(process.cwd(), '../windows')
+  );
+  const sharedRuntimeRoot = resolveArtifactRoot(
+    'OPENPATH_SHARED_RUNTIME_ROOT',
+    path.resolve(process.cwd(), '../runtime')
+  );
+  const linuxAgentBuildRoot = resolveArtifactRoot(
+    'OPENPATH_LINUX_AGENT_BUILD_ROOT',
+    path.resolve(process.cwd(), '../build')
+  );
+  const windowsAgentVersionFile = resolveArtifactRoot(
+    'OPENPATH_AGENT_VERSION_FILE',
+    path.resolve(process.cwd(), '../VERSION')
+  );
+  const firefoxExtensionRoot = resolveArtifactRoot(
+    'OPENPATH_FIREFOX_EXTENSION_ROOT',
+    path.resolve(process.cwd(), '../firefox-extension')
+  );
+  const firefoxReleaseRoot = resolveArtifactRoot(
+    'OPENPATH_FIREFOX_RELEASE_ROOT',
+    path.join(firefoxExtensionRoot, 'build', 'firefox-release')
+  );
+  const chromiumManagedRoot = resolveArtifactRoot(
+    'OPENPATH_CHROMIUM_MANAGED_ROOT',
+    path.join(firefoxExtensionRoot, 'build', 'chromium-managed')
+  );
+
+  return {
+    windowsAgentRoot,
+    sharedRuntimeRoot,
+    linuxAgentBuildRoot,
+    windowsAgentVersionFile,
+    firefoxExtensionRoot,
+    firefoxReleaseRoot,
+    chromiumManagedRoot,
+  };
+}
+
+export function getFirefoxReleaseMetadataFile(): string {
+  return path.join(getAgentArtifactRoots().firefoxReleaseRoot, 'metadata.json');
+}
+
+export function getFirefoxReleaseXpiFile(): string {
+  return path.join(getAgentArtifactRoots().firefoxReleaseRoot, 'openpath-firefox-extension.xpi');
+}
+
+export function getChromiumManagedMetadataFile(): string {
+  return path.join(getAgentArtifactRoots().chromiumManagedRoot, 'metadata.json');
+}
+
+export function getChromiumManagedCrxFile(): string {
+  return path.join(getAgentArtifactRoots().chromiumManagedRoot, 'openpath-chromium-extension.crx');
+}
+
 function listFilesRecursively(directoryPath: string): string[] {
   if (!fs.existsSync(directoryPath)) {
     return [];
@@ -103,7 +156,9 @@ export function readServerVersion(): string {
   }
 
   try {
-    const fileVersion = fs.readFileSync(WINDOWS_AGENT_VERSION_FILE, 'utf8').trim();
+    const fileVersion = fs
+      .readFileSync(getAgentArtifactRoots().windowsAgentVersionFile, 'utf8')
+      .trim();
     if (fileVersion) {
       return fileVersion;
     }
@@ -230,12 +285,14 @@ function normalizeManifestRelativePath(relativePath: string): string | null {
 }
 
 export function readChromiumManagedMetadata(): ChromiumManagedMetadata | null {
-  if (!fs.existsSync(CHROMIUM_MANAGED_METADATA_FILE) || !fs.existsSync(CHROMIUM_MANAGED_CRX_FILE)) {
+  const metadataFile = getChromiumManagedMetadataFile();
+  const crxFile = getChromiumManagedCrxFile();
+  if (!fs.existsSync(metadataFile) || !fs.existsSync(crxFile)) {
     return null;
   }
 
   try {
-    const raw = fs.readFileSync(CHROMIUM_MANAGED_METADATA_FILE, 'utf8');
+    const raw = fs.readFileSync(metadataFile, 'utf8');
     const parsed = JSON.parse(raw) as Partial<ChromiumManagedMetadata>;
     if (!parsed.extensionId || !parsed.version) {
       return null;
@@ -248,19 +305,21 @@ export function readChromiumManagedMetadata(): ChromiumManagedMetadata | null {
   } catch (error) {
     logger.warn('Failed to read Chromium managed extension metadata', {
       error: getErrorMessage(error),
-      path: CHROMIUM_MANAGED_METADATA_FILE,
+      path: metadataFile,
     });
     return null;
   }
 }
 
 export function readFirefoxReleaseMetadata(): FirefoxReleaseMetadata | null {
-  if (!fs.existsSync(FIREFOX_RELEASE_METADATA_FILE) || !fs.existsSync(FIREFOX_RELEASE_XPI_FILE)) {
+  const metadataFile = getFirefoxReleaseMetadataFile();
+  const xpiFile = getFirefoxReleaseXpiFile();
+  if (!fs.existsSync(metadataFile) || !fs.existsSync(xpiFile)) {
     return null;
   }
 
   try {
-    const raw = fs.readFileSync(FIREFOX_RELEASE_METADATA_FILE, 'utf8');
+    const raw = fs.readFileSync(metadataFile, 'utf8');
     const parsed = JSON.parse(raw) as Partial<FirefoxReleaseMetadata>;
     if (!parsed.extensionId || !parsed.version) {
       return null;
@@ -273,7 +332,7 @@ export function readFirefoxReleaseMetadata(): FirefoxReleaseMetadata | null {
   } catch (error) {
     logger.warn('Failed to read Firefox release extension metadata', {
       error: getErrorMessage(error),
-      path: FIREFOX_RELEASE_METADATA_FILE,
+      path: metadataFile,
     });
     return null;
   }
@@ -282,10 +341,17 @@ export function readFirefoxReleaseMetadata(): FirefoxReleaseMetadata | null {
 export function buildWindowsAgentFileManifest(options?: {
   includeBootstrapFiles?: boolean;
 }): WindowsAgentFileEntry[] {
+  const roots = getAgentArtifactRoots();
   const rootFiles = options?.includeBootstrapFiles
     ? WINDOWS_AGENT_BOOTSTRAP_ROOT_FILES
     : WINDOWS_AGENT_RUNTIME_ROOT_FILES;
   const manifestSources = new Map<string, string>();
+  const sharedFiles = [
+    {
+      relativePath: 'runtime/browser-policy-spec.json',
+      absolutePath: path.join(roots.sharedRuntimeRoot, 'browser-policy-spec.json'),
+    },
+  ] as const;
 
   const addManifestFile = (relativePath: string, absolutePath: string): void => {
     if (!fs.existsSync(absolutePath)) {
@@ -320,37 +386,40 @@ export function buildWindowsAgentFileManifest(options?: {
   };
 
   for (const fileName of rootFiles) {
-    addManifestFile(fileName, path.join(WINDOWS_AGENT_ROOT, fileName));
+    addManifestFile(fileName, path.join(roots.windowsAgentRoot, fileName));
   }
 
-  for (const fileEntry of WINDOWS_AGENT_SHARED_FILES) {
+  for (const fileEntry of sharedFiles) {
     addManifestFile(fileEntry.relativePath, fileEntry.absolutePath);
   }
 
   for (const relativeDirectory of WINDOWS_AGENT_DIRECTORIES) {
-    const absoluteDirectory = path.join(WINDOWS_AGENT_ROOT, relativeDirectory);
+    const absoluteDirectory = path.join(roots.windowsAgentRoot, relativeDirectory);
     addManifestDirectory(absoluteDirectory, relativeDirectory, /\.(ps1|psm1|cmd)$/i);
   }
 
   addManifestFile(
     'browser-extension/firefox/manifest.json',
-    path.join(FIREFOX_EXTENSION_ROOT, 'manifest.json')
+    path.join(roots.firefoxExtensionRoot, 'manifest.json')
   );
   for (const relativeDirectory of FIREFOX_EXTENSION_DIRECTORIES) {
     addManifestDirectory(
-      path.join(FIREFOX_EXTENSION_ROOT, relativeDirectory),
+      path.join(roots.firefoxExtensionRoot, relativeDirectory),
       path.posix.join('browser-extension/firefox', relativeDirectory)
     );
   }
-  addManifestFile('browser-extension/firefox-release/metadata.json', FIREFOX_RELEASE_METADATA_FILE);
+  addManifestFile(
+    'browser-extension/firefox-release/metadata.json',
+    getFirefoxReleaseMetadataFile()
+  );
   addManifestFile(
     'browser-extension/firefox-release/openpath-firefox-extension.xpi',
-    FIREFOX_RELEASE_XPI_FILE
+    getFirefoxReleaseXpiFile()
   );
 
   addManifestFile(
     'browser-extension/chromium-managed/metadata.json',
-    CHROMIUM_MANAGED_METADATA_FILE
+    getChromiumManagedMetadataFile()
   );
 
   return Array.from(manifestSources.entries())
@@ -364,6 +433,21 @@ export function buildWindowsAgentFileManifest(options?: {
       };
     })
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+export function resolveWindowsAgentManifestFile(
+  relativePath: string,
+  options?: { includeBootstrapFiles?: boolean }
+): WindowsAgentFileEntry | null {
+  const normalizedPath = normalizeManifestRelativePath(relativePath.trim());
+  if (!normalizedPath) {
+    return null;
+  }
+
+  return (
+    buildWindowsAgentFileManifest(options).find((entry) => entry.relativePath === normalizedPath) ??
+    null
+  );
 }
 
 function getLinuxAgentPackageFileName(version: string): string {
@@ -403,7 +487,7 @@ export function resolveLinuxAgentPackagePath(version: string): string | null {
   }
 
   const defaultCandidatePath = path.join(
-    LINUX_AGENT_BUILD_ROOT,
+    getAgentArtifactRoots().linuxAgentBuildRoot,
     getLinuxAgentPackageFileName(version)
   );
   if (fs.existsSync(defaultCandidatePath)) {
@@ -439,7 +523,7 @@ export function buildLinuxAgentPackageManifest(): LinuxAgentPackageEntry | null 
         ? minDirectUpgradeVersion
         : '0.0.0',
     bridgeVersions: parseLinuxBridgeVersions(),
-    downloadPath: `/api/agent/linux/package?version=${encodeURIComponent(version)}`,
+    downloadPath: `/api/agent/linux/packages/${encodeURIComponent(version)}`,
   };
 }
 
