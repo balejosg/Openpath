@@ -89,6 +89,13 @@ cd api
 NODE_ENV=test PORT=3004 node --import tsx --test --test-concurrency=1 --test-force-exit tests/security-headers.test.ts tests/security-authorization.test.ts tests/security-auth.test.ts tests/security-input-validation.test.ts tests/security-privacy-rate-limits.test.ts
 ```
 
+SSE split example:
+
+```bash
+cd api
+NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/sse-auth.test.ts tests/sse-connection.test.ts tests/sse-events.test.ts
+```
+
 ## Anti-Patterns
 
 - direct DB queries in routers
