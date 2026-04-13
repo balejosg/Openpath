@@ -1,42 +1,37 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import type { Express, Request, Response } from 'express';
 
 import { logger } from '../lib/logger.js';
 import * as classroomStorage from '../lib/classroom-storage.js';
-import * as groupsStorage from '../lib/groups-storage.js';
 import {
   ensureDbEventBridgeStarted,
   ensureScheduleBoundaryTickerStarted,
   getSseClientCount,
   registerSseClient,
 } from '../lib/rule-events.js';
-import { hashMachineToken } from '../lib/machine-download-token.js';
 import {
   authenticateEnrollmentToken,
   authenticateMachineToken,
   getFirstParam,
-  getBearerTokenValue,
-  resolveMachineTokenAccess,
   validateMachineHostnameAccess,
 } from '../lib/server-request-auth.js';
 import {
-  buildLinuxAgentPackageManifest,
-  buildStaticEtag,
-  buildWhitelistEtag,
-  buildWindowsAgentFileManifest,
-  matchesIfNoneMatch,
-  readServerVersion,
-  resolveLinuxAgentPackagePath,
-  resolveWindowsAgentManifestFile,
-} from '../lib/server-assets.js';
+  getLinuxAgentManifest,
+  getLinuxAgentPackage,
+  getWindowsAgentFile,
+  getWindowsAgentManifest,
+  getWindowsBootstrapFile,
+  getWindowsBootstrapManifest,
+} from '../services/machine-agent-delivery.service.js';
 import {
   registerMachineWithToken,
   rotateMachineDownloadToken,
 } from '../services/machine-registration.service.js';
-
-const FAIL_OPEN_RESPONSE = '#DESACTIVADO\n';
+import {
+  FAIL_OPEN_RESPONSE,
+  resolveMachineEventsAccess,
+  resolveMachineWhitelist,
+  type MachineWhitelistDelivery,
+} from '../services/machine-policy.service.js';
 
 function getWildcardPathParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) {
@@ -55,8 +50,26 @@ function sendMachineServiceError(res: Response, error: { code: string; message: 
     FORBIDDEN: 403,
     NOT_FOUND: 404,
     BAD_REQUEST: 400,
+    UNAVAILABLE: 503,
   };
   res.status(statusMap[error.code] ?? 400).json({ success: false, error: error.message });
+}
+
+function sendWhitelistDelivery(res: Response, delivery: MachineWhitelistDelivery): void {
+  res.setHeader('Cache-Control', delivery.cacheControl);
+  if ('pragma' in delivery && delivery.pragma) {
+    res.setHeader('Pragma', delivery.pragma);
+  }
+  if ('etag' in delivery && delivery.etag) {
+    res.setHeader('ETag', delivery.etag);
+  }
+
+  if (delivery.kind === 'not-modified') {
+    res.status(304).end();
+    return;
+  }
+
+  res.type('text/plain').send(delivery.body);
 }
 
 export function registerMachineRoutes(
@@ -148,9 +161,9 @@ export function registerMachineRoutes(
           return;
         }
 
-        const files = buildWindowsAgentFileManifest({ includeBootstrapFiles: true });
-        if (files.length === 0) {
-          res.status(503).json({ success: false, error: 'Windows bootstrap package unavailable' });
+        const result = getWindowsBootstrapManifest(enrollment.classroomId);
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
 
@@ -158,14 +171,10 @@ export function registerMachineRoutes(
         res.setHeader('Pragma', 'no-cache');
         res.json({
           success: true,
-          classroomId: enrollment.classroomId,
-          version: readServerVersion(),
-          generatedAt: new Date().toISOString(),
-          files: files.map((file) => ({
-            path: file.relativePath,
-            sha256: file.sha256,
-            size: file.size,
-          })),
+          classroomId: result.data.classroomId,
+          version: result.data.version,
+          generatedAt: result.data.generatedAt,
+          files: result.data.files,
         });
       } catch (error) {
         logger.error('Error serving Windows bootstrap manifest', {
@@ -186,25 +195,15 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedPath = getWildcardPathParam(req.params.path);
-        if (!requestedPath) {
-          res.status(400).json({ success: false, error: 'file path required' });
+        const result = getWindowsBootstrapFile(getWildcardPathParam(req.params.path));
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
-
-        const file = resolveWindowsAgentManifestFile(requestedPath, {
-          includeBootstrapFiles: true,
-        });
-        if (!file) {
-          res.status(404).json({ success: false, error: 'File not found in bootstrap package' });
-          return;
-        }
-
-        const fileContents = fs.readFileSync(file.absolutePath);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
-        res.type('text/plain').send(fileContents);
+        res.type('text/plain').send(result.data.body);
       } catch (error) {
         logger.error('Error serving Windows bootstrap file', {
           error: error instanceof Error ? error.message : String(error),
@@ -224,25 +223,19 @@ export function registerMachineRoutes(
           return;
         }
 
-        const files = buildWindowsAgentFileManifest();
-        if (files.length === 0) {
-          res.status(503).json({ success: false, error: 'Windows agent package unavailable' });
+        const result = await getWindowsAgentManifest(machine.hostname);
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
-
-        await classroomStorage.updateMachineLastSeen(machine.hostname);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.json({
           success: true,
-          version: readServerVersion(),
-          generatedAt: new Date().toISOString(),
-          files: files.map((file) => ({
-            path: file.relativePath,
-            sha256: file.sha256,
-            size: file.size,
-          })),
+          version: result.data.version,
+          generatedAt: result.data.generatedAt,
+          files: result.data.files,
         });
       } catch (error) {
         logger.error('Error serving Windows agent manifest', {
@@ -263,25 +256,18 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedPath = getWildcardPathParam(req.params.path);
-        if (!requestedPath) {
-          res.status(400).json({ success: false, error: 'file path required' });
+        const result = await getWindowsAgentFile(
+          machine.hostname,
+          getWildcardPathParam(req.params.path)
+        );
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
-
-        const file = resolveWindowsAgentManifestFile(requestedPath);
-        if (!file) {
-          res.status(404).json({ success: false, error: 'File not found in agent package' });
-          return;
-        }
-
-        const fileContents = fs.readFileSync(file.absolutePath);
-
-        await classroomStorage.updateMachineLastSeen(machine.hostname);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
-        res.type('text/plain').send(fileContents);
+        res.type('text/plain').send(result.data.body);
       } catch (error) {
         logger.error('Error serving Windows agent file', {
           error: error instanceof Error ? error.message : String(error),
@@ -301,27 +287,17 @@ export function registerMachineRoutes(
           return;
         }
 
-        const packageEntry = buildLinuxAgentPackageManifest();
-        if (!packageEntry) {
-          res.status(503).json({ success: false, error: 'Linux agent package unavailable' });
+        const result = await getLinuxAgentManifest(machine.hostname);
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
-
-        await classroomStorage.updateMachineLastSeen(machine.hostname);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.json({
           success: true,
-          version: packageEntry.version,
-          generatedAt: new Date().toISOString(),
-          packageFileName: packageEntry.packageFileName,
-          sha256: packageEntry.sha256,
-          size: packageEntry.size,
-          minSupportedVersion: packageEntry.minSupportedVersion,
-          minDirectUpgradeVersion: packageEntry.minDirectUpgradeVersion,
-          bridgeVersions: packageEntry.bridgeVersions,
-          downloadPath: packageEntry.downloadPath,
+          ...result.data,
         });
       } catch (error) {
         logger.error('Error serving Linux agent manifest', {
@@ -342,27 +318,19 @@ export function registerMachineRoutes(
           return;
         }
 
-        const requestedVersion = getFirstParam(req.params.version)?.trim() ?? '';
-        if (!requestedVersion) {
-          res.status(400).json({ success: false, error: 'version path parameter required' });
+        const result = await getLinuxAgentPackage(
+          machine.hostname,
+          getFirstParam(req.params.version)?.trim() ?? ''
+        );
+        if (!result.ok) {
+          sendMachineServiceError(res, result.error);
           return;
         }
-
-        const absolutePath = resolveLinuxAgentPackagePath(requestedVersion);
-        if (!absolutePath) {
-          res.status(503).json({ success: false, error: 'Linux agent package unavailable' });
-          return;
-        }
-
-        await classroomStorage.updateMachineLastSeen(machine.hostname);
-
-        const packageContents = fs.readFileSync(absolutePath);
-        const packageFileName = path.basename(absolutePath);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Content-Disposition', `attachment; filename="${packageFileName}"`);
-        res.type('application/vnd.debian.binary-package').send(packageContents);
+        res.setHeader('Content-Disposition', `attachment; filename="${result.data.fileName}"`);
+        res.type('application/vnd.debian.binary-package').send(result.data.body);
       } catch (error) {
         logger.error('Error serving Linux agent package', {
           error: error instanceof Error ? error.message : String(error),
@@ -383,88 +351,12 @@ export function registerMachineRoutes(
   app.get('/w/:machineToken/whitelist.txt', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
-        const machineToken = getFirstParam(req.params.machineToken);
-        if (!machineToken) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        const tokenHash = hashMachineToken(machineToken);
-        const machine = await classroomStorage.getMachineByDownloadTokenHash(tokenHash);
-        if (!machine) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        const effectiveContext =
-          await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(
-            machine.hostname,
-            deps.getCurrentEvaluationTime()
-          );
-        if (!effectiveContext) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        if (effectiveContext.mode === 'unrestricted') {
-          const etag = buildStaticEtag('openpath:unrestricted');
-          res.setHeader('ETag', etag);
-          res.setHeader('Cache-Control', 'private, no-cache');
-          if (matchesIfNoneMatch(req, etag)) {
-            await classroomStorage.updateMachineLastSeen(machine.hostname);
-            res.status(304).end();
-            return;
-          }
-
-          await classroomStorage.updateMachineLastSeen(machine.hostname);
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        if (!effectiveContext.groupId) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        const group = await groupsStorage.getGroupMetaById(effectiveContext.groupId);
-        if (!group) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        const etag = buildWhitelistEtag({
-          groupId: group.id,
-          updatedAt: group.updatedAt,
-          enabled: group.enabled,
-        });
-        res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', 'private, no-cache');
-        if (matchesIfNoneMatch(req, etag)) {
-          await classroomStorage.updateMachineLastSeen(machine.hostname);
-          res.status(304).end();
-          return;
-        }
-
-        const content = await groupsStorage.exportGroup(effectiveContext.groupId);
-        if (!content) {
-          res.setHeader('Cache-Control', 'no-store, max-age=0');
-          res.setHeader('Pragma', 'no-cache');
-          res.type('text/plain').send(FAIL_OPEN_RESPONSE);
-          return;
-        }
-
-        await classroomStorage.updateMachineLastSeen(machine.hostname);
-        res.type('text/plain').send(content);
+        const delivery = await resolveMachineWhitelist(
+          getFirstParam(req.params.machineToken),
+          deps.getCurrentEvaluationTime(),
+          req.headers['if-none-match']
+        );
+        sendWhitelistDelivery(res, delivery);
       } catch (error) {
         logger.error('Error serving tokenized whitelist', {
           error: error instanceof Error ? error.message : String(error),
@@ -479,35 +371,16 @@ export function registerMachineRoutes(
   app.get('/api/machines/events', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
-        const machineToken =
-          getBearerTokenValue(req.headers.authorization) ??
-          (typeof req.query.token === 'string' ? req.query.token.trim() : '');
-        if (!machineToken) {
-          res.status(401).json({
-            success: false,
-            error: 'Machine token required (Authorization: Bearer or query param)',
-          });
+        const access = await resolveMachineEventsAccess({
+          authorizationHeader: req.headers.authorization,
+          queryToken: typeof req.query.token === 'string' ? req.query.token : undefined,
+        });
+        if (!access.ok) {
+          sendMachineServiceError(res, access.error);
           return;
         }
 
-        const machine = await resolveMachineTokenAccess(machineToken);
-        if (!machine) {
-          res.status(403).json({ success: false, error: 'Invalid machine token' });
-          return;
-        }
-
-        const effectiveContext =
-          await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(machine.hostname);
-        if (!effectiveContext) {
-          res.status(404).json({ success: false, error: 'No active group for this machine' });
-          return;
-        }
-
-        const serializedGroupId = classroomStorage.serializePolicyGroupId(effectiveContext);
-        if (!serializedGroupId) {
-          res.status(404).json({ success: false, error: 'No active group for this machine' });
-          return;
-        }
+        const { machine, classroomId, groupId } = access.data;
 
         await ensureDbEventBridgeStarted();
         void ensureScheduleBoundaryTickerStarted();
@@ -522,22 +395,22 @@ export function registerMachineRoutes(
         res.write(
           `data: ${JSON.stringify({
             event: 'connected',
-            groupId: serializedGroupId,
+            groupId,
             hostname: machine.hostname,
           })}\n\n`
         );
 
         const unsubscribe = registerSseClient({
           hostname: machine.hostname,
-          classroomId: effectiveContext.classroomId,
-          groupId: serializedGroupId,
+          classroomId,
+          groupId,
           stream: res,
         });
 
         logger.info('SSE client connected', {
           hostname: machine.hostname,
-          classroomId: effectiveContext.classroomId,
-          groupId: serializedGroupId,
+          classroomId,
+          groupId,
           clients: getSseClientCount(),
         });
 
@@ -547,8 +420,8 @@ export function registerMachineRoutes(
           unsubscribe();
           logger.info('SSE client disconnected', {
             hostname: machine.hostname,
-            classroomId: effectiveContext.classroomId,
-            groupId: serializedGroupId,
+            classroomId,
+            groupId,
             clients: getSseClientCount(),
           });
         });
