@@ -35,6 +35,9 @@
 ## Evaluation
 
 - OSS adoption path for technical evaluators: [`docs/evaluation/adoption-path.md`](evaluation/adoption-path.md)
+- Self-hosting prerequisites: [`docs/evaluation/self-hosted-prerequisites.md`](evaluation/self-hosted-prerequisites.md)
+- Deployment shapes: [`docs/evaluation/deployment-shapes.md`](evaluation/deployment-shapes.md)
+- Support and ownership boundaries: [`docs/evaluation/support-boundaries.md`](evaluation/support-boundaries.md)
 - Security and hardening baseline: [`docs/SECURITY-HARDENING.md`](SECURITY-HARDENING.md)
 - Public OSS security policy: [`SECURITY.md`](../SECURITY.md)
 

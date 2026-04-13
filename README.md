@@ -33,12 +33,15 @@ Maintained repo documentation is English-only and indexed from [`docs/INDEX.md`]
 
 ## Choose Your Starting Point
 
-| If you need...                                                     | Start here                                                             |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| A self-hosted, modifiable core that your team can operate directly | [`docs/evaluation/adoption-path.md`](docs/evaluation/adoption-path.md) |
-| The canonical architecture and public contracts                    | [`docs/ADR.md`](docs/ADR.md)                                           |
-| Operator hardening and rollout guidance                            | [`docs/SECURITY-HARDENING.md`](docs/SECURITY-HARDENING.md)             |
-| Package and platform entrypoints                                   | [`docs/INDEX.md`](docs/INDEX.md)                                       |
+| If you need...                                                     | Start here                                                                                     |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| A self-hosted, modifiable core that your team can operate directly | [`docs/evaluation/adoption-path.md`](docs/evaluation/adoption-path.md)                         |
+| Self-hosting prerequisites and ownership boundaries                | [`docs/evaluation/self-hosted-prerequisites.md`](docs/evaluation/self-hosted-prerequisites.md) |
+| Recommended deployment shapes                                      | [`docs/evaluation/deployment-shapes.md`](docs/evaluation/deployment-shapes.md)                 |
+| What the project provides vs. what your team must own              | [`docs/evaluation/support-boundaries.md`](docs/evaluation/support-boundaries.md)               |
+| The canonical architecture and public contracts                    | [`docs/ADR.md`](docs/ADR.md)                                                                   |
+| Operator hardening and rollout guidance                            | [`docs/SECURITY-HARDENING.md`](docs/SECURITY-HARDENING.md)                                     |
+| Package and platform entrypoints                                   | [`docs/INDEX.md`](docs/INDEX.md)                                                               |
 
 ## What Ships Today
 
