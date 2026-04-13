@@ -1,19 +1,41 @@
 import type { Express, Request, Response } from 'express';
 
-import { getErrorMessage } from '@openpath/shared';
-
 import { logger } from '../lib/logger.js';
-import * as classroomStorage from '../lib/classroom-storage.js';
-import { config } from '../config.js';
-import { generateEnrollmentToken, verifyEnrollmentToken } from '../lib/enrollment-token.js';
-import { buildLinuxEnrollmentScript } from '../lib/enrollment-script.js';
 import { getFirstParam, verifyAccessTokenFromRequest } from '../lib/server-request-auth.js';
+import { getPublicBaseUrl } from '../lib/server-assets.js';
 import {
-  getPublicBaseUrl,
-  quotePowerShellSingle,
-  resolveEnrollmentLinuxAgentVersionPin,
-} from '../lib/server-assets.js';
-import ClassroomService from '../services/classroom.service.js';
+  buildLinuxEnrollmentBootstrap,
+  buildWindowsEnrollmentBootstrap,
+  issueEnrollmentTicket,
+} from '../services/enrollment.service.js';
+
+function sendEnrollmentServiceErrorJson(
+  res: Response,
+  error: { code: string; message: string }
+): void {
+  const statusMap: Record<string, number> = {
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    BAD_REQUEST: 400,
+    MISCONFIGURED: 500,
+  };
+  res.status(statusMap[error.code] ?? 400).json({ success: false, error: error.message });
+}
+
+function sendEnrollmentServiceErrorText(
+  res: Response,
+  error: { code: string; message: string }
+): void {
+  const statusMap: Record<string, number> = {
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    BAD_REQUEST: 400,
+    MISCONFIGURED: 500,
+  };
+  res.status(statusMap[error.code] ?? 400).send(error.message);
+}
 
 export function registerEnrollmentRoutes(app: Express): void {
   app.post('/api/enroll/:classroomId/ticket', (req: Request, res: Response): void => {
@@ -25,37 +47,27 @@ export function registerEnrollmentRoutes(app: Express): void {
           return;
         }
 
-        const roles = decoded.roles.map((r) => r.role);
-        if (!roles.includes('admin') && !roles.includes('teacher')) {
-          res.status(403).json({ success: false, error: 'Teacher access required' });
+        const result = await issueEnrollmentTicket({
+          user: decoded,
+          classroomId: getFirstParam(req.params.classroomId) ?? '',
+        });
+        if (!result.ok) {
+          sendEnrollmentServiceErrorJson(res, result.error);
           return;
         }
-
-        const classroomId = getFirstParam(req.params.classroomId);
-        if (!classroomId) {
-          res.status(400).json({ success: false, error: 'classroomId parameter required' });
-          return;
-        }
-
-        const access = await ClassroomService.ensureUserCanEnrollClassroom(decoded, classroomId);
-        if (!access.ok) {
-          const statusCode = access.error.code === 'NOT_FOUND' ? 404 : 403;
-          res.status(statusCode).json({ success: false, error: access.error.message });
-          return;
-        }
-
-        const enrollmentToken = generateEnrollmentToken(access.data.id);
 
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.json({
           success: true,
-          enrollmentToken,
-          classroomId: access.data.id,
-          classroomName: access.data.name,
+          enrollmentToken: result.data.enrollmentToken,
+          classroomId: result.data.classroomId,
+          classroomName: result.data.classroomName,
         });
       } catch (error) {
-        logger.error('Enrollment ticket error', { error: getErrorMessage(error) });
+        logger.error('Enrollment ticket error', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         res.status(500).json({ success: false, error: 'Internal error' });
       }
     })();
@@ -65,63 +77,26 @@ export function registerEnrollmentRoutes(app: Express): void {
     void (async (): Promise<void> => {
       try {
         const classroomId = getFirstParam(req.params.classroomId);
-        const authHeader = req.headers.authorization;
-
-        if (classroomId === undefined || classroomId === '') {
-          res.status(400).send('Missing classroomId');
-          return;
-        }
-
-        if (authHeader?.startsWith('Bearer ') !== true) {
-          res.status(401).send('Authorization header required');
-          return;
-        }
-
-        const enrollmentToken = authHeader.slice(7);
-        const payload = verifyEnrollmentToken(enrollmentToken);
-        if (!payload) {
-          res.status(403).send('Invalid enrollment token');
-          return;
-        }
-        if (payload.classroomId !== classroomId) {
-          res.status(403).send('Enrollment token does not match classroom');
-          return;
-        }
-
-        const classroom = await classroomStorage.getClassroomById(classroomId);
-        if (!classroom) {
-          res.status(404).send('Classroom not found');
-          return;
-        }
-
-        const publicUrl = getPublicBaseUrl(req);
-        const aptRepoUrl = config.aptRepoUrl;
-        const configuredLinuxAgentVersion = process.env.OPENPATH_LINUX_AGENT_VERSION?.trim() ?? '';
-        if (!aptRepoUrl) {
-          res.status(500).send('APT repo URL not configured');
-          return;
-        }
-        const effectiveLinuxAgentVersion = await resolveEnrollmentLinuxAgentVersionPin(
-          aptRepoUrl,
-          configuredLinuxAgentVersion
-        );
-        const script = buildLinuxEnrollmentScript({
-          publicUrl,
-          classroomId,
-          classroomName: classroom.name,
-          enrollmentToken,
-          aptRepoUrl,
-          linuxAgentVersion: effectiveLinuxAgentVersion,
+        const result = await buildLinuxEnrollmentBootstrap({
+          authorizationHeader: req.headers.authorization,
+          classroomId: classroomId ?? '',
+          publicUrl: getPublicBaseUrl(req),
         });
+        if (!result.ok) {
+          sendEnrollmentServiceErrorText(res, result.error);
+          return;
+        }
 
         res.setHeader('Content-Type', 'text/x-shellscript');
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Disposition', 'inline; filename="enroll.sh"');
-        res.send(script);
+        res.send(result.data.script);
       } catch (error) {
-        logger.error('Enrollment script error', { error: getErrorMessage(error) });
+        logger.error('Enrollment script error', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         res.status(500).send('Internal error');
       }
     })();
@@ -130,130 +105,26 @@ export function registerEnrollmentRoutes(app: Express): void {
   app.get('/api/enroll/:classroomId/windows.ps1', (req: Request, res: Response): void => {
     void (async (): Promise<void> => {
       try {
-        const authHeader = req.headers.authorization;
-
-        if (authHeader?.startsWith('Bearer ') !== true) {
-          res.status(401).send('Authorization header required');
+        const result = await buildWindowsEnrollmentBootstrap({
+          authorizationHeader: req.headers.authorization,
+          classroomId: getFirstParam(req.params.classroomId) ?? '',
+          publicUrl: getPublicBaseUrl(req),
+        });
+        if (!result.ok) {
+          sendEnrollmentServiceErrorText(res, result.error);
           return;
         }
-
-        const enrollmentToken = authHeader.slice(7);
-        const payload = verifyEnrollmentToken(enrollmentToken);
-        if (!payload) {
-          res.status(403).send('Invalid enrollment token');
-          return;
-        }
-
-        const requestedClassroomId = getFirstParam(req.params.classroomId);
-        if (!requestedClassroomId) {
-          res.status(400).send('Missing classroomId');
-          return;
-        }
-
-        if (payload.classroomId !== requestedClassroomId) {
-          res.status(403).send('Enrollment token does not match classroom');
-          return;
-        }
-
-        const classroomId = payload.classroomId;
-        const classroom = await classroomStorage.getClassroomById(classroomId);
-        if (!classroom) {
-          res.status(404).send('Classroom not found');
-          return;
-        }
-
-        const publicUrl = getPublicBaseUrl(req);
-        const psApiUrl = quotePowerShellSingle(publicUrl);
-        const psClassroomId = quotePowerShellSingle(classroom.id);
-        const psEnrollmentToken = quotePowerShellSingle(enrollmentToken);
-
-        const script = `$ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-$ApiUrl = ${psApiUrl}
-$ClassroomId = ${psClassroomId}
-$EnrollmentToken = ${psEnrollmentToken}
-$Headers = @{ Authorization = "Bearer $EnrollmentToken" }
-
-$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run PowerShell as Administrator'
-}
-
-$TempRoot = Join-Path $env:TEMP ("openpath-bootstrap-" + [Guid]::NewGuid().ToString('N'))
-$WindowsRoot = Join-Path $TempRoot 'windows'
-$null = New-Item -ItemType Directory -Path (Join-Path $WindowsRoot 'lib') -Force
-$null = New-Item -ItemType Directory -Path (Join-Path $WindowsRoot 'scripts') -Force
-
-Write-Host ''
-Write-Host '==============================================='
-Write-Host ' OpenPath Enrollment (Windows)'
-Write-Host '==============================================='
-Write-Host ''
-
-$manifest = Invoke-RestMethod -Uri "$ApiUrl/api/agent/windows/bootstrap/manifest" -Headers $Headers -Method Get
-if (-not $manifest.success -or -not $manifest.files) {
-    throw 'Bootstrap manifest unavailable'
-}
-
-if ($manifest.version) {
-    $env:OPENPATH_VERSION = [string]$manifest.version
-}
-
-foreach ($file in $manifest.files) {
-    $relativePath = [string]$file.path
-    if (-not $relativePath) {
-        continue
-    }
-
-    $destinationPath = Join-Path $WindowsRoot $relativePath
-    $destinationDir = Split-Path $destinationPath -Parent
-    if (-not (Test-Path $destinationDir)) {
-        $null = New-Item -ItemType Directory -Path $destinationDir -Force
-    }
-
-    $encodedPath = (($relativePath -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
-    $fileUrl = "$ApiUrl/api/agent/windows/bootstrap/files/$encodedPath"
-    Invoke-WebRequest -Uri $fileUrl -Headers $Headers -OutFile $destinationPath -UseBasicParsing
-
-    if ($file.sha256) {
-        $expectedHash = ([string]$file.sha256).ToLowerInvariant()
-        $actualHash = (Get-FileHash -Path $destinationPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -ne $expectedHash) {
-            throw "Checksum mismatch for $relativePath"
-        }
-    }
-}
-
-Push-Location $WindowsRoot
-$installExitCode = 0
-try {
-    $global:LASTEXITCODE = 0
-    & (Join-Path $WindowsRoot 'Install-OpenPath.ps1') -ApiUrl $ApiUrl -ClassroomId $ClassroomId -EnrollmentToken $EnrollmentToken -Unattended
-    $installExitCode = [int]$LASTEXITCODE
-}
-finally {
-    Pop-Location
-    Remove-Item $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-if ($installExitCode -ne 0) {
-    exit $installExitCode
-}
-
-Write-Host ''
-Write-Host 'Installation completed. Current status:'
-& 'C:\\OpenPath\\OpenPath.ps1' status
-`;
 
         res.setHeader('Content-Type', 'text/x-powershell');
         res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Disposition', 'inline; filename="enroll.ps1"');
-        res.send(script);
+        res.send(result.data.script);
       } catch (error) {
-        logger.error('Windows enrollment script error', { error: getErrorMessage(error) });
+        logger.error('Windows enrollment script error', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         res.status(500).send('Internal error');
       }
     })();
