@@ -303,7 +303,7 @@ export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness>
 
     for (const [key, value] of previousArtifactEnv.entries()) {
       if (value === undefined) {
-        delete process.env[key];
+        Reflect.deleteProperty(process.env, key);
       } else {
         process.env[key] = value;
       }
@@ -318,7 +318,7 @@ export async function startTokenDeliveryHarness(): Promise<TokenDeliveryHarness>
     trpcMutate,
     loginAdmin,
     getEnrollmentToken,
-    close: async () => {
+    close: async (): Promise<void> => {
       await resetDb();
 
       if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {

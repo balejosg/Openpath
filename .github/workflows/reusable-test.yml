@@ -1,10 +1,10 @@
-name: Reusable Test Workflow
+name: Reusable Coverage Workflow
 
 on:
   workflow_call:
     inputs:
       test-type:
-        description: 'Type of test to run (api, web, spa, integration, bash, shared, extension)'
+        description: 'Coverage lane to run (api, web, spa, shared, extension)'
         required: true
         type: string
       node-version:
@@ -23,12 +23,12 @@ on:
 
 jobs:
   test:
-    name: Run Tests
+    name: Run Coverage
     runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: ${{ (inputs.test-type == 'api' || inputs.test-type == 'web' || inputs.test-type == 'spa-e2e' || inputs.test-type == 'integration') && 'postgres:16' || '' }}
+        image: ${{ inputs.test-type == 'api' && 'postgres:16' || '' }}
         env:
           POSTGRES_USER: openpath
           POSTGRES_PASSWORD: openpath_dev
@@ -45,31 +45,95 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # Node.js setup for non-bash tests
+      - name: Resolve coverage lane
+        id: lane
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "needs_node=true" >> "$GITHUB_OUTPUT"
+          echo "needs_postgres=false" >> "$GITHUB_OUTPUT"
+          echo "build_shared=false" >> "$GITHUB_OUTPUT"
+          echo "build_api=false" >> "$GITHUB_OUTPUT"
+          echo "build_spa=false" >> "$GITHUB_OUTPUT"
+          echo "build_dashboard=false" >> "$GITHUB_OUTPUT"
+          echo "build_extension=false" >> "$GITHUB_OUTPUT"
+
+          case "${{ inputs.test-type }}" in
+            api)
+              {
+                echo "needs_postgres=true"
+                echo "build_shared=true"
+                echo "build_api=true"
+                echo "build_extension=true"
+                echo "test_command=npm run test:coverage --workspace=@openpath/api"
+                echo "coverage_file=api/coverage/lcov.info"
+                echo "coverage_dir=api/coverage"
+                echo "coverage_flag=api"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            web)
+              {
+                echo "build_shared=true"
+                echo "build_api=true"
+                echo "test_command=npm run test:coverage --workspace=@openpath/dashboard"
+                echo "coverage_file=dashboard/coverage/lcov.info"
+                echo "coverage_dir=dashboard/coverage"
+                echo "coverage_flag=dashboard"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            spa)
+              {
+                echo "build_shared=true"
+                echo "build_api=true"
+                echo "test_command=npm run test:coverage --workspace=@openpath/react-spa"
+                echo "coverage_file=react-spa/coverage/lcov.info"
+                echo "coverage_dir=react-spa/coverage"
+                echo "coverage_flag=spa"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            shared)
+              {
+                echo "build_shared=true"
+                echo "test_command=npm run test:coverage --workspace=@openpath/shared"
+                echo "coverage_file=shared/coverage/lcov.info"
+                echo "coverage_dir=shared/coverage"
+                echo "coverage_flag=shared"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            extension)
+              {
+                echo "build_extension=true"
+                echo "test_command=npm run test:coverage --workspace=@openpath/firefox-extension"
+                echo "coverage_file=firefox-extension/coverage/lcov.info"
+                echo "coverage_dir=firefox-extension/coverage"
+                echo "coverage_flag=firefox-extension"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Unsupported coverage lane: ${{ inputs.test-type }}"
+              exit 1
+              ;;
+          esac
+
       - name: Setup Node.js
-        if: inputs.test-type != 'bash'
+        if: steps.lane.outputs.needs_node == 'true'
         uses: ./.github/actions/setup-node
         with:
           node-version: ${{ inputs.node-version }}
 
       - name: Build workspaces
-        if: inputs.test-type != 'bash'
+        if: steps.lane.outputs.needs_node == 'true'
         uses: ./.github/actions/build-workspaces
         with:
-          build-shared: 'true'
-          build-api: 'true'
-          build-extension: ${{ inputs.test-type == 'api' && 'true' || 'false' }}
+          build-shared: ${{ steps.lane.outputs.build_shared }}
+          build-api: ${{ steps.lane.outputs.build_api }}
+          build-spa: ${{ steps.lane.outputs.build_spa }}
+          build-dashboard: ${{ steps.lane.outputs.build_dashboard }}
+          build-extension: ${{ steps.lane.outputs.build_extension }}
 
-      # Bash tests setup
-      - name: Install BATS
-        if: inputs.test-type == 'bash'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bats
-
-      # Run database migrations for API/Web/Integration tests
       - name: Run database migrations
-        if: inputs.test-type == 'api' || inputs.test-type == 'web' || inputs.test-type == 'spa-e2e' || inputs.test-type == 'integration'
+        if: steps.lane.outputs.needs_postgres == 'true'
         run: |
           npm run drizzle:push --workspace=@openpath/api
           npm run db:migrate --workspace=@openpath/api
@@ -80,10 +144,8 @@ jobs:
           DB_USER: openpath
           DB_PASSWORD: openpath_dev
 
-      # API Tests
-      - name: Run API tests
-        if: inputs.test-type == 'api'
-        run: npm run test:coverage --workspace=@openpath/api
+      - name: Run coverage lane
+        run: ${{ steps.lane.outputs.test_command }}
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -95,72 +157,22 @@ jobs:
           SHARED_SECRET: test-shared-secret-for-ci
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Web/Dashboard Tests
-      - name: Run Web tests
-        if: inputs.test-type == 'web'
-        run: npm run test:coverage --workspace=@openpath/dashboard
-        env:
-          NODE_ENV: test
-
-      # SPA Tests (React 19)
-      - name: Run SPA tests
-        if: inputs.test-type == 'spa'
-        run: npm run test:coverage --workspace=@openpath/react-spa
-
-      # Integration Tests
-      - name: Run Integration tests
-        if: inputs.test-type == 'integration'
-        run: npm run test:integration:api --workspace=@openpath/api
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: openpath
-          DB_USER: openpath
-          DB_PASSWORD: openpath_dev
-          JWT_SECRET: test-jwt-secret-for-ci-testing
-          ADMIN_TOKEN: test-admin-token-for-ci
-          SHARED_SECRET: test-shared-secret-for-ci
-
-      # Shared Package Tests
-      - name: Run Shared tests
-        if: inputs.test-type == 'shared'
-        run: npm run test:coverage --workspace=@openpath/shared
-
-      # Extension Tests
-      - name: Run Extension tests
-        if: inputs.test-type == 'extension'
-        run: npm run test:coverage --workspace=@openpath/firefox-extension
-
-      # Bash Tests (no coverage - kcov not available in Ubuntu apt repos)
-      - name: Run Bash tests
-        if: inputs.test-type == 'bash'
-        run: |
-          cd tests
-          bats *.bats
-          echo "Bash tests completed"
-
       # Coverage upload
       - name: Upload coverage to Codecov
-        if: inputs.run-coverage && inputs.test-type != 'bash'
+        if: inputs.run-coverage
         uses: codecov/codecov-action@v5
         with:
           disable_search: true
-          files: ${{ inputs.test-type == 'api' && 'api/coverage/lcov.info' || inputs.test-type == 'web' && 'dashboard/coverage/lcov.info' || inputs.test-type == 'spa' && 'react-spa/coverage/lcov.info' || inputs.test-type == 'shared' && 'shared/coverage/lcov.info' || inputs.test-type == 'extension' && 'firefox-extension/coverage/lcov.info' || '' }}
-          flags: ${{ inputs.test-type == 'web' && 'dashboard' || inputs.test-type == 'extension' && 'firefox-extension' || inputs.test-type }}
+          files: ${{ steps.lane.outputs.coverage_file }}
+          flags: ${{ steps.lane.outputs.coverage_flag }}
           name: ${{ inputs.test-type }}-coverage
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage artifact
-        if: inputs.run-coverage && inputs.test-type != 'bash'
+        if: inputs.run-coverage
         uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ inputs.test-type }}
-          path: |
-            api/coverage/
-            dashboard/coverage/
-            react-spa/coverage/
-            shared/coverage/
-            firefox-extension/coverage/
+          path: ${{ steps.lane.outputs.coverage_dir }}
           retention-days: 7

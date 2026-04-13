@@ -200,22 +200,78 @@ describe('repository verification contract', () => {
     }
 
     assert.ok(
-      reusableTestWorkflow.includes('run: npm run test:coverage --workspace=@openpath/react-spa'),
-      'reusable-test.yml should collect React SPA coverage before uploading to Codecov'
+      reusableTestWorkflow.includes(
+        "description: 'Coverage lane to run (api, web, spa, shared, extension)'"
+      ),
+      'reusable-test.yml should restrict the reusable coverage workflow to the active Codecov lanes only'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('case "${{ inputs.test-type }}" in'),
+      'reusable-test.yml should resolve lane-specific coverage configuration in one place'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('run: ${{ steps.lane.outputs.test_command }}'),
+      'reusable-test.yml should run coverage lanes from the resolved lane configuration instead of per-lane duplicated steps'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('files: ${{ steps.lane.outputs.coverage_file }}'),
+      'reusable-test.yml should upload the Codecov report selected by the resolved lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('flags: ${{ steps.lane.outputs.coverage_flag }}'),
+      'reusable-test.yml should upload the Codecov flag selected by the resolved lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('path: ${{ steps.lane.outputs.coverage_dir }}'),
+      'reusable-test.yml should upload only the coverage artifact directory for the active lane'
     );
     assert.ok(
       reusableTestWorkflow.includes(
-        "build-extension: ${{ inputs.test-type == 'api' && 'true' || 'false' }}"
+        "image: ${{ inputs.test-type == 'api' && 'postgres:16' || '' }}"
       ),
-      'reusable-test.yml should build the Firefox extension assets for the API coverage lane because token-delivery tests assert Windows manifest entries from firefox-extension/dist'
+      'reusable-test.yml should only provision PostgreSQL for the API coverage lane'
     );
     assert.ok(
-      reusableTestWorkflow.includes("inputs.test-type == 'web' && 'dashboard'"),
+      reusableTestWorkflow.includes("if: steps.lane.outputs.needs_postgres == 'true'"),
+      'reusable-test.yml should gate database migrations on the resolved lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('build-shared: ${{ steps.lane.outputs.build_shared }}'),
+      'reusable-test.yml should derive shared build dependencies from the lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('build-api: ${{ steps.lane.outputs.build_api }}'),
+      'reusable-test.yml should derive API build dependencies from the lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('build-extension: ${{ steps.lane.outputs.build_extension }}'),
+      'reusable-test.yml should derive extension build dependencies from the lane configuration'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes(
+        'test_command=npm run test:coverage --workspace=@openpath/react-spa'
+      ),
+      'reusable-test.yml should collect React SPA coverage before uploading to Codecov'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('coverage_flag=dashboard'),
       'reusable-test.yml should map the dashboard lane to the dashboard Codecov flag'
     );
     assert.ok(
-      reusableTestWorkflow.includes("inputs.test-type == 'extension' && 'firefox-extension'"),
+      reusableTestWorkflow.includes('coverage_flag=firefox-extension'),
       'reusable-test.yml should map the extension lane to the firefox-extension Codecov flag'
+    );
+    assert.ok(
+      reusableTestWorkflow.includes('build_extension=true'),
+      'reusable-test.yml should build the Firefox extension assets for the API coverage lane because token-delivery tests assert Windows manifest entries from firefox-extension/dist'
+    );
+    assert.ok(
+      !reusableTestWorkflow.includes("inputs.test-type == 'integration'"),
+      'reusable-test.yml should stop carrying the old integration lane branches in the coverage workflow'
+    );
+    assert.ok(
+      !reusableTestWorkflow.includes("inputs.test-type == 'bash'"),
+      'reusable-test.yml should stop carrying the old bash lane branches in the coverage workflow'
     );
     assert.ok(
       !reusableTestWorkflow.includes(
