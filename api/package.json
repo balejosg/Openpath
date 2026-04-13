@@ -31,7 +31,7 @@
     "test:service-coverage": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/service-coverage-user-storage.test.ts tests/service-coverage-setup.test.ts tests/service-coverage-schema.test.ts tests/service-coverage-user-service.test.ts tests/service-coverage-auth-service.test.ts",
     "test:integration:api": "NODE_ENV=test node --import tsx --test --test-force-exit tests/integration/*.test.ts",
     "test:push": "NODE_ENV=test PORT=3003 node --import tsx --test --test-force-exit tests/push.test.ts",
-    "test:security": "NODE_ENV=test PORT=3004 node --import tsx --test --test-force-exit tests/security.test.ts",
+    "test:security": "NODE_ENV=test PORT=3004 node --import tsx --test --test-concurrency=1 --test-force-exit tests/security-headers.test.ts tests/security-authorization.test.ts tests/security-auth.test.ts tests/security-input-validation.test.ts tests/security-privacy-rate-limits.test.ts",
     "test:token-delivery": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/token-delivery-*.test.ts",
     "test:token-delivery:core": "NODE_ENV=test node --import tsx --test --test-force-exit tests/token-delivery-core.test.ts",
     "test:token-delivery:windows": "NODE_ENV=test node --import tsx --test --test-force-exit tests/token-delivery-windows-agent.test.ts tests/token-delivery-windows-bootstrap.test.ts",
