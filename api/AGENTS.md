@@ -61,6 +61,13 @@ cd api
 NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/service-coverage-user-storage.test.ts tests/service-coverage-setup.test.ts tests/service-coverage-schema.test.ts tests/service-coverage-user-service.test.ts tests/service-coverage-auth-service.test.ts
 ```
 
+Auth split example:
+
+```bash
+cd api
+NODE_ENV=test PORT=3001 node --import tsx --test --test-concurrency=1 --test-force-exit tests/auth-registration.test.ts tests/auth-google-login.test.ts tests/auth-session.test.ts tests/auth-password.test.ts tests/auth-admin-guards.test.ts
+```
+
 ## Anti-Patterns
 
 - direct DB queries in routers
