@@ -1,5 +1,7 @@
 # ADR 0001: Use dnsmasq for DNS Filtering
 
+> Historical note: This ADR records an accepted Linux filtering decision that remains useful for context. Treat current package READMEs and operational docs as the authoritative implementation guidance.
+
 ## Status
 
 Accepted

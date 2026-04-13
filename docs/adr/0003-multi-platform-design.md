@@ -1,5 +1,7 @@
 # ADR 0003: Multi-Platform Parallel Implementation
 
+> Historical note: This ADR is background context for the original multi-platform split. Use current package READMEs and current ADRs for the active implementation contract.
+
 **Status:** Accepted  
 **Date:** 2024-08-20  
 **Decision Makers:** OpenPath Core Team

@@ -8,7 +8,9 @@
 [![CI](https://github.com/balejosg/openpath/actions/workflows/ci.yml/badge.svg)](https://github.com/balejosg/openpath/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/balejosg/openpath/branch/main/graph/badge.svg)](https://codecov.io/gh/balejosg/openpath)
 
-OpenPath is the standalone OSS core for strict internet access control in shared-device environments.
+OpenPath is the auditable OSS core for intentional internet access in education and other shared-device environments.
+It gives school IT teams and operators a transparent foundation for deciding what opens, what stays blocked, and how that policy reaches endpoints.
+
 It combines:
 
 - a Node.js/TypeScript API with tRPC and PostgreSQL
@@ -18,7 +20,27 @@ It combines:
 
 OpenPath stays agnostic of ClassroomPath and any other downstream wrapper.
 
+Need pricing, a pilot, or a managed rollout instead of self-hosting? Start with [ClassroomPath](https://classroompath.eu/), the service built on top of OpenPath, then review the [OpenPath vs. ClassroomPath comparison](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md).
+
+![OpenPath dashboard overview](docs/evaluation/assets/dashboard-overview.png)
+
+## Why School IT Teams Evaluate OpenPath
+
+- **Auditable core:** the engine, admin surface, endpoint agents, and browser integration live in this repository.
+- **Endpoint-first enforcement:** Linux and Windows agents apply policy locally instead of relying only on browser settings.
+- **Operational visibility:** the browser extension helps diagnose blocked resources during rollout and support workflows.
+- **Clear trust boundary:** downstream products such as ClassroomPath consume a documented public surface instead of deep, unstable internals.
+
 Maintained repo documentation is English-only and indexed from [`docs/INDEX.md`](docs/INDEX.md). Historical records such as [`CHANGELOG.md`](CHANGELOG.md) and most ADR files are useful context, but they are not install or operations runbooks.
+
+## Choose Your Adoption Path
+
+| If you need...                                                                   | Start here                                                                                                                      |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| A self-hosted, modifiable core that your team can operate directly               | [`docs/evaluation/adoption-path.md`](docs/evaluation/adoption-path.md)                                                          |
+| A managed rollout, pricing guidance, or a lower operational burden for school IT | [ClassroomPath](https://classroompath.eu/)                                                                                      |
+| A quick comparison between OSS core and managed service                          | [OpenPath vs. ClassroomPath](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md)  |
+| A buyer-oriented security and trust checklist                                    | [ClassroomPath security and trust guide](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/security-trust.md) |
 
 ## What Ships Today
 
@@ -30,17 +52,13 @@ Maintained repo documentation is English-only and indexed from [`docs/INDEX.md`]
 - [`shared/`](shared/README.md): shared Zod schemas, domain helpers, classroom status types, rule validation, and roles
 - [`dashboard/`](dashboard/README.md): Express compatibility layer that proxies legacy REST-style flows to API tRPC routes
 
-## Current Architecture
+## Trust And Security References
 
-1. The API exposes REST endpoints for health, setup, public requests, enrollment/bootstrap, agent delivery, extension delivery, and group exports.
-2. Authenticated admin and teacher flows run primarily through `/trpc`, consumed by the SPA and the dashboard proxy.
-3. Linux and Windows agents fetch whitelist/export data, subscribe to update signals, and enforce policy locally.
-4. The browser extension helps operators diagnose blocked resources and can be distributed by the Windows delivery pipeline.
-
-Two current repo-level contracts are especially important:
-
-- transactional multi-write service flows: [`docs/adr/0009-transactional-service-writes.md`](docs/adr/0009-transactional-service-writes.md)
-- supported downstream SPA surface: [`docs/adr/0010-public-spa-extension-surface.md`](docs/adr/0010-public-spa-extension-surface.md)
+- Security disclosure and hardening baseline: [`SECURITY.md`](SECURITY.md)
+- Operator hardening checklist: [`docs/SECURITY-HARDENING.md`](docs/SECURITY-HARDENING.md)
+- Browser extension privacy posture: [`firefox-extension/PRIVACY.md`](firefox-extension/PRIVACY.md)
+- Public SPA integration boundary: [`docs/adr/0010-public-spa-extension-surface.md`](docs/adr/0010-public-spa-extension-surface.md)
+- License and commercial boundary: [`LICENSING.md`](LICENSING.md)
 
 ## Local Development
 

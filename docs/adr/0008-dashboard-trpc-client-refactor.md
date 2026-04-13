@@ -1,5 +1,7 @@
 # ADR 0008: Dashboard tRPC Client Refactor
 
+> Historical note: This ADR explains a completed refactor. For current downstream integration guidance, prefer package READMEs and [`0009-transactional-service-writes.md`](0009-transactional-service-writes.md) plus [`0010-public-spa-extension-surface.md`](0010-public-spa-extension-surface.md) where relevant.
+
 **Date**: 2026-01-02  
 **Status**: Accepted  
 **Deciders**: Architecture Team  

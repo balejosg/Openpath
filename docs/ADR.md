@@ -7,7 +7,7 @@
 
 This file is the landing page for OpenPath architecture decisions. The canonical ADR records live in `docs/adr/*.md`.
 
-ADR files are historical records. Some still describe current contracts, while others are mainly background context for how the repo evolved.
+ADR files are retained as decision records, not as operator runbooks. Some still describe current contracts, while others are mainly background context for how the repo evolved.
 
 ## Current High-Signal Contracts
 
@@ -36,6 +36,8 @@ ADR files are historical records. Some still describe current contracts, while o
 ## Guidance
 
 - Prefer reading the specific ADR that matches the change you are making.
+- Treat historical ADRs as context only unless they explicitly point you to a current contract.
+- If an ADR carries a historical note, follow the referenced current ADR, package README, or docs index before using it as present-day guidance.
 - Treat this index as navigation only, not as the detailed architecture contract.
 - Use package READMEs and [`INDEX.md`](INDEX.md) for current operational or contributor guidance.
 - For current repo entrypoints and package-level guidance, start from [`docs/INDEX.md`](INDEX.md).

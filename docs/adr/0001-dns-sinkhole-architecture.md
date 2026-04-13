@@ -1,5 +1,7 @@
 # ADR 0001: DNS Sinkhole Architecture for URL Filtering
 
+> Historical note: This ADR is retained as background context for the original sinkhole approach. Prefer current package READMEs, [`../ADR.md`](../ADR.md), and current operational docs before treating it as present-day implementation guidance.
+
 **Status:** Accepted  
 **Date:** 2024-01-15  
 **Decision Makers:** OpenPath Core Team

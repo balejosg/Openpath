@@ -32,6 +32,12 @@
 - Linux deployment notes: [`linux/DEPLOYMENT.md`](../linux/DEPLOYMENT.md)
 - Linux troubleshooting: [`linux/TROUBLESHOOTING.md`](../linux/TROUBLESHOOTING.md)
 
+## Evaluation
+
+- OSS adoption path for technical evaluators: [`docs/evaluation/adoption-path.md`](evaluation/adoption-path.md)
+- Managed-service comparison: [`ClassroomPath/docs/evaluation/openpath-vs-classroompath.md`](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/openpath-vs-classroompath.md)
+- Buyer-oriented trust checklist: [`ClassroomPath/docs/evaluation/security-trust.md`](https://github.com/balejosg/ClassroomPath/blob/main/docs/evaluation/security-trust.md)
+
 ## Package-Specific Docs
 
 - React SPA: [`react-spa/README.md`](../react-spa/README.md)

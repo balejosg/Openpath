@@ -1,5 +1,7 @@
 # ADR Template
 
+> Template note: This file is a drafting template, not an architecture decision record and not a current contract.
+
 ## Title: [Short descriptive title]
 
 **Status:** [Proposed | Accepted | Deprecated | Superseded]  

@@ -1,5 +1,7 @@
 # ADR 0003: GitHub as Source of Truth for Whitelist
 
+> Historical note: This ADR describes an earlier distribution model and should not be treated as the current operational contract without checking current persistence, API, and package documentation first.
+
 ## Status
 
 Accepted
