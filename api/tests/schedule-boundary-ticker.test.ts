@@ -19,7 +19,7 @@ await describe('Schedule Boundary Ticker', async () => {
     await scheduleStorage.createSchedule({
       classroomId: classroom.id,
       teacherId: 'legacy_admin',
-      groupId: 'schedule-group',
+      groupId: 'group-a',
       dayOfWeek: 1,
       startTime: '09:00',
       endTime: '10:00',
@@ -53,7 +53,7 @@ await describe('Schedule Boundary Ticker', async () => {
     await scheduleStorage.createOneOffSchedule({
       classroomId: classroom.id,
       teacherId: 'legacy_admin',
-      groupId: 'oneoff-group',
+      groupId: 'group-b',
       startAt,
       endAt,
     });

@@ -8,8 +8,10 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'node:http';
-import { bootstrapAdminSession, getAvailablePort, resetDb } from './test-utils.js';
+import { getAvailablePort, resetDb } from './test-utils.js';
 import { closeConnection } from '../src/db/index.js';
+import * as roleStorage from '../src/lib/role-storage.js';
+import * as userStorage from '../src/lib/user-storage.js';
 
 let PORT: number;
 let API_URL: string;
@@ -24,6 +26,8 @@ let server: Server | undefined;
 let adminToken: string | null = null;
 let teacherUserId: string | null = null;
 
+const adminEmail = `roles-admin-${String(Date.now())}@school.edu`;
+const adminPassword = 'AdminPassword123!';
 const email = `teacher-${String(Date.now())}@school.edu`;
 
 // Helper to call tRPC mutations
@@ -107,7 +111,30 @@ await describe('Role Management E2E Tests (tRPC)', { timeout: 45000 }, async () 
     });
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    adminToken = (await bootstrapAdminSession(API_URL, { name: 'Roles Test Admin' })).accessToken;
+
+    const adminUser = await userStorage.createUser(
+      {
+        email: adminEmail,
+        password: adminPassword,
+        name: 'Roles Test Admin',
+      },
+      { emailVerified: true }
+    );
+    await roleStorage.assignRole({
+      userId: adminUser.id,
+      role: 'admin',
+      groupIds: [],
+      createdBy: adminUser.id,
+    });
+
+    const loginResponse = await trpcMutate('auth.login', {
+      email: adminEmail,
+      password: adminPassword,
+    });
+    assert.strictEqual(loginResponse.status, 200);
+    const loginData = (await parseTRPC(loginResponse)).data as { accessToken?: string };
+    adminToken = loginData.accessToken ?? null;
+    assert.ok(adminToken !== null && adminToken !== '');
   });
 
   after(async () => {

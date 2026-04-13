@@ -139,6 +139,23 @@ async function ensureEmailVerificationSchema(): Promise<void> {
   }
 }
 
+async function ensureGroupForeignKeyConstraints(): Promise<void> {
+  const statements = [
+    'ALTER TABLE "classrooms" DROP CONSTRAINT IF EXISTS "classrooms_default_group_id_whitelist_groups_id_fk";',
+    'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_default_group_id_whitelist_groups_id_fk" FOREIGN KEY ("default_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;',
+    'ALTER TABLE "classrooms" DROP CONSTRAINT IF EXISTS "classrooms_active_group_id_whitelist_groups_id_fk";',
+    'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_active_group_id_whitelist_groups_id_fk" FOREIGN KEY ("active_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;',
+    'ALTER TABLE "requests" DROP CONSTRAINT IF EXISTS "requests_group_id_whitelist_groups_id_fk";',
+    'ALTER TABLE "requests" ADD CONSTRAINT "requests_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;',
+    'ALTER TABLE "schedules" DROP CONSTRAINT IF EXISTS "schedules_group_id_whitelist_groups_id_fk";',
+    'ALTER TABLE "schedules" ADD CONSTRAINT "schedules_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;',
+  ];
+
+  for (const stmt of statements) {
+    await db.execute(sql.raw(stmt));
+  }
+}
+
 export async function ensureTestSchema(): Promise<void> {
   await ensureSchedulesOneOffSchema();
   await ensureMachineExemptionsSchema();
@@ -174,6 +191,11 @@ export async function resetDb(): Promise<void> {
   for (const table of tables) {
     await db.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
   }
+
+  // The shared test database can keep legacy group FKs between runs.
+  // Rebuild the canonical constraints on empty tables so cascade semantics
+  // match the current schema before each suite seeds fixture data.
+  await ensureGroupForeignKeyConstraints();
 
   // Insert legacy_admin user for fixtures that reuse that stable user id in FK-backed data.
   await db.execute(

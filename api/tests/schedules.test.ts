@@ -23,7 +23,11 @@ import * as scheduleStorage from '../src/lib/schedule-storage.js';
 // Test data
 const testClassroomId = 'test-classroom-1';
 const testTeacherId = 'teacher-1';
-const testGroupId = 'group-math-3eso';
+const defaultClassroomGroupId = 'default';
+const testGroupId = 'group-a';
+const secondaryGroupId = 'group-b';
+const oneOffGroupId = 'group-c';
+const weeklyGroupId = 'group-z';
 
 await describe('Schedule Storage', async () => {
   before(async () => {
@@ -50,7 +54,7 @@ await describe('Schedule Storage', async () => {
       id: testClassroomId,
       name: 'test-classroom',
       displayName: 'Test Classroom',
-      defaultGroupId: 'default-group',
+      defaultGroupId: defaultClassroomGroupId,
     });
   });
 
@@ -174,7 +178,7 @@ await describe('Schedule Storage', async () => {
         await scheduleStorage.createOneOffSchedule({
           classroomId: testClassroomId,
           teacherId: testTeacherId,
-          groupId: 'group-other',
+          groupId: secondaryGroupId,
           startAt: new Date(2026, 1, 23, 11, 30, 0, 0),
           endAt: new Date(2026, 1, 23, 12, 30, 0, 0),
         });
@@ -191,11 +195,11 @@ await describe('Schedule Storage', async () => {
       });
 
       const updated = await scheduleStorage.updateOneOffSchedule(schedule.id, {
-        groupId: 'group-other',
+        groupId: secondaryGroupId,
       });
 
       assert.ok(updated);
-      assert.strictEqual(updated.groupId, 'group-other');
+      assert.strictEqual(updated.groupId, secondaryGroupId);
       assert.strictEqual(updated.recurrence, 'one_off');
     });
 
@@ -227,7 +231,7 @@ await describe('Schedule Storage', async () => {
 
       await assert.rejects(async () => {
         await scheduleStorage.updateOneOffSchedule(schedule.id, {
-          groupId: 'group-other',
+          groupId: secondaryGroupId,
         });
       }, /Cannot update weekly schedule with one-off updater/);
     });
@@ -298,7 +302,7 @@ await describe('Schedule Storage', async () => {
         await scheduleStorage.createSchedule({
           classroomId: testClassroomId,
           teacherId: testTeacherId, // Reusing same teacher/classroom for conflict
-          groupId: 'group-other',
+          groupId: secondaryGroupId,
           dayOfWeek: 1,
           startTime: '08:30',
           endTime: '09:30',
@@ -319,7 +323,7 @@ await describe('Schedule Storage', async () => {
       const schedule2 = await scheduleStorage.createSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-other',
+        groupId: secondaryGroupId,
         dayOfWeek: 1,
         startTime: '09:00',
         endTime: '10:00',
@@ -414,7 +418,7 @@ await describe('Schedule Storage', async () => {
       await scheduleStorage.createSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-other',
+        groupId: secondaryGroupId,
         dayOfWeek: 1,
         startTime: '09:00',
         endTime: '10:00',
@@ -423,7 +427,7 @@ await describe('Schedule Storage', async () => {
       await scheduleStorage.createOneOffSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-one-off',
+        groupId: oneOffGroupId,
         startAt: new Date(2026, 1, 23, 11, 0, 0, 0),
         endAt: new Date(2026, 1, 23, 12, 0, 0, 0),
       });
@@ -479,7 +483,7 @@ await describe('Schedule Storage', async () => {
       const schedule = await scheduleStorage.createOneOffSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-one-off',
+        groupId: oneOffGroupId,
         startAt: new Date(2026, 1, 28, 9, 0, 0, 0),
         endAt: new Date(2026, 1, 28, 10, 0, 0, 0),
       });
@@ -489,7 +493,7 @@ await describe('Schedule Storage', async () => {
 
       assert.ok(result);
       assert.strictEqual(result.id, schedule.id);
-      assert.strictEqual(result.groupId, 'group-one-off');
+      assert.strictEqual(result.groupId, oneOffGroupId);
       assert.strictEqual(result.recurrence, 'one_off');
     });
 
@@ -497,7 +501,7 @@ await describe('Schedule Storage', async () => {
       await scheduleStorage.createSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-weekly',
+        groupId: weeklyGroupId,
         dayOfWeek: 1,
         startTime: '09:00',
         endTime: '10:00',
@@ -506,7 +510,7 @@ await describe('Schedule Storage', async () => {
       await scheduleStorage.createOneOffSchedule({
         classroomId: testClassroomId,
         teacherId: testTeacherId,
-        groupId: 'group-one-off',
+        groupId: oneOffGroupId,
         startAt: new Date(2026, 1, 23, 9, 0, 0, 0),
         endAt: new Date(2026, 1, 23, 10, 0, 0, 0),
       });
@@ -515,7 +519,7 @@ await describe('Schedule Storage', async () => {
       const result = await scheduleStorage.getCurrentSchedule(testClassroomId, monday);
 
       assert.ok(result);
-      assert.strictEqual(result.groupId, 'group-one-off');
+      assert.strictEqual(result.groupId, oneOffGroupId);
       assert.strictEqual(result.recurrence, 'one_off');
     });
 

@@ -481,7 +481,7 @@ await describe(
         assert.strictEqual(response.status, 401);
       });
 
-      await test('should use the deterministic test JWT secret fallback when unset', async () => {
+      await test('should use the deterministic test JWT secret fallback when unset', () => {
         const config = loadConfig({
           ...process.env,
           NODE_ENV: 'test',
