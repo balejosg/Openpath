@@ -604,6 +604,32 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('playwright e2e startup uses a stable API server and only reuses an existing server when explicitly requested', () => {
+    const playwrightConfig = readText('react-spa/playwright.config.ts');
+    const e2eStartupScript = readText('scripts/start-api-e2e.sh');
+
+    assert.ok(
+      playwrightConfig.includes("reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === '1'"),
+      'playwright.config.ts should only reuse an existing API server when PLAYWRIGHT_REUSE_SERVER=1'
+    );
+    assert.ok(
+      e2eStartupScript.includes('npm run build --workspace=@openpath/shared'),
+      'start-api-e2e.sh should build @openpath/shared before starting the E2E API server'
+    );
+    assert.ok(
+      e2eStartupScript.includes('npm run build --workspace=@openpath/api'),
+      'start-api-e2e.sh should build @openpath/api before starting the E2E API server'
+    );
+    assert.ok(
+      e2eStartupScript.includes('npm run start --workspace=@openpath/api'),
+      'start-api-e2e.sh should launch the compiled API server for E2E runs'
+    );
+    assert.ok(
+      !e2eStartupScript.includes('npm run dev'),
+      'start-api-e2e.sh should not launch the watch-mode API server during E2E runs'
+    );
+  });
+
   test('lockfile keeps vite above the current high-severity advisory range', () => {
     const packageLock = readJson('package-lock.json');
     const viteVersion = packageLock.packages['node_modules/vite']?.version;

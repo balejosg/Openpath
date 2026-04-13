@@ -21,7 +21,10 @@ if [ "${SKIP_SPA_BUILD:-0}" != "1" ]; then
   (cd "$SCRIPT_DIR/../react-spa" && npm run build)
 fi
 
+echo "Building shared packages for E2E tests..."
+(cd "$SCRIPT_DIR/.." && npm run build --workspace=@openpath/shared && npm run build --workspace=@openpath/api)
+
 echo "Preparing E2E test database..."
 (cd "$SCRIPT_DIR/../api" && npm run db:setup:e2e)
 
-cd "$SCRIPT_DIR/../api" && npm run dev
+cd "$SCRIPT_DIR/.." && npm run start --workspace=@openpath/api

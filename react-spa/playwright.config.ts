@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Key optimizations:
  * - fullyParallel: true - run all tests in parallel
- * - reuseExistingServer: true - don't restart API if already running
+ * - reuseExistingServer: opt-in - only reuse API when explicitly requested
  * - Only Chromium (no Firefox/WebKit) for speed
  * - Shorter timeouts locally
  * - No retries locally (fast feedback)
@@ -139,7 +139,7 @@ export default defineConfig({
       // Use test database (Docker on port 5433) for E2E tests
       command: `PORT=${apiPort} bash ../scripts/start-api-e2e.sh`,
       url: `http://127.0.0.1:${apiPort}/trpc/healthcheck.ready`,
-      reuseExistingServer: !isCI,
+      reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === '1',
       timeout: 120000,
     },
   ],
