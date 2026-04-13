@@ -211,6 +211,12 @@ describe('repository verification contract', () => {
       reusableTestWorkflow.includes("inputs.test-type == 'extension' && 'firefox-extension'"),
       'reusable-test.yml should map the extension lane to the firefox-extension Codecov flag'
     );
+    assert.ok(
+      !reusableTestWorkflow.includes(
+        "if: inputs.test-type == 'api'\n        run: npm run test:coverage --workspace=@openpath/api\n        env:\n          NODE_ENV: test\n          DB_HOST: localhost\n          DB_PORT: 5432\n          DB_NAME: openpath\n          DB_USER: openpath\n          DB_PASSWORD: openpath_dev\n          JWT_SECRET: test-jwt-secret-for-ci-testing"
+      ),
+      'reusable-test.yml should not override JWT_SECRET in the API coverage lane because auth.test verifies the test-mode fallback secret path'
+    );
   });
 
   test('required Windows CI keeps the direct Pester lane and emits bounded lineage diagnostics for lingering processes', () => {
