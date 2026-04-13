@@ -143,13 +143,29 @@ async function ensureEmailVerificationSchema(): Promise<void> {
 async function ensureGroupForeignKeyConstraints(): Promise<void> {
   const statements = [
     'ALTER TABLE "classrooms" DROP CONSTRAINT IF EXISTS "classrooms_default_group_id_whitelist_groups_id_fk";',
-    'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_default_group_id_whitelist_groups_id_fk" FOREIGN KEY ("default_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_default_group_id_whitelist_groups_id_fk" FOREIGN KEY ("default_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
     'ALTER TABLE "classrooms" DROP CONSTRAINT IF EXISTS "classrooms_active_group_id_whitelist_groups_id_fk";',
-    'ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_active_group_id_whitelist_groups_id_fk" FOREIGN KEY ("active_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "classrooms" ADD CONSTRAINT "classrooms_active_group_id_whitelist_groups_id_fk" FOREIGN KEY ("active_group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE set null ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
     'ALTER TABLE "requests" DROP CONSTRAINT IF EXISTS "requests_group_id_whitelist_groups_id_fk";',
-    'ALTER TABLE "requests" ADD CONSTRAINT "requests_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "requests" ADD CONSTRAINT "requests_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
     'ALTER TABLE "schedules" DROP CONSTRAINT IF EXISTS "schedules_group_id_whitelist_groups_id_fk";',
-    'ALTER TABLE "schedules" ADD CONSTRAINT "schedules_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;',
+    'DO $$ BEGIN\n' +
+      '  ALTER TABLE "schedules" ADD CONSTRAINT "schedules_group_id_whitelist_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."whitelist_groups"("id") ON DELETE cascade ON UPDATE no action;\n' +
+      'EXCEPTION\n' +
+      '  WHEN duplicate_object THEN NULL;\n' +
+      'END $$;',
   ];
 
   for (const stmt of statements) {
