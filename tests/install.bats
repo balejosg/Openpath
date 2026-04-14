@@ -42,24 +42,24 @@ load 'test_helper'
 }
 
 @test "install.sh hardens sensitive config permissions" {
-    run grep -n "persist_openpath_whitelist_url" "$PROJECT_DIR/linux/install.sh"
+    run grep -n "persist_openpath_whitelist_url" "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'chmod "\$mode" "\$temp_file"' "$PROJECT_DIR/linux/lib/common.sh"
+    run grep -n 'chmod "\$mode" "\$temp_file"' "$PROJECT_DIR/linux/lib/common-config-persistence.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'persist_openpath_health_api_config' "$PROJECT_DIR/linux/install.sh"
+    run grep -n 'persist_openpath_health_api_config' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'write_openpath_config_file "\$HEALTH_API_SECRET_CONF" "\$health_api_secret" 600' "$PROJECT_DIR/linux/lib/common.sh"
+    run grep -n 'write_openpath_config_file "\$HEALTH_API_SECRET_CONF" "\$health_api_secret" 600' "$PROJECT_DIR/linux/lib/common-config-persistence.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "linux installers and runtime reuse shared config persistence helpers" {
-    run grep -n "persist_openpath_whitelist_url" "$PROJECT_DIR/linux/install.sh"
+    run grep -n "persist_openpath_whitelist_url" "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n "persist_openpath_health_api_config" "$PROJECT_DIR/linux/install.sh"
+    run grep -n "persist_openpath_health_api_config" "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
     run grep -n "persist_openpath_whitelist_url" "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
@@ -68,7 +68,7 @@ load 'test_helper'
     run grep -n "persist_openpath_health_api_config" "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
     [ "$status" -eq 0 ]
 
-    run grep -n "persist_openpath_enrollment_state" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n "persist_openpath_enrollment_state" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 
     run grep -n 'source "\$INSTALL_DIR/lib/runtime-cli.sh"' "$PROJECT_DIR/linux/scripts/runtime/openpath-cmd.sh"
@@ -79,7 +79,16 @@ load 'test_helper'
     run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-helpers.sh"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-runtime-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
     run grep -nF 'source "$INSTALL_DIR/lib/runtime-cli-system.sh"' "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$INSTALL_DIR/lib/runtime-cli-commands.sh"' "$PROJECT_DIR/linux/lib/runtime-cli.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF 'source "$(dirname "${BASH_SOURCE[0]}")/common-connectivity.sh"' "$PROJECT_DIR/linux/lib/common.sh"
@@ -87,13 +96,22 @@ load 'test_helper'
 
     run grep -nF 'source "$(dirname "${BASH_SOURCE[0]}")/common-registration.sh"' "$PROJECT_DIR/linux/lib/common.sh"
     [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$(dirname "${BASH_SOURCE[0]}")/common-locking.sh"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$(dirname "${BASH_SOURCE[0]}")/common-config-persistence.sh"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'source "$(dirname "${BASH_SOURCE[0]}")/common-protected-domains.sh"' "$PROJECT_DIR/linux/lib/common.sh"
+    [ "$status" -eq 0 ]
 }
 
 @test "install.sh allows installer contract runs without a whitelist URL" {
-    run grep -nF 'if [ -n "$WHITELIST_URL" ]; then' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'if [ -n "$WHITELIST_URL" ]; then' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Whitelist URL no configurada todavía' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'Whitelist URL no configurada todavía' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -170,7 +188,7 @@ load 'test_helper'
     run grep -n 'openpath-browser-setup.sh' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'openpath-browser-setup.sh' "$PROJECT_DIR/linux/install.sh"
+    run grep -n 'openpath-browser-setup.sh' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -203,7 +221,7 @@ load 'test_helper'
     run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt' "$PROJECT_DIR/api/src/config.ts"
+    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt' "$PROJECT_DIR/api/src/config-loader.ts"
     [ "$status" -eq 0 ]
 
     run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/scripts/build/apt-setup.sh"
@@ -212,18 +230,18 @@ load 'test_helper'
     run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -ne 0 ]
 
-    run grep -n 'balejosg.github.io' "$PROJECT_DIR/api/src/config.ts"
+    run grep -n 'balejosg.github.io' "$PROJECT_DIR/api/src/config-loader.ts"
     [ "$status" -ne 0 ]
 }
 
 @test "protected control-plane domains no longer include legacy GitHub Pages" {
-    run grep -n 'raw.githubusercontent.com' "$PROJECT_DIR/linux/lib/common.sh"
+    run grep -n 'raw.githubusercontent.com' "$PROJECT_DIR/linux/lib/common-protected-domains.sh"
     [ "$status" -eq 0 ]
 
     run grep -n 'raw.githubusercontent.com' "$PROJECT_DIR/windows/lib/Common.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/lib/common.sh"
+    run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/lib/common-protected-domains.sh"
     [ "$status" -ne 0 ]
 
     run grep -n 'balejosg.github.io' "$PROJECT_DIR/windows/lib/Common.psm1"
@@ -455,7 +473,7 @@ EOF
 
 @test "install.sh apt dependencies match debian control Depends" {
     local control_file="$PROJECT_DIR/linux/debian-package/DEBIAN/control"
-    local install_file="$PROJECT_DIR/linux/install.sh"
+    local install_file="$PROJECT_DIR/linux/lib/install-core-steps.sh"
 
     local depends_csv
     depends_csv=$(grep -E '^Depends:' "$control_file" | sed 's/^Depends:[[:space:]]*//')
@@ -525,12 +543,12 @@ EOF
     run grep -n 'INSTALLER_SOURCE_DIR="\$SCRIPT_DIR"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-update.sh"' "$PROJECT_DIR/linux/install.sh"
+    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-update.sh"' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "install.sh stages unattended linux agent updater runtime" {
-    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-agent-update.sh"' "$PROJECT_DIR/linux/install.sh"
+    run grep -n 'cp "\$INSTALLER_SOURCE_DIR/scripts/runtime/openpath-agent-update.sh"' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 }
 

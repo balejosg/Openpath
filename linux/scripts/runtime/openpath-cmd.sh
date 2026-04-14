@@ -33,9 +33,13 @@ if ! load_libraries; then
 fi
 
 # Colores
+# shellcheck disable=SC2034 # Used by sourced runtime CLI command modules.
 RED='\033[0;31m'
+# shellcheck disable=SC2034 # Used by sourced runtime CLI command modules.
 GREEN='\033[0;32m'
+# shellcheck disable=SC2034 # Used by sourced runtime CLI command modules.
 YELLOW='\033[1;33m'
+# shellcheck disable=SC2034 # Used by sourced runtime CLI command modules.
 BLUE='\033[0;34m'
 NC='\033[0m'
 
