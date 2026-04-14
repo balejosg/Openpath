@@ -15,27 +15,31 @@ import { fileURLToPath } from 'node:url';
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = path.dirname(currentFilePath);
 
-const testFiles: readonly string[] = [
-  'tests/api.test.ts',
-  'tests/auth.test.ts',
-  'tests/drizzle.test.ts',
-  'tests/roles.test.ts',
-  'tests/blocked-domains.test.ts',
-  'tests/classrooms.test.ts',
-  'tests/push.test.ts',
-  'tests/github.test.ts',
-  'tests/security.test.ts',
-  'tests/integration.test.ts',
-  'tests/e2e.test.ts',
-  'tests/storage.test.ts',
-  'tests/token-store.test.ts',
+const testCommands: readonly (readonly [string, ...string[]])[] = [
+  ['npm', 'run', 'test'],
+  ['npm', 'run', 'test:auth'],
+  ['npm', 'run', 'test:roles'],
+  ['npm', 'run', 'test:blocked-domains'],
+  ['npm', 'run', 'test:classrooms'],
+  ['npm', 'run', 'test:push'],
+  ['npm', 'run', 'test:security'],
+  ['npm', 'run', 'test:integration'],
+  ['npm', 'run', 'test:e2e'],
+  ['npm', 'run', 'test:schedules'],
+  ['npm', 'run', 'test:setup'],
+  ['npm', 'run', 'test:machine-auth-scope'],
+  ['npm', 'run', 'test:healthcheck'],
+  ['npm', 'run', 'test:backup'],
+  ['npm', 'run', 'test:api-tokens'],
+  ['npm', 'run', 'test:server'],
+  ['npm', 'run', 'test:google-auth'],
 ];
 
 let currentIndex = 0;
 let hasFailures = false;
 
 function runNextTest(): void {
-  if (currentIndex >= testFiles.length) {
+  if (currentIndex >= testCommands.length) {
     console.log('\n' + '='.repeat(60));
     if (hasFailures) {
       console.log('❌ Some tests failed');
@@ -47,30 +51,33 @@ function runNextTest(): void {
     return;
   }
 
-  const testFile = testFiles[currentIndex];
-  if (testFile === undefined) {
-    console.error('Unexpected undefined test file');
+  const command = testCommands[currentIndex];
+  if (command === undefined) {
+    console.error('Unexpected undefined test command');
+    process.exit(1);
+    return;
+  }
+
+  const [cmd, ...args] = command;
+  if (!cmd) {
+    console.error('Unexpected empty test command');
     process.exit(1);
     return;
   }
 
   console.log('\n' + '='.repeat(60));
-  console.log(`Running: ${testFile}`);
+  console.log(`Running: ${[cmd, ...args].join(' ')}`);
   console.log('='.repeat(60) + '\n');
 
-  const child: ChildProcess = spawn(
-    'node',
-    ['--import', 'tsx', '--test', '--test-force-exit', testFile],
-    {
-      cwd: path.join(currentDirPath, '..'),
-      stdio: 'inherit',
-      env: { ...process.env, PORT: '3006' },
-    }
-  );
+  const child: ChildProcess = spawn(cmd, args, {
+    cwd: path.join(currentDirPath, '..'),
+    stdio: 'inherit',
+    env: process.env,
+  });
 
   // Timeout to kill hanging tests after 30 seconds
   const timeout = setTimeout((): void => {
-    console.log(`\n⚠️  Test ${testFile} timed out after 30s, killing...`);
+    console.log(`\n⚠️  Command ${[cmd, ...args].join(' ')} timed out after 30s, killing...`);
     child.kill('SIGKILL');
   }, 30000);
 
@@ -86,7 +93,7 @@ function runNextTest(): void {
 
   child.on('error', (err: Error): void => {
     clearTimeout(timeout);
-    console.error(`Failed to run ${testFile}:`, err);
+    console.error(`Failed to run ${[cmd, ...args].join(' ')}:`, err);
     hasFailures = true;
     currentIndex++;
     setTimeout(runNextTest, 500);
