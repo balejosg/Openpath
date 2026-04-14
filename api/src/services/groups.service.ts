@@ -8,18 +8,8 @@
 import * as groupsStorage from '../lib/groups-storage.js';
 import { withTransaction } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
-import type {
-  GroupWithCounts,
-  Rule,
-  RuleType,
-  GroupStats,
-  SystemStatus,
-  PaginatedRulesResult,
-  PaginatedGroupedRulesResult,
-  ListRulesOptions,
-  ListRulesGroupedOptions,
-} from '../lib/groups-storage.js';
-import { validateRuleValue, cleanRuleValue, sanitizeSlug } from '@openpath/shared';
+import type { GroupWithCounts, GroupStats, SystemStatus } from '../lib/groups-storage.js';
+import { sanitizeSlug } from '@openpath/shared';
 import DomainEventsService from './domain-events.service.js';
 import {
   canUserAccessGroup,
@@ -32,15 +22,24 @@ import {
   listGroupsVisibleToUser,
   listLibraryGroups,
 } from './groups-access.service.js';
+import {
+  bulkCreateRules,
+  bulkDeleteRules,
+  createRule,
+  deleteRule,
+  getRuleById,
+  getRulesByIds,
+  listRules,
+  listRulesGrouped,
+  listRulesPaginated,
+  updateRule,
+} from './groups-rules.service.js';
 import type {
-  BulkCreateRulesInput,
   CloneGroupInput,
   CreateGroupInput,
-  CreateRuleInput,
   ExportResult,
   GroupsResult,
   UpdateGroupInput,
-  UpdateRuleInput,
 } from './groups-service-shared.js';
 export type {
   BulkCreateRulesInput,
@@ -223,265 +222,6 @@ export async function cloneGroup(
 /**
  * List rules for a group.
  */
-export async function listRules(groupId: string, type?: RuleType): Promise<GroupsResult<Rule[]>> {
-  const group = await groupsStorage.getGroupById(groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  const rules = await groupsStorage.getRulesByGroup(groupId, type);
-  return { ok: true, data: rules };
-}
-
-/**
- * List rules for a group with pagination.
- */
-export async function listRulesPaginated(
-  options: ListRulesOptions
-): Promise<GroupsResult<PaginatedRulesResult>> {
-  const group = await groupsStorage.getGroupById(options.groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  const result = await groupsStorage.getRulesByGroupPaginated(options);
-  return { ok: true, data: result };
-}
-
-/**
- * List rules for a group, grouped by root domain, with pagination on groups.
- */
-export async function listRulesGrouped(
-  options: ListRulesGroupedOptions
-): Promise<GroupsResult<PaginatedGroupedRulesResult>> {
-  const group = await groupsStorage.getGroupById(options.groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  const result = await groupsStorage.getRulesByGroupGrouped(options);
-  return { ok: true, data: result };
-}
-
-/**
- * Get a rule by ID.
- *
- * Router helper for RBAC checks (keeps routers storage-agnostic).
- */
-export async function getRuleById(id: string): Promise<Rule | null> {
-  return groupsStorage.getRuleById(id);
-}
-
-/**
- * Get rules by IDs.
- *
- * Router helper for RBAC checks (keeps routers storage-agnostic).
- */
-export async function getRulesByIds(ids: string[]): Promise<Rule[]> {
-  if (ids.length === 0) return [];
-  return groupsStorage.getRulesByIds(ids);
-}
-
-/**
- * Create a rule.
- */
-export async function createRule(input: CreateRuleInput): Promise<GroupsResult<{ id: string }>> {
-  // Clean the value (strip protocol, normalize)
-  const cleanedValue = cleanRuleValue(input.value, input.type === 'blocked_path');
-
-  // Validate input
-  if (!cleanedValue) {
-    return { ok: false, error: { code: 'BAD_REQUEST', message: 'Value is required' } };
-  }
-
-  // Validate format
-  const validation = validateRuleValue(cleanedValue, input.type);
-  if (!validation.valid) {
-    return {
-      ok: false,
-      error: { code: 'BAD_REQUEST', message: validation.error ?? 'Invalid rule value format' },
-    };
-  }
-
-  // Check if group exists
-  const group = await groupsStorage.getGroupById(input.groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  const result = await withTransaction(async (tx) =>
-    groupsStorage.createRule(
-      input.groupId,
-      input.type,
-      cleanedValue,
-      input.comment ?? null,
-      'manual',
-      tx
-    )
-  );
-
-  if (!result.success) {
-    return {
-      ok: false,
-      error: { code: 'CONFLICT', message: result.error ?? 'Rule already exists' },
-    };
-  }
-
-  if (!result.id) {
-    return {
-      ok: false,
-      error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create rule' },
-    };
-  }
-
-  DomainEventsService.publishWhitelistChanged(input.groupId);
-  return { ok: true, data: { id: result.id } };
-}
-
-/**
- * Delete a rule.
- */
-export async function deleteRule(
-  id: string,
-  groupId?: string
-): Promise<GroupsResult<{ deleted: boolean }>> {
-  // Look up the rule's group before deleting (for SSE notification)
-  let ruleGroupId = groupId;
-  if (!ruleGroupId) {
-    const rule = await groupsStorage.getRuleById(id);
-    ruleGroupId = rule?.groupId;
-  }
-
-  const deleted = await withTransaction(async (tx) => groupsStorage.deleteRule(id, tx));
-
-  if (deleted && ruleGroupId) {
-    DomainEventsService.publishWhitelistChanged(ruleGroupId);
-  }
-
-  return { ok: true, data: { deleted } };
-}
-
-/**
- * Bulk delete rules.
- */
-export async function bulkDeleteRules(
-  ids: string[],
-  options?: { rules?: Rule[] }
-): Promise<GroupsResult<{ deleted: number; rules: Rule[] }>> {
-  if (ids.length === 0) {
-    return { ok: true, data: { deleted: 0, rules: [] } };
-  }
-
-  // Get the rules before deleting (for undo functionality + SSE notification)
-  const rules = options?.rules ?? (await groupsStorage.getRulesByIds(ids));
-
-  const deleted = await withTransaction(async (tx) => groupsStorage.bulkDeleteRules(ids, tx));
-
-  // Notify affected groups
-  if (deleted > 0) {
-    const affectedGroups = new Set(rules.map((r) => r.groupId));
-    for (const gid of affectedGroups) {
-      DomainEventsService.publishWhitelistChanged(gid);
-    }
-  }
-
-  return { ok: true, data: { deleted, rules } };
-}
-
-/**
- * Update a rule.
- */
-export async function updateRule(input: UpdateRuleInput): Promise<GroupsResult<Rule>> {
-  // Check if group exists
-  const group = await groupsStorage.getGroupById(input.groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  // Check if rule exists
-  const existingRule = await groupsStorage.getRuleById(input.id);
-  if (!existingRule) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Rule not found' } };
-  }
-
-  // Verify rule belongs to the group
-  if (existingRule.groupId !== input.groupId) {
-    return {
-      ok: false,
-      error: { code: 'BAD_REQUEST', message: 'Rule does not belong to this group' },
-    };
-  }
-
-  // Clean and validate the new value if provided
-  let cleanedValue = input.value;
-  const didChangeExport =
-    cleanedValue !== undefined &&
-    cleanRuleValue(cleanedValue, existingRule.type === 'blocked_path') !== existingRule.value;
-  if (cleanedValue !== undefined) {
-    cleanedValue = cleanRuleValue(cleanedValue, existingRule.type === 'blocked_path');
-    if (!cleanedValue) {
-      return { ok: false, error: { code: 'BAD_REQUEST', message: 'Value cannot be empty' } };
-    }
-    const validation = validateRuleValue(cleanedValue, existingRule.type);
-    if (!validation.valid) {
-      return {
-        ok: false,
-        error: { code: 'BAD_REQUEST', message: validation.error ?? 'Invalid rule value format' },
-      };
-    }
-  }
-
-  const updated = await withTransaction(async (tx) =>
-    groupsStorage.updateRule(
-      {
-        id: input.id,
-        value: cleanedValue,
-        comment: input.comment,
-      },
-      tx
-    )
-  );
-
-  if (!updated) {
-    return {
-      ok: false,
-      error: { code: 'CONFLICT', message: 'A rule with this value already exists' },
-    };
-  }
-
-  if (didChangeExport) {
-    DomainEventsService.publishWhitelistChanged(input.groupId);
-  }
-  return { ok: true, data: updated };
-}
-
-/**
- * Bulk create rules.
- */
-export async function bulkCreateRules(
-  input: BulkCreateRulesInput
-): Promise<GroupsResult<{ count: number }>> {
-  // Check if group exists
-  const group = await groupsStorage.getGroupById(input.groupId);
-  if (!group) {
-    return { ok: false, error: { code: 'NOT_FOUND', message: 'Group not found' } };
-  }
-
-  // Clean all values before insertion
-  const preservePath = input.type === 'blocked_path';
-  const cleanedValues = input.values.map((v) => cleanRuleValue(v, preservePath));
-
-  const count = await withTransaction(async (tx) =>
-    groupsStorage.bulkCreateRules(input.groupId, input.type, cleanedValues, 'manual', tx)
-  );
-
-  if (count > 0) {
-    DomainEventsService.publishWhitelistChanged(input.groupId);
-  }
-
-  return { ok: true, data: { count } };
-}
-
 /**
  * Get group statistics.
  */
