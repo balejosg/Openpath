@@ -6,6 +6,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 
+import {
+  extractTabHostname,
+  normalizeBlockedDomains,
+  normalizeDomainStatuses,
+  shouldEnableRequestAction,
+} from '../src/lib/popup-state.js';
+
 // =============================================================================
 // Pure Functions (copied from popup.ts for isolated testing)
 // =============================================================================
@@ -22,19 +29,6 @@ function formatErrorTypes(errors: string[]): string {
   };
 
   return errors.map((err) => errorLabels[err] ?? err).join(', ');
-}
-
-/**
- * Extract tab hostname from URL
- */
-function extractTabHostname(url: string | undefined): string {
-  if (!url) return 'Desconocido';
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return 'Página local';
-  }
 }
 
 /**
@@ -60,47 +54,6 @@ function generateToken(hostname: string, secret: string): Promise<string> {
   const data = hostname + secret;
   // Return base64-like string for testing purposes
   return Promise.resolve(Buffer.from(data).toString('base64'));
-}
-
-/**
- * Normalize background payload shape for popup rendering
- */
-function normalizeBlockedDomainsResponse(
-  response: unknown
-): Record<string, { count: number; timestamp: number; origin?: string }> {
-  const payload = response as {
-    domains?: Record<string, { errors: string[]; origin: string | null; timestamp: number }>;
-  };
-  const domains = payload.domains ?? {};
-  const normalized: Record<string, { count: number; timestamp: number; origin?: string }> = {};
-
-  Object.entries(domains).forEach(([hostname, data]) => {
-    const entry: { count: number; timestamp: number; origin?: string } = {
-      count: data.errors.length,
-      timestamp: data.timestamp,
-    };
-
-    if (data.origin !== null) {
-      entry.origin = data.origin;
-    }
-
-    normalized[hostname] = entry;
-  });
-
-  return normalized;
-}
-
-function normalizeDomainStatusesResponse(response: unknown): Record<string, { state: string }> {
-  const payload = response as { statuses?: Record<string, { state: string }> };
-  return payload.statuses ?? {};
-}
-
-function shouldEnableRequestAction(input: {
-  hasDomains: boolean;
-  nativeAvailable: boolean;
-  requestConfigured: boolean;
-}): boolean {
-  return input.hasDomains && input.nativeAvailable && input.requestConfigured;
 }
 
 function buildAutoRequestPayload(input: {
@@ -467,7 +420,7 @@ void describe('Popup/Background Contract', () => {
       },
     };
 
-    const result = normalizeBlockedDomainsResponse(response);
+    const result = normalizeBlockedDomains(response);
     const domain = result['cdn.example.com'] as {
       count: number;
       timestamp: number;
@@ -488,7 +441,7 @@ void describe('Popup/Background Contract', () => {
       },
     };
 
-    const result = normalizeBlockedDomainsResponse(response);
+    const result = normalizeBlockedDomains(response);
     const domain = result['api.example.com'] as {
       count: number;
       timestamp: number;
@@ -505,7 +458,7 @@ void describe('Popup/Background Contract', () => {
 
 void describe('Auto-Allow UX Contract', () => {
   void test('should normalize domain statuses payload from background', () => {
-    const result = normalizeDomainStatusesResponse({
+    const result = normalizeDomainStatuses({
       statuses: {
         'cdn.example.com': { state: 'pending' },
         'api.example.com': { state: 'autoApproved' },

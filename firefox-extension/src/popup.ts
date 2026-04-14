@@ -12,21 +12,14 @@ import {
   loadRequestConfig,
   type RequestConfig,
 } from './lib/config-storage.js';
-
-interface BlockedDomainInfo {
-  count?: number;
-  errors?: string[];
-  timestamp: number;
-  origin?: string | null;
-}
-
-interface SerializedBlockedDomain {
-  errors: string[];
-  origin: string | null;
-  timestamp: number;
-}
-
-type BlockedDomainsData = Record<string, BlockedDomainInfo>;
+import {
+  extractTabHostname,
+  normalizeBlockedDomains,
+  normalizeDomainStatuses,
+  shouldEnableRequestAction,
+  statusMeta,
+  type BlockedDomainsData,
+} from './lib/popup-state.js';
 
 interface VerifyResult {
   domain: string;
@@ -51,14 +44,6 @@ interface SubmitRequestResult {
   groupId: string;
   source: string;
   error?: string;
-}
-
-interface BlockedDomainsResponse {
-  domains?: Record<string, SerializedBlockedDomain>;
-}
-
-interface DomainStatusesResponse {
-  statuses?: Record<string, DomainStatus>;
 }
 
 /**
@@ -117,74 +102,17 @@ function showToast(message: string, duration = 3000): void {
   }, duration);
 }
 
-/**
- * Extract hostname from URL
- * @param url Full URL
- * @returns Hostname
- */
-function extractTabHostname(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return 'desconocido';
-  }
-}
-
-function normalizeBlockedDomains(response: unknown): BlockedDomainsData {
-  const payload = response as BlockedDomainsResponse;
-  const serializedDomains = payload.domains ?? {};
-  const normalized: BlockedDomainsData = {};
-
-  Object.entries(serializedDomains).forEach(([hostname, data]) => {
-    const normalizedEntry: BlockedDomainInfo = {
-      count: data.errors.length,
-      timestamp: data.timestamp,
-    };
-
-    if (data.origin !== null) {
-      normalizedEntry.origin = data.origin;
-    }
-
-    normalized[hostname] = normalizedEntry;
-  });
-
-  return normalized;
-}
-
-function normalizeDomainStatuses(response: unknown): Record<string, DomainStatus> {
-  const payload = response as DomainStatusesResponse;
-  return payload.statuses ?? {};
-}
-
 function isRequestConfigured(): boolean {
   return hasValidRequestConfig(CONFIG);
 }
 
-function statusMeta(status?: DomainStatus): {
-  label: string;
-  className: string;
-  retryable: boolean;
-} {
-  switch (status?.state) {
-    case 'pending':
-      return { label: 'Pendiente', className: 'status-pending', retryable: false };
-    case 'autoApproved':
-      return { label: 'Auto-aprobado', className: 'status-approved', retryable: false };
-    case 'duplicate':
-      return { label: 'Duplicado', className: 'status-duplicate', retryable: false };
-    case 'localUpdateError':
-      return { label: 'Error update local', className: 'status-update-error', retryable: true };
-    case 'apiError':
-      return { label: 'Error API', className: 'status-api-error', retryable: false };
-    default:
-      return { label: 'Detectado', className: 'status-detected', retryable: false };
-  }
-}
-
 function refreshRequestButtonState(): void {
   const hasDomains = Object.keys(blockedDomainsData).length > 0;
-  const canRequest = hasDomains && isNativeAvailable && isRequestConfigured();
+  const canRequest = shouldEnableRequestAction({
+    hasDomains,
+    nativeAvailable: isNativeAvailable,
+    requestConfigured: isRequestConfigured(),
+  });
 
   if (canRequest) {
     btnRequest.classList.remove('hidden');
