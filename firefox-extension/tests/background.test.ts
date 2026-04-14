@@ -6,6 +6,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { mockBrowser, resetMockState, getBadgeForTab } from './mocks/browser.js';
+import { createBlockedMonitorState } from '../src/lib/blocked-monitor-state.js';
 import {
   buildBlockedScreenRedirectUrl,
   buildPathRulePatterns,
@@ -150,105 +151,19 @@ function isIgnoredError(error: string): boolean {
   return IGNORED_ERRORS.includes(error);
 }
 
-// =============================================================================
-// Blocked Domains Management (with mock browser)
-// =============================================================================
-
-interface BlockedDomainData {
-  errors: Set<string>;
-  origin: string | null;
-  timestamp: number;
-}
-
-type BlockedDomainsMap = Record<number, Map<string, BlockedDomainData>>;
-
 // Create a fresh state for each test
-function createBlockedDomainsState(): {
-  blockedDomains: BlockedDomainsMap;
-  ensureTabStorage: (tabId: number) => void;
-  addBlockedDomain: (tabId: number, hostname: string, error: string, originUrl?: string) => void;
-  clearBlockedDomains: (tabId: number) => void;
-  getBlockedDomainsForTab: (
-    tabId: number
-  ) => Record<string, { errors: string[]; origin: string | null; timestamp: number }>;
-  updateBadge: (tabId: number) => void;
-} {
-  const blockedDomains: BlockedDomainsMap = {};
-
-  function ensureTabStorage(tabId: number): void {
-    blockedDomains[tabId] ??= new Map();
-  }
-
-  function updateBadge(tabId: number): void {
-    const count = blockedDomains[tabId] ? blockedDomains[tabId].size : 0;
-
-    void mockBrowser.browserAction.setBadgeText({
-      text: count > 0 ? count.toString() : '',
-      tabId: tabId,
-    });
-
-    void mockBrowser.browserAction.setBadgeBackgroundColor({
-      color: '#FF0000',
-      tabId: tabId,
-    });
-  }
-
-  function addBlockedDomain(
-    tabId: number,
-    hostname: string,
-    error: string,
-    originUrl?: string
-  ): void {
-    ensureTabStorage(tabId);
-
-    const originHostname = originUrl ? extractHostname(originUrl) : null;
-
-    if (!blockedDomains[tabId]?.has(hostname)) {
-      blockedDomains[tabId]?.set(hostname, {
-        errors: new Set(),
-        origin: originHostname,
-        timestamp: Date.now(),
-      });
+function createBlockedDomainsState(): ReturnType<typeof createBlockedMonitorState> {
+  return createBlockedMonitorState(
+    {
+      setBadgeText: (options): Promise<void> => mockBrowser.browserAction.setBadgeText(options),
+      setBadgeBackgroundColor: (options): Promise<void> =>
+        mockBrowser.browserAction.setBadgeBackgroundColor(options),
+    },
+    {
+      extractHostname,
+      now: () => Date.now(),
     }
-    blockedDomains[tabId]?.get(hostname)?.errors.add(error);
-
-    updateBadge(tabId);
-  }
-
-  function clearBlockedDomains(tabId: number): void {
-    if (blockedDomains[tabId]) {
-      blockedDomains[tabId].clear();
-    }
-    updateBadge(tabId);
-  }
-
-  function getBlockedDomainsForTab(
-    tabId: number
-  ): Record<string, { errors: string[]; origin: string | null; timestamp: number }> {
-    const result: Record<string, { errors: string[]; origin: string | null; timestamp: number }> =
-      {};
-
-    if (blockedDomains[tabId]) {
-      blockedDomains[tabId].forEach((data, hostname) => {
-        result[hostname] = {
-          errors: Array.from(data.errors),
-          origin: data.origin,
-          timestamp: data.timestamp,
-        };
-      });
-    }
-
-    return result;
-  }
-
-  return {
-    blockedDomains,
-    ensureTabStorage,
-    addBlockedDomain,
-    clearBlockedDomains,
-    getBlockedDomainsForTab,
-    updateBadge,
-  };
+  );
 }
 
 // =============================================================================

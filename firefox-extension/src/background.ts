@@ -16,6 +16,7 @@ import { Browser, WebRequest, Runtime, WebNavigation } from 'webextension-polyfi
 import { logger, getErrorMessage } from './lib/logger.js';
 import { getRequestApiEndpoints, loadRequestConfig } from './lib/config-storage.js';
 import { buildBlockedDomainSubmitBody } from './lib/blocked-request.js';
+import { createBlockedMonitorState } from './lib/blocked-monitor-state.js';
 import {
   BLOCKED_SCREEN_PATH,
   MAX_BLOCKED_PATH_RULES,
@@ -37,12 +38,6 @@ import {
 } from './lib/blocked-screen-contract.js';
 
 declare const browser: Browser;
-
-interface BlockedDomainData {
-  errors: Set<string>;
-  origin: string | null;
-  timestamp: number;
-}
 
 interface NativeResponse {
   success: boolean;
@@ -105,13 +100,6 @@ interface SubmitBlockedDomainInput {
   error?: string;
 }
 
-interface DomainStatusPayload extends DomainStatus {
-  hostname: string;
-}
-
-type BlockedDomainsMap = Record<number, Map<string, BlockedDomainData>>;
-type DomainStatusesMap = Record<number, Map<string, DomainStatus>>;
-
 interface BlockedScreenContext {
   tabId: number;
   hostname: string;
@@ -119,10 +107,17 @@ interface BlockedScreenContext {
   origin: string | null;
 }
 
-// Almacenamiento en memoria: { tabId: Map<hostname, Set<errorTypes>> }
-const blockedDomains: BlockedDomainsMap = {};
-const domainStatuses: DomainStatusesMap = {};
 const inFlightAutoRequests = new Set<string>();
+const blockedMonitorState = createBlockedMonitorState(
+  {
+    setBadgeText: (options) => browser.action.setBadgeText(options),
+    setBadgeBackgroundColor: (options) => browser.action.setBadgeBackgroundColor(options),
+  },
+  {
+    extractHostname,
+    inFlightAutoRequests,
+  }
+);
 
 // Estado de Native Messaging
 
@@ -283,55 +278,16 @@ async function forceBlockedPathRulesRefresh(): Promise<{ success: boolean; error
   }
 }
 
-/**
- * Inicializa el almacenamiento para una pestaña si no existe
- * @param tabId - ID de la pestaña
- */
-function ensureTabStorage(tabId: number): void {
-  blockedDomains[tabId] ??= new Map();
-}
-
-function ensureStatusStorage(tabId: number): void {
-  domainStatuses[tabId] ??= new Map();
-}
-
-function setDomainStatus(tabId: number, hostname: string, status: DomainStatus): void {
-  ensureStatusStorage(tabId);
-  domainStatuses[tabId]?.set(hostname, status);
-}
-
-function getDomainStatusesForTab(tabId: number): Record<string, DomainStatusPayload> {
-  const result: Record<string, DomainStatusPayload> = {};
-  const tabStatuses = domainStatuses[tabId];
-  if (!tabStatuses) {
-    return result;
-  }
-
-  tabStatuses.forEach((status, hostname) => {
-    result[hostname] = {
-      hostname,
-      ...status,
-    };
-  });
-
-  return result;
-}
-
-function clearTabRuntimeState(tabId: number): void {
-  if (blockedDomains[tabId]) {
-    blockedDomains[tabId].clear();
-  }
-  if (domainStatuses[tabId]) {
-    domainStatuses[tabId].clear();
-  }
-  const prefix = `${tabId.toString()}:`;
-  Array.from(inFlightAutoRequests).forEach((key) => {
-    if (key.startsWith(prefix)) {
-      inFlightAutoRequests.delete(key);
-    }
-  });
-  updateBadge(tabId);
-}
+const {
+  addBlockedDomain,
+  clearBlockedDomains,
+  clearTabRuntimeState,
+  disposeTab,
+  domainStatuses,
+  getBlockedDomainsForTab,
+  getDomainStatusesForTab,
+  setDomainStatus,
+} = blockedMonitorState;
 
 function isAutoAllowRequestType(type?: string): boolean {
   if (!type) return false;
@@ -366,94 +322,6 @@ async function fetchWithFallback(
   }
 
   throw lastError ?? new Error('No API endpoint available');
-}
-
-/**
- * Añade un dominio bloqueado al registro
- * @param tabId - ID de la pestaña
- * @param hostname - Dominio bloqueado
- * @param error - Tipo de error
- * @param originUrl - URL de la página que cargaba el recurso
- */
-function addBlockedDomain(
-  tabId: number,
-  hostname: string,
-  error: string,
-  originUrl?: string
-): void {
-  ensureTabStorage(tabId);
-
-  const originHostname = originUrl ? extractHostname(originUrl) : null;
-
-  if (!blockedDomains[tabId]?.has(hostname)) {
-    blockedDomains[tabId]?.set(hostname, {
-      errors: new Set(),
-      origin: originHostname,
-      timestamp: Date.now(),
-    });
-
-    setDomainStatus(tabId, hostname, {
-      state: 'detected',
-      updatedAt: Date.now(),
-      message: 'Bloqueo detectado',
-    });
-  }
-  blockedDomains[tabId]?.get(hostname)?.errors.add(error);
-
-  updateBadge(tabId);
-}
-
-/**
- * Actualiza el badge (contador) del icono de la extensión
- * @param tabId - ID de la pestaña
- */
-function updateBadge(tabId: number): void {
-  const count = blockedDomains[tabId] ? blockedDomains[tabId].size : 0;
-
-  void browser.action.setBadgeText({
-    text: count > 0 ? count.toString() : '',
-    tabId: tabId,
-  });
-
-  void browser.action.setBadgeBackgroundColor({
-    color: '#FF0000',
-    tabId: tabId,
-  });
-}
-
-/**
- * Limpia los dominios bloqueados para una pestaña
- * @param tabId - ID de la pestaña
- */
-function clearBlockedDomains(tabId: number): void {
-  clearTabRuntimeState(tabId);
-}
-
-interface SerializedBlockedDomain {
-  errors: string[];
-  origin: string | null;
-  timestamp: number;
-}
-
-/**
- * Obtiene los dominios bloqueados para una pestaña
- * @param tabId - ID de la pestaña
- * @returns Objeto con dominios, errores y origen
- */
-function getBlockedDomainsForTab(tabId: number): Record<string, SerializedBlockedDomain> {
-  const result: Record<string, SerializedBlockedDomain> = {};
-
-  if (blockedDomains[tabId]) {
-    blockedDomains[tabId].forEach((data, hostname) => {
-      result[hostname] = {
-        errors: Array.from(data.errors),
-        origin: data.origin,
-        timestamp: data.timestamp,
-      };
-    });
-  }
-
-  return result;
 }
 
 // ============================================================================
@@ -957,9 +825,7 @@ browser.webNavigation.onBeforeNavigate.addListener(
  * Elimina los datos de la pestaña para evitar fugas de memoria
  */
 browser.tabs.onRemoved.addListener((tabId: number) => {
-  clearTabRuntimeState(tabId);
-  Reflect.deleteProperty(blockedDomains, tabId);
-  Reflect.deleteProperty(domainStatuses, tabId);
+  disposeTab(tabId);
   logger.debug(`[Monitor] Tab ${tabId.toString()} cerrada, datos eliminados`);
 });
 
