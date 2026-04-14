@@ -17,6 +17,20 @@ import { logger, getErrorMessage } from './lib/logger.js';
 import { getRequestApiEndpoints, loadRequestConfig } from './lib/config-storage.js';
 import { buildBlockedDomainSubmitBody } from './lib/blocked-request.js';
 import {
+  BLOCKED_SCREEN_PATH,
+  MAX_BLOCKED_PATH_RULES,
+  PATH_BLOCKING_FILTER_TYPES,
+  ROUTE_BLOCK_REASON,
+  buildBlockedScreenRedirectUrl,
+  compileBlockedPathRules,
+  evaluatePathBlocking,
+  extractHostname,
+  getBlockedPathRulesVersion,
+  isExtensionUrl,
+  type BlockedPathRulesState,
+  type NativeBlockedPathsResponse,
+} from './lib/path-blocking.js';
+import {
   SUBMIT_BLOCKED_DOMAIN_REQUEST_ACTION,
   isSubmitBlockedDomainRequestMessage,
   shouldClearBlockedMonitorStateOnNavigate,
@@ -59,26 +73,6 @@ interface VerifyResponse {
   success: boolean;
   results: VerifyResult[];
   error?: string;
-}
-
-interface NativeBlockedPathsResponse {
-  success: boolean;
-  paths?: string[];
-  hash?: string;
-  mtime?: number;
-  source?: string;
-  error?: string;
-}
-
-interface CompiledBlockedPathRule {
-  rawRule: string;
-  compiledPatterns: string[];
-  regexes: RegExp[];
-}
-
-interface BlockedPathRulesState {
-  version: string;
-  rules: CompiledBlockedPathRule[];
 }
 
 interface AutoAllowApiResponse {
@@ -152,20 +146,11 @@ const IGNORED_ERRORS = [
 ];
 
 const AUTO_ALLOW_REQUEST_TYPES = new Set(['xmlhttprequest', 'fetch']);
-const BLOCKED_SCREEN_PATH = 'blocked/blocked.html';
 const BLOCKED_SCREEN_ERRORS = new Set([
   'NS_ERROR_UNKNOWN_HOST',
   'NS_ERROR_PROXY_CONNECTION_REFUSED',
 ]);
-const PATH_BLOCKING_FILTER_TYPES: WebRequest.ResourceType[] = [
-  'main_frame',
-  'sub_frame',
-  'xmlhttprequest',
-];
-const PATH_BLOCKING_REQUEST_TYPES = new Set<string>([...PATH_BLOCKING_FILTER_TYPES, 'fetch']);
 const BLOCKED_PATH_REFRESH_INTERVAL_MS = 60000;
-const ROUTE_BLOCK_REASON = 'BLOCKED_PATH_POLICY';
-const MAX_BLOCKED_PATH_RULES = 500;
 const BLOCKED_PATH_INITIAL_RETRY_DELAY_MS = 2000;
 const BLOCKED_PATH_MAX_RETRIES = 3;
 
@@ -174,10 +159,6 @@ let blockedPathRulesState: BlockedPathRulesState = {
   rules: [],
 };
 let blockedPathRefreshTimer: ReturnType<typeof setInterval> | null = null;
-
-function isExtensionUrl(url: string): boolean {
-  return url.startsWith('moz-extension://') || url.startsWith('chrome-extension://');
-}
 
 function shouldDisplayBlockedScreen(details: WebRequest.OnErrorOccurredDetailsType): boolean {
   if (details.type !== 'main_frame') {
@@ -197,7 +178,8 @@ function shouldDisplayBlockedScreen(details: WebRequest.OnErrorOccurredDetailsTy
 
 async function redirectToBlockedScreen(context: BlockedScreenContext): Promise<void> {
   try {
-    const redirectUrl = buildBlockedScreenUrl({
+    const redirectUrl = buildBlockedScreenRedirectUrl({
+      extensionOrigin: browser.runtime.getURL('/'),
       hostname: context.hostname,
       error: context.error,
       origin: context.origin,
@@ -210,218 +192,6 @@ async function redirectToBlockedScreen(context: BlockedScreenContext): Promise<v
       error: getErrorMessage(error),
     });
   }
-}
-
-function buildBlockedScreenUrl(payload: {
-  hostname: string;
-  error: string;
-  origin: string | null;
-}): string {
-  const blockedPageUrl = browser.runtime.getURL(BLOCKED_SCREEN_PATH);
-  const redirectUrl = new URL(blockedPageUrl);
-  redirectUrl.searchParams.set('domain', payload.hostname);
-  redirectUrl.searchParams.set('error', payload.error);
-  if (payload.origin) {
-    redirectUrl.searchParams.set('origin', payload.origin);
-  }
-  return redirectUrl.toString();
-}
-
-/**
- * Extrae el hostname de una URL
- * @param url - URL completa
- * @returns Hostname o null si inválido
- */
-function extractHostname(url: string): string | null {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return null;
-  }
-}
-
-function buildPathRulePatterns(rawRule: string): string[] {
-  const raw = rawRule.trim().toLowerCase();
-  if (raw.length === 0) {
-    return [];
-  }
-
-  let clean = raw;
-  for (const prefix of ['http://', 'https://', '*://']) {
-    if (clean.startsWith(prefix)) {
-      clean = clean.slice(prefix.length);
-      break;
-    }
-  }
-
-  if (!clean.includes('/') && !clean.includes('.') && !clean.includes('*')) {
-    clean = `*${clean}*`;
-  } else if (!clean.endsWith('*')) {
-    clean = `${clean}*`;
-  }
-
-  if (clean.startsWith('*.')) {
-    const base = clean.slice(2);
-    return [`*://${clean}`, `*://${base}`];
-  }
-
-  if (clean.startsWith('*/')) {
-    return [`*://*${clean.slice(1)}`];
-  }
-
-  if (clean.includes('.') && clean.includes('/')) {
-    return [`*://*.${clean}`, `*://${clean}`];
-  }
-
-  return [`*://${clean}`];
-}
-
-function escapeRegexChar(value: string): string {
-  return value.replace(/[\\^$+?.()|[\]{}]/g, '\\$&');
-}
-
-function globPatternToRegex(globPattern: string): RegExp {
-  let regexSource = '^';
-  const lastIndex = globPattern.length - 1;
-
-  for (let i = 0; i < globPattern.length; i += 1) {
-    if (globPattern.slice(i, i + 4) === '*://') {
-      regexSource += '[a-z][a-z0-9+.-]*://';
-      i += 3;
-      continue;
-    }
-
-    const char = globPattern[i] ?? '';
-    if (char === '*') {
-      // Use non-greedy for trailing glob, segment-limited for mid-path
-      regexSource += i === lastIndex ? '.*?' : '[^?#]*';
-    } else {
-      regexSource += escapeRegexChar(char);
-    }
-  }
-
-  regexSource += '$';
-  return new RegExp(regexSource, 'i');
-}
-
-function compileBlockedPathRules(paths: string[]): CompiledBlockedPathRule[] {
-  const compiled: CompiledBlockedPathRule[] = [];
-  const seenPatterns = new Set<string>();
-  const capped = paths.slice(0, MAX_BLOCKED_PATH_RULES);
-
-  for (const rawPath of capped) {
-    const patterns = buildPathRulePatterns(rawPath).filter((pattern) => {
-      if (seenPatterns.has(pattern)) {
-        return false;
-      }
-      seenPatterns.add(pattern);
-      return true;
-    });
-
-    if (patterns.length === 0) {
-      continue;
-    }
-
-    compiled.push({
-      rawRule: rawPath,
-      compiledPatterns: patterns,
-      regexes: patterns.map((pattern) => globPatternToRegex(pattern)),
-    });
-  }
-
-  if (paths.length > MAX_BLOCKED_PATH_RULES) {
-    logger.warn('[Monitor] Reglas de ruta truncadas', {
-      provided: paths.length,
-      capped: MAX_BLOCKED_PATH_RULES,
-    });
-  }
-
-  return compiled;
-}
-
-function getBlockedPathRulesVersion(payload: NativeBlockedPathsResponse): string {
-  if (typeof payload.hash === 'string' && payload.hash.length > 0) {
-    return payload.hash;
-  }
-  if (typeof payload.mtime === 'number') {
-    return payload.mtime.toString();
-  }
-
-  const serialized = Array.isArray(payload.paths) ? payload.paths.join('\n') : '';
-  return serialized;
-}
-
-function shouldEnforcePathBlocking(type?: string): boolean {
-  if (!type) {
-    return false;
-  }
-  return PATH_BLOCKING_REQUEST_TYPES.has(type);
-}
-
-function findMatchingBlockedPathRule(
-  requestUrl: string,
-  rules: CompiledBlockedPathRule[] = blockedPathRulesState.rules
-): CompiledBlockedPathRule | null {
-  const alternateUrls = [requestUrl];
-  try {
-    const parsed = new URL(requestUrl);
-    if (parsed.port) {
-      parsed.port = '';
-      alternateUrls.push(parsed.toString());
-    }
-  } catch {
-    // Ignore malformed URLs; original matching will handle failure cases.
-  }
-
-  for (const rule of rules) {
-    if (
-      rule.regexes.some((regex) => alternateUrls.some((candidateUrl) => regex.test(candidateUrl)))
-    ) {
-      return rule;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Evalúa si una petición debe ser bloqueada por reglas de ruta.
- * Extraída como función pura para facilitar testing.
- */
-function evaluatePathBlocking(
-  details: { type: string; url: string; originUrl?: string; documentUrl?: string },
-  rules: CompiledBlockedPathRule[] = blockedPathRulesState.rules
-): { cancel?: boolean; redirectUrl?: string; reason?: string } | null {
-  if (!shouldEnforcePathBlocking(details.type)) {
-    return null;
-  }
-
-  if (isExtensionUrl(details.url)) {
-    return null;
-  }
-
-  const matchedRule = findMatchingBlockedPathRule(details.url, rules);
-  if (!matchedRule) {
-    return null;
-  }
-
-  const hostname = extractHostname(details.url) ?? 'dominio desconocido';
-  const origin = extractHostname(details.originUrl ?? details.documentUrl ?? '');
-  const reason = `${ROUTE_BLOCK_REASON}:${matchedRule.rawRule}`;
-
-  if (details.type === 'main_frame') {
-    return {
-      redirectUrl: buildBlockedScreenUrl({
-        hostname,
-        error: reason,
-        origin,
-      }),
-      reason,
-    };
-  }
-
-  return { cancel: true, reason };
 }
 
 async function refreshBlockedPathRules(force = false): Promise<boolean> {
@@ -444,7 +214,12 @@ async function refreshBlockedPathRules(force = false): Promise<boolean> {
     const paths = Array.isArray(response.paths) ? response.paths : [];
     blockedPathRulesState = {
       version,
-      rules: compileBlockedPathRules(paths),
+      rules: compileBlockedPathRules(paths, {
+        maxRules: MAX_BLOCKED_PATH_RULES,
+        onTruncated: ({ provided, capped }) => {
+          logger.warn('[Monitor] Reglas de ruta truncadas', { provided, capped });
+        },
+      }),
     };
 
     logger.info('[Monitor] Reglas de rutas actualizadas', {
@@ -1080,7 +855,9 @@ async function retryLocalUpdate(tabId: number, hostname: string): Promise<{ succ
 
 browser.webRequest.onBeforeRequest.addListener(
   (details: WebRequest.OnBeforeRequestDetailsType) => {
-    const result = evaluatePathBlocking(details);
+    const result = evaluatePathBlocking(details, blockedPathRulesState.rules, {
+      extensionOrigin: browser.runtime.getURL('/'),
+    });
     if (!result) {
       return;
     }
@@ -1097,7 +874,7 @@ browser.webRequest.onBeforeRequest.addListener(
 
     return { cancel: true };
   },
-  { urls: ['<all_urls>'], types: PATH_BLOCKING_FILTER_TYPES },
+  { urls: ['<all_urls>'], types: [...PATH_BLOCKING_FILTER_TYPES] as WebRequest.ResourceType[] },
   ['blocking']
 );
 
@@ -1239,7 +1016,11 @@ browser.runtime.onMessage.addListener(async (message: unknown, _sender: Runtime.
       const targetType = (msg as { type?: string }).type ?? '';
       return {
         success: true,
-        outcome: evaluatePathBlocking({ type: targetType, url: targetUrl }),
+        outcome: evaluatePathBlocking(
+          { type: targetType, url: targetUrl },
+          blockedPathRulesState.rules,
+          { extensionOrigin: browser.runtime.getURL('/') }
+        ),
       };
     }
 

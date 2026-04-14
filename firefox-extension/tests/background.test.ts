@@ -6,6 +6,14 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { mockBrowser, resetMockState, getBadgeForTab } from './mocks/browser.js';
+import {
+  buildBlockedScreenRedirectUrl,
+  buildPathRulePatterns,
+  compileBlockedPathRules,
+  evaluatePathBlocking,
+  extractHostname,
+  findMatchingBlockedPathRule,
+} from '../src/lib/path-blocking.js';
 
 // =============================================================================
 // Pure Functions (copied from background.ts for isolated testing)
@@ -24,27 +32,11 @@ const BLOCKED_SCREEN_ERRORS = new Set([
   'NS_ERROR_UNKNOWN_HOST',
   'NS_ERROR_PROXY_CONNECTION_REFUSED',
 ]);
-const BLOCKED_SCREEN_PATH = 'blocked/blocked.html';
-const ROUTE_BLOCK_REASON = 'BLOCKED_PATH_POLICY';
-const PATH_BLOCKING_FILTER_TYPES = ['main_frame', 'sub_frame', 'xmlhttprequest', 'fetch'] as const;
-const PATH_BLOCKING_REQUEST_TYPES = new Set(PATH_BLOCKING_FILTER_TYPES);
 
 interface MockOnErrorOccurredDetails {
   type: string;
   error: string;
   url: string;
-}
-
-interface MockOnBeforeRequestDetails {
-  type: string;
-  url: string;
-  originUrl?: string;
-}
-
-interface CompiledBlockedPathRule {
-  rawRule: string;
-  compiledPatterns: string[];
-  regexes: RegExp[];
 }
 
 type LocalDomainStatusState =
@@ -108,189 +100,6 @@ function shouldDisplayBlockedScreen(details: MockOnErrorOccurredDetails): boolea
   return true;
 }
 
-function buildBlockedScreenRedirectUrl(payload: {
-  extensionOrigin: string;
-  hostname: string;
-  error: string;
-  origin: string | null;
-}): string {
-  const redirectUrl = new URL(BLOCKED_SCREEN_PATH, payload.extensionOrigin);
-  redirectUrl.searchParams.set('domain', payload.hostname);
-  redirectUrl.searchParams.set('error', payload.error);
-  if (payload.origin) {
-    redirectUrl.searchParams.set('origin', payload.origin);
-  }
-
-  return redirectUrl.toString();
-}
-
-function buildPathRulePatterns(rawRule: string): string[] {
-  const raw = rawRule.trim().toLowerCase();
-  if (raw.length === 0) {
-    return [];
-  }
-
-  let clean = raw;
-  for (const prefix of ['http://', 'https://', '*://']) {
-    if (clean.startsWith(prefix)) {
-      clean = clean.slice(prefix.length);
-      break;
-    }
-  }
-
-  if (!clean.includes('/') && !clean.includes('.') && !clean.includes('*')) {
-    clean = `*${clean}*`;
-  } else if (!clean.endsWith('*')) {
-    clean = `${clean}*`;
-  }
-
-  if (clean.startsWith('*.')) {
-    const base = clean.slice(2);
-    return [`*://${clean}`, `*://${base}`];
-  }
-
-  if (clean.startsWith('*/')) {
-    return [`*://*${clean.slice(1)}`];
-  }
-
-  if (clean.includes('.') && clean.includes('/')) {
-    return [`*://*.${clean}`, `*://${clean}`];
-  }
-
-  return [`*://${clean}`];
-}
-
-function escapeRegexChar(value: string): string {
-  return value.replace(/[\\^$+?.()|[\]{}]/g, '\\$&');
-}
-
-function globPatternToRegex(globPattern: string): RegExp {
-  let regexSource = '^';
-  const lastIndex = globPattern.length - 1;
-
-  for (let i = 0; i < globPattern.length; i += 1) {
-    if (globPattern.slice(i, i + 4) === '*://') {
-      regexSource += '[a-z][a-z0-9+.-]*://';
-      i += 3;
-      continue;
-    }
-
-    const char = globPattern[i] ?? '';
-    if (char === '*') {
-      // Use non-greedy for trailing glob, segment-limited for mid-path
-      regexSource += i === lastIndex ? '.*?' : '[^?#]*';
-    } else {
-      regexSource += escapeRegexChar(char);
-    }
-  }
-
-  regexSource += '$';
-  return new RegExp(regexSource, 'i');
-}
-
-function compileBlockedPathRules(paths: string[]): CompiledBlockedPathRule[] {
-  const compiled: CompiledBlockedPathRule[] = [];
-  const seenPatterns = new Set<string>();
-
-  for (const rawPath of paths) {
-    const patterns = buildPathRulePatterns(rawPath).filter((pattern) => {
-      if (seenPatterns.has(pattern)) {
-        return false;
-      }
-      seenPatterns.add(pattern);
-      return true;
-    });
-
-    if (patterns.length === 0) {
-      continue;
-    }
-
-    compiled.push({
-      rawRule: rawPath,
-      compiledPatterns: patterns,
-      regexes: patterns.map((pattern) => globPatternToRegex(pattern)),
-    });
-  }
-
-  return compiled;
-}
-
-function shouldEnforcePathBlocking(type?: string): boolean {
-  if (!type) {
-    return false;
-  }
-  return PATH_BLOCKING_REQUEST_TYPES.has(type as (typeof PATH_BLOCKING_FILTER_TYPES)[number]);
-}
-
-function findMatchingBlockedPathRule(
-  requestUrl: string,
-  rules: CompiledBlockedPathRule[]
-): CompiledBlockedPathRule | null {
-  const alternateUrls = [requestUrl];
-  try {
-    const parsed = new URL(requestUrl);
-    if (parsed.port) {
-      parsed.port = '';
-      alternateUrls.push(parsed.toString());
-    }
-  } catch {
-    // Ignore malformed URLs in tests; original request URL is still evaluated.
-  }
-
-  for (const rule of rules) {
-    if (
-      rule.regexes.some((regex) => alternateUrls.some((candidateUrl) => regex.test(candidateUrl)))
-    ) {
-      return rule;
-    }
-  }
-  return null;
-}
-
-/**
- * Evaluates whether a request should be blocked by path rules.
- * Mirrors the production evaluatePathBlocking function.
- */
-function evaluatePathBlocking(
-  details: MockOnBeforeRequestDetails,
-  rules: CompiledBlockedPathRule[]
-): {
-  cancel?: boolean;
-  redirectUrl?: string;
-  reason?: string;
-} | null {
-  if (!shouldEnforcePathBlocking(details.type)) {
-    return null;
-  }
-
-  if (isExtensionUrl(details.url)) {
-    return null;
-  }
-
-  const matchedRule = findMatchingBlockedPathRule(details.url, rules);
-  if (!matchedRule) {
-    return null;
-  }
-
-  const hostname = extractHostname(details.url) ?? 'dominio desconocido';
-  const origin = extractHostname(details.originUrl ?? '');
-  const reason = `${ROUTE_BLOCK_REASON}:${matchedRule.rawRule}`;
-
-  if (details.type === 'main_frame') {
-    return {
-      redirectUrl: buildBlockedScreenRedirectUrl({
-        extensionOrigin: 'moz-extension://unit-test-id/',
-        hostname,
-        error: reason,
-        origin,
-      }),
-      reason,
-    };
-  }
-
-  return { cancel: true, reason };
-}
-
 async function handleForcedBlockedPathRefresh(
   refreshFn: (force: boolean) => Promise<boolean>
 ): Promise<{ success: boolean; error?: string }> {
@@ -325,18 +134,6 @@ function resolveAutoStatus(payload: {
   }
 
   return 'autoApproved';
-}
-
-/**
- * Extract hostname from URL
- */
-function extractHostname(url: string): string | null {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -699,7 +496,8 @@ void describe('Path Blocking', () => {
         url: 'https://example.com/private/data',
         originUrl: 'https://portal.school/dashboard',
       },
-      rules
+      rules,
+      { extensionOrigin: 'moz-extension://unit-test-id/' }
     );
 
     assert.ok(outcome !== null);
@@ -715,7 +513,8 @@ void describe('Path Blocking', () => {
         type: 'xmlhttprequest',
         url: 'https://example.com/private/api',
       },
-      rules
+      rules,
+      { extensionOrigin: 'moz-extension://unit-test-id/' }
     );
 
     assert.deepStrictEqual(outcome, {
@@ -731,7 +530,8 @@ void describe('Path Blocking', () => {
         type: 'image',
         url: 'https://example.com/private/banner.png',
       },
-      rules
+      rules,
+      { extensionOrigin: 'moz-extension://unit-test-id/' }
     );
 
     assert.strictEqual(outcome, null);
@@ -744,7 +544,8 @@ void describe('Path Blocking', () => {
         type: 'main_frame',
         url: 'moz-extension://abc123/blocked/blocked.html',
       },
-      rules
+      rules,
+      { extensionOrigin: 'moz-extension://unit-test-id/' }
     );
 
     assert.strictEqual(outcome, null);
@@ -1110,7 +911,8 @@ void describe('Message Contract Compatibility', () => {
         type: 'xmlhttprequest',
         url: 'https://example.com/private/data.json',
       },
-      rules
+      rules,
+      { extensionOrigin: 'moz-extension://unit-test-id/' }
     );
 
     const payload = {
