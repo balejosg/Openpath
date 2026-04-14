@@ -75,77 +75,83 @@ load 'test_helper'
 }
 
 @test "windows common module loads System.Net.Http before standalone downloads" {
-    run grep -nF "function Ensure-OpenPathHttpAssembly" "$PROJECT_DIR/windows/lib/Common.psm1"
+    run grep -nF "Common.Http.ps1" "$PROJECT_DIR/windows/lib/Common.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF "Add-Type -AssemblyName 'System.Net.Http' -ErrorAction Stop" "$PROJECT_DIR/windows/lib/Common.psm1"
+    run grep -nF "function Ensure-OpenPathHttpAssembly" "$PROJECT_DIR/windows/lib/internal/Common.Http.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "Add-Type -AssemblyName 'System.Net.Http' -ErrorAction Stop" "$PROJECT_DIR/windows/lib/internal/Common.Http.ps1"
     [ "$status" -eq 0 ]
 }
 
 @test "windows acrylic hosts generation stays split into settings, model, and render helpers" {
-    run grep -nF 'NX *' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'DNS.Acrylic.Config.ps1' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'function Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'function Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'function Get-AcrylicForwardRules' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'function Get-AcrylicForwardRules' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'function New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'function New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'function ConvertTo-AcrylicHostsContent' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'function ConvertTo-AcrylicHostsContent' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$dnsSettings = Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$dnsSettings = Get-OpenPathDnsSettings' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$definition = New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$definition = New-AcrylicHostsDefinition' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$content = ConvertTo-AcrylicHostsContent -Definition $definition' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$content = ConvertTo-AcrylicHostsContent -Definition $definition' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"FW $normalizedDomain"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"FW $normalizedDomain"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"FW >$normalizedDomain"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"FW >$normalizedDomain"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$settings.PrimaryDNS = [string]$config.primaryDNS' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$settings.PrimaryDNS = [string]$config.primaryDNS' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$settings.MaxDomains = [int]$config.maxDomains' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$settings.MaxDomains = [int]$config.maxDomains' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '$content = @"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$content = @"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -ne 0 ]
 
-    run grep -nF 'NX >*' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'NX >*' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -ne 0 ]
 }
 
 @test "windows dns validation retries acrylic readiness before failing" {
-    run grep -nF 'function Resolve-OpenPathDnsWithRetry' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'DNS.Diagnostics.ps1' "$PROJECT_DIR/windows/lib/DNS.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"IgnoreNegativeResponsesFromPrimaryServer" = "No"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'function Resolve-OpenPathDnsWithRetry' "$PROJECT_DIR/windows/lib/internal/DNS.Diagnostics.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"IgnoreNegativeResponsesFromSecondaryServer" = "No"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"IgnoreNegativeResponsesFromPrimaryServer" = "No"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"AddressCacheNegativeTime" = "0"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"IgnoreNegativeResponsesFromSecondaryServer" = "No"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"AddressCacheDisabled" = "Yes"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"AddressCacheNegativeTime" = "0"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF '"PrimaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"AddressCacheDisabled" = "Yes"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Start-Sleep -Milliseconds $DelayMilliseconds' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '"PrimaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Config.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Start-Sleep -Milliseconds $DelayMilliseconds' "$PROJECT_DIR/windows/lib/internal/DNS.Diagnostics.ps1"
     [ "$status" -eq 0 ]
 
     run grep -nF "Resolve-OpenPathDnsWithRetry -Domain 'google.com' -MaxAttempts 20 -DelayMilliseconds 1500" "$PROJECT_DIR/tests/e2e/ci/run-windows-e2e.ps1"
@@ -173,10 +179,10 @@ load 'test_helper'
 }
 
 @test "windows installer keeps Acrylic on the modern portable release track" {
-    run grep -nF '$installerVersion = "2.2.1"' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF '$installerVersion = "2.2.1"' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Install.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Acrylic/$installerVersion/Acrylic-Portable.zip/download' "$PROJECT_DIR/windows/lib/DNS.psm1"
+    run grep -nF 'Acrylic/$installerVersion/Acrylic-Portable.zip/download' "$PROJECT_DIR/windows/lib/internal/DNS.Acrylic.Install.ps1"
     [ "$status" -eq 0 ]
 }
 

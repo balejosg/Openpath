@@ -196,7 +196,10 @@ EOF
     run grep -nF 'cp "$LINUX_DIR/uninstall.sh" "$BUILD_DIR/usr/local/lib/openpath/uninstall.sh"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'cp "$INSTALLER_SOURCE_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'cp "$INSTALLER_SOURCE_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -250,13 +253,13 @@ EOF
 }
 
 @test "linux install script stages Firefox release artifacts when available" {
-    run grep -nF 'cp "$INSTALLER_SOURCE_DIR/lib/"*.sh "$INSTALL_DIR/lib/"' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-runtime-steps.sh"' "$PROJECT_DIR/linux/install.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'stage_firefox_release_artifacts "$INSTALLER_SOURCE_DIR" "$staged_release_dir"' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'stage_firefox_release_artifacts "$INSTALLER_SOURCE_DIR" "$staged_release_dir"' "$PROJECT_DIR/linux/lib/install-runtime-steps.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'stage_firefox_installation_bundle "$INSTALLER_SOURCE_DIR/firefox-extension" "$staged_ext_dir"' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'stage_firefox_installation_bundle "$INSTALLER_SOURCE_DIR/firefox-extension" "$staged_ext_dir"' "$PROJECT_DIR/linux/lib/install-runtime-steps.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -332,7 +335,10 @@ EOF
 }
 
 @test "linux runtime includes unattended agent update wrapper and systemd wiring" {
-    run grep -nF 'openpath-agent-update.sh' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'openpath-agent-update.sh' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF 'openpath-agent-update.sh' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
@@ -433,7 +439,10 @@ EOF
 }
 
 @test "linux runtime stages the shared browser-json helper" {
-    run grep -nF '$INSTALLER_SOURCE_DIR/libexec/browser-json.py' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$INSTALLER_SOURCE_DIR/libexec/browser-json.py' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF '"$INSTALL_DIR/libexec/browser-json.py"' "$PROJECT_DIR/linux/lib/common.sh"
@@ -444,7 +453,10 @@ EOF
 }
 
 @test "linux install script stages chromium browser helper modules required by common.sh" {
-    run grep -nF 'cp "$INSTALLER_SOURCE_DIR/lib/"*.sh "$INSTALL_DIR/lib/"' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'cp "$INSTALLER_SOURCE_DIR/lib/"*.sh "$INSTALL_DIR/lib/"' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF '"$INSTALL_DIR/lib/chromium-managed-extension.sh"' "$PROJECT_DIR/linux/lib/common.sh"
@@ -452,13 +464,19 @@ EOF
 }
 
 @test "browser runtimes stage the shared browser policy spec" {
-    run grep -nF '$INSTALLER_SOURCE_DIR/../runtime/browser-policy-spec.json' "$PROJECT_DIR/linux/install.sh"
+    run grep -nF 'source "$INSTALLER_SOURCE_DIR/lib/install-core-steps.sh"' "$PROJECT_DIR/linux/install.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF '$INSTALLER_SOURCE_DIR/../runtime/browser-policy-spec.json' "$PROJECT_DIR/linux/lib/install-core-steps.sh"
     [ "$status" -eq 0 ]
 
     run grep -nF '$LINUX_DIR/../runtime/browser-policy-spec.json' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'browser-policy-spec.json' "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    run grep -nF "Installer.Staging.ps1" "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'runtime\browser-policy-spec.json' "$PROJECT_DIR/windows/lib/install/Installer.Staging.ps1"
     [ "$status" -eq 0 ]
 
     run test -f "$PROJECT_DIR/runtime/browser-policy-spec.json"
@@ -503,7 +521,10 @@ EOF
 }
 
 @test "windows installer and release scripts stage browser policy runtime assets compatibly" {
-    run grep -nF "..\\runtime\\browser-policy-spec.json" "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    run grep -nF "Installer.Staging.ps1" "$PROJECT_DIR/windows/Install-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'runtime\browser-policy-spec.json' "$PROJECT_DIR/windows/lib/install/Installer.Staging.ps1"
     [ "$status" -eq 0 ]
 
     run grep -nF 'zip -r -q "$PACKAGE_NAME" windows/ runtime/ VERSION' "$PROJECT_DIR/.github/workflows/release-scripts.yml"

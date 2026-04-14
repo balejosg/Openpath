@@ -92,38 +92,41 @@ teardown() {
 }
 
 @test "incluye comando setup para modo aula" {
-    run grep -n "setup           Asistente de configuración" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n "setup           Asistente de configuración" "$PROJECT_DIR/linux/lib/runtime-cli-system.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "status muestra seccion de enrollment" {
-    run grep -n "Enrolled:" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n "Enrolled:" "$PROJECT_DIR/linux/lib/runtime-cli-system.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "cmd_disable reuses shared disabled-mode transition helper" {
-    run grep -n "enter_disabled_mode" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n "enter_disabled_mode" "$PROJECT_DIR/linux/lib/runtime-cli-system.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "enroll soporta token por archivo o stdin" {
-    run grep -n -- "--token-file" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n -- "--token-file" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n -- "--token-stdin" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n -- "--token-stdin" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "setup soporta enrollment token por classroom id" {
-    run grep -n -- "--classroom-id" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n -- "--classroom-id" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 
-    run grep -n -- "--enrollment-token" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    run grep -n -- "--enrollment-token" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "setup puede pedir datos por /dev/tty cuando stdin no es interactivo" {
     run grep -n "/dev/tty" "$PROJECT_DIR/linux/lib/runtime-cli.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n "read_prompt_value" "$PROJECT_DIR/linux/lib/runtime-cli-commands.sh"
     [ "$status" -eq 0 ]
 }
 
@@ -271,7 +274,7 @@ find() {
 }
 
 awk '/^cmd_health\(\) \{/,/^}/' \
-    "$project_dir/linux/lib/runtime-cli.sh" > "$extracted_script"
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
 
 cmd_health
@@ -360,7 +363,7 @@ find() {
 }
 
 awk '/^cmd_health\(\) \{/,/^}/' \
-    "$project_dir/linux/lib/runtime-cli.sh" > "$extracted_script"
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
 
 cmd_health
@@ -441,7 +444,7 @@ find() {
 }
 
 awk '/^cmd_health\(\) \{/,/^}/' \
-    "$project_dir/linux/lib/runtime-cli.sh" > "$extracted_script"
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
 
 cmd_health
@@ -482,7 +485,7 @@ export BROWSER_POLICIES_HASH="$state_dir/browser-policies.hash"
 : > "$BROWSER_POLICIES_HASH"
 
 awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
-    "$project_dir/linux/lib/runtime-cli.sh" > "$extracted_script"
+    "$project_dir/linux/lib/runtime-cli-commands.sh" > "$extracted_script"
 source "$extracted_script"
 
 reset_cached_whitelist_state
@@ -540,9 +543,9 @@ hostname() { printf 'max12\n'; }
 
 {
     awk '/^cmd_enroll\(\) \{/,/^}/' \
-        "$project_dir/linux/lib/runtime-cli.sh"
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
-        "$project_dir/linux/lib/runtime-cli.sh"
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
 } > "$extracted_script"
 set +e
 (
@@ -617,9 +620,9 @@ hostname() { printf 'max12\n'; }
 
 {
     awk '/^cmd_enroll\(\) \{/,/^}/' \
-        "$project_dir/linux/lib/runtime-cli.sh"
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
-        "$project_dir/linux/lib/runtime-cli.sh"
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
 } > "$extracted_script"
 
 set +e
