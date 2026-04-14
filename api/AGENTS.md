@@ -47,6 +47,7 @@ npm run test:healthcheck --workspace=@openpath/api
 npm run test:integration --workspace=@openpath/api
 npm run test:machines --workspace=@openpath/api
 npm run test:schedules --workspace=@openpath/api
+npm run test:server --workspace=@openpath/api
 npm run test:security --workspace=@openpath/api  # PORT 3004
 npm run test:setup --workspace=@openpath/api     # PORT 3005
 ```
