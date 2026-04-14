@@ -116,8 +116,8 @@ Describe "Common Module" {
         }
 
         It "Reuses Restore-OpenPathProtectedMode during checkpoint restore" {
-            $commonPath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
-            $content = Get-Content $commonPath -Raw
+            $whitelistHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Whitelist.ps1"
+            $content = Get-Content $whitelistHelperPath -Raw
 
             $content | Should -Match '(?s)function Restore-OpenPathLatestCheckpoint.*?Restore-OpenPathProtectedMode -Config \$Config'
         }
@@ -1511,8 +1511,8 @@ Describe "Services Module" {
 
     Context "Agent self-update" {
         It "Re-registers the Firefox native host after applying updated files" {
-            $commonPath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
-            $content = Get-Content $commonPath -Raw
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Update.ps1"
+            $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Copy-Item -Path $download.StagedPath -Destination $download.DestinationPath -Force',
@@ -1685,9 +1685,9 @@ Describe "Update Script" {
     Context "Rollback system" {
         It "Creates rolling checkpoints before applying new whitelist" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
-            $commonPath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
+            $whitelistHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Whitelist.ps1"
             $content = Get-Content $scriptPath -Raw
-            $commonContent = Get-Content $commonPath -Raw
+            $commonContent = Get-Content $whitelistHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'whitelist.backup.txt',
@@ -2306,7 +2306,7 @@ Describe "Whitelist Validation" {
 Describe "Log Rotation" {
     Context "Automatic rotation" {
         It "Common module implements log rotation" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.System.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
