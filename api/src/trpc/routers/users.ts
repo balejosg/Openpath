@@ -3,7 +3,6 @@ import { router, adminProcedure } from '../trpc.js';
 import { UserRoleSchema, CreateUserDTOSchema } from '../../types/index.js';
 import { TRPCError } from '@trpc/server';
 import UserService from '../../services/user.service.js';
-import * as roleStorage from '../../lib/role-storage.js';
 
 export const usersRouter = router({
   list: adminProcedure.query(async () => {
@@ -26,19 +25,11 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      // First check email
-      const check = await UserService.getUserByEmail(input.email);
-      if (check) throw new TRPCError({ code: 'CONFLICT', message: 'Email exists' });
-
-      const result = await UserService.createUserWithRole(input, input.role, input.groupIds ?? []);
-      if (!result.ok)
+      const result = await UserService.createManagedUser(input, input.role, input.groupIds ?? []);
+      if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
-
-      const user = result.data.user;
-
-      const final = await UserService.getUser(user.id);
-      if (!final.ok) throw new TRPCError({ code: final.error.code, message: final.error.message });
-      return final.data;
+      }
+      return result.data;
     }),
 
   update: adminProcedure
@@ -53,21 +44,15 @@ export const usersRouter = router({
     )
     .mutation(async ({ input }) => {
       const { id, ...updates } = input;
-      const result = await UserService.updateUser(id, updates);
+      const result = await UserService.updateManagedUser(id, updates);
       if (!result.ok) {
         throw new TRPCError({ code: result.error.code, message: result.error.message });
       }
-
-      const final = await UserService.getUser(id);
-      if (!final.ok) throw new TRPCError({ code: final.error.code, message: final.error.message });
-      return final.data;
+      return result.data;
     }),
 
   delete: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ input, ctx }) => {
-    if (ctx.user.sub === input.id) {
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot delete yourself' });
-    }
-    const result = await UserService.deleteUser(input.id);
+    const result = await UserService.deleteManagedUser(ctx.user.sub, input.id);
     if (!result.ok) {
       throw new TRPCError({ code: result.error.code, message: result.error.message });
     }
@@ -101,5 +86,5 @@ export const usersRouter = router({
       return result.data;
     }),
 
-  listTeachers: adminProcedure.query(async () => await roleStorage.getAllTeachers()),
+  listTeachers: adminProcedure.query(async () => await UserService.listTeachers()),
 });

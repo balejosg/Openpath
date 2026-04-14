@@ -17,6 +17,7 @@ import { normalizeUserRoleString } from '@openpath/shared/roles';
 export type UserServiceError =
   | { code: 'NOT_FOUND'; message: string }
   | { code: 'CONFLICT'; message: string }
+  | { code: 'FORBIDDEN'; message: string }
   | { code: 'BAD_REQUEST'; message: string };
 
 export type UserResult<T> = { ok: true; data: T } | { ok: false; error: UserServiceError };
@@ -203,6 +204,47 @@ export async function createUserWithRole(
   }
 }
 
+export async function createManagedUser(
+  input: CreateUserData,
+  role?: UserRole,
+  groupIds: string[] = []
+): Promise<UserResult<UserWithRoles>> {
+  const existing = await userStorage.getUserByEmail(input.email);
+  if (existing) {
+    return { ok: false, error: { code: 'CONFLICT', message: 'Email exists' } };
+  }
+
+  const created = await createUserWithRole(input, role, groupIds);
+  if (!created.ok) {
+    return created;
+  }
+
+  return await getUser(created.data.user.id);
+}
+
+export async function updateManagedUser(
+  id: string,
+  input: UpdateUserData
+): Promise<UserResult<UserWithRoles>> {
+  const updated = await updateUser(id, input);
+  if (!updated.ok) {
+    return updated;
+  }
+
+  return await getUser(id);
+}
+
+export async function deleteManagedUser(
+  actorUserId: string,
+  targetUserId: string
+): Promise<UserResult<{ success: boolean }>> {
+  if (actorUserId === targetUserId) {
+    return { ok: false, error: { code: 'BAD_REQUEST', message: 'Cannot delete yourself' } };
+  }
+
+  return await deleteUser(targetUserId);
+}
+
 /**
  * Revoke a specific role
  */
@@ -221,6 +263,10 @@ export async function revokeRole(roleId: string): Promise<UserResult<{ success: 
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
   return await userStorage.getUserByEmail(email);
+}
+
+export async function listTeachers(): Promise<roleStorage.TeacherInfo[]> {
+  return await roleStorage.getAllTeachers();
 }
 
 /**
@@ -246,10 +292,14 @@ export default {
   listUsers,
   getUser,
   getUserByEmail,
+  createManagedUser,
+  updateManagedUser,
+  deleteManagedUser,
   register,
   createUserWithRole,
   updateUser,
   deleteUser,
   assignRole,
   revokeRole,
+  listTeachers,
 };
