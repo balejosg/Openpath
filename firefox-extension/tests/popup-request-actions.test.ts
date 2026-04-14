@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
+import {
+  buildRequestDomainOptions,
+  retryPopupDomainLocalUpdate,
+  shouldEnableSubmitRequest,
+  submitPopupDomainRequest,
+} from '../src/lib/popup-request-actions.js';
+
+await describe('popup request actions', async () => {
+  await test('builds request domain options with fallback origins', () => {
+    const options = buildRequestDomainOptions({
+      'b.example.com': {
+        count: 1,
+        origin: null,
+        timestamp: 2,
+      },
+      'a.example.com': {
+        count: 2,
+        origin: 'portal.school',
+        timestamp: 1,
+      },
+    });
+
+    assert.deepEqual(options, [
+      { hostname: 'a.example.com', origin: 'portal.school' },
+      { hostname: 'b.example.com', origin: 'desconocido' },
+    ]);
+  });
+
+  await test('enables submit only when selection, reason, config and native host are ready', () => {
+    assert.equal(
+      shouldEnableSubmitRequest({
+        hasSelectedDomain: true,
+        hasValidReason: true,
+        isNativeAvailable: true,
+        isRequestConfigured: true,
+      }),
+      true
+    );
+    assert.equal(
+      shouldEnableSubmitRequest({
+        hasSelectedDomain: true,
+        hasValidReason: false,
+        isNativeAvailable: true,
+        isRequestConfigured: true,
+      }),
+      false
+    );
+  });
+
+  await test('submits popup requests through the background message builder', async () => {
+    let capturedMessage: unknown;
+
+    const result = await submitPopupDomainRequest({
+      blockedDomainsData: {
+        'cdn.example.com': {
+          errors: ['NS_ERROR_UNKNOWN_HOST'],
+          origin: 'portal.school',
+          timestamp: 1,
+        },
+      },
+      buildSubmitMessage: (payload) => payload,
+      domain: 'cdn.example.com',
+      isNativeAvailable: true,
+      isRequestConfigured: true,
+      reason: 'needed for class',
+      sendMessage: (message) => {
+        capturedMessage = message;
+        return Promise.resolve({ success: true, id: 'req-1' });
+      },
+    });
+
+    assert.deepEqual(capturedMessage, {
+      domain: 'cdn.example.com',
+      error: 'NS_ERROR_UNKNOWN_HOST',
+      origin: 'portal.school',
+      reason: 'needed for class',
+    });
+    assert.deepEqual(result, {
+      success: true,
+      shouldReloadDomainStatuses: true,
+      shouldResetForm: true,
+      userMessage: '✅ Solicitud enviada para cdn.example.com. Queda pendiente de aprobación.',
+    });
+  });
+
+  await test('returns validation failures without contacting the background script', async () => {
+    let called = false;
+
+    const result = await submitPopupDomainRequest({
+      blockedDomainsData: {},
+      buildSubmitMessage: (payload) => payload,
+      domain: '',
+      isNativeAvailable: true,
+      isRequestConfigured: true,
+      reason: 'ok',
+      sendMessage: () => {
+        called = true;
+        return Promise.resolve({});
+      },
+    });
+
+    assert.equal(called, false);
+    assert.equal(result.success, false);
+    assert.equal(result.userMessage, '❌ Selecciona un dominio y escribe un motivo');
+  });
+
+  await test('maps retry requests to the background message contract', async () => {
+    let capturedMessage: unknown;
+
+    const result = await retryPopupDomainLocalUpdate({
+      hostname: 'cdn.example.com',
+      sendMessage: (message) => {
+        capturedMessage = message;
+        return Promise.resolve({ success: true });
+      },
+      tabId: 8,
+    });
+
+    assert.deepEqual(capturedMessage, {
+      action: 'retryLocalUpdate',
+      tabId: 8,
+      hostname: 'cdn.example.com',
+    });
+    assert.deepEqual(result, { success: true });
+  });
+});

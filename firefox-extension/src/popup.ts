@@ -20,6 +20,12 @@ import {
   statusMeta,
   type BlockedDomainsData,
 } from './lib/popup-state.js';
+import {
+  buildRequestDomainOptions,
+  retryPopupDomainLocalUpdate,
+  shouldEnableSubmitRequest,
+  submitPopupDomainRequest,
+} from './lib/popup-request-actions.js';
 
 interface VerifyResult {
   domain: string;
@@ -33,16 +39,6 @@ interface VerifyResult {
 interface VerifyResponse {
   success: boolean;
   results: VerifyResult[];
-  error?: string;
-}
-
-interface SubmitRequestResult {
-  success: boolean;
-  id: string;
-  domain: string;
-  status: 'pending' | 'approved' | 'rejected';
-  groupId: string;
-  source: string;
   error?: string;
 }
 
@@ -387,14 +383,9 @@ function toggleRequestSection(): void {
  * Populate the domain select dropdown with origin info
  */
 function populateRequestDomainSelect(): void {
-  const hostnames = Object.keys(blockedDomainsData).sort();
-
   requestDomainSelectEl.innerHTML = '<option value="">Seleccionar dominio...</option>';
 
-  hostnames.forEach((hostname) => {
-    const data = blockedDomainsData[hostname];
-    if (!data) return;
-    const origin = data.origin ?? 'desconocido';
+  buildRequestDomainOptions(blockedDomainsData).forEach(({ hostname, origin }) => {
     const option = document.createElement('option');
     option.value = hostname;
     option.textContent = hostname;
@@ -409,12 +400,12 @@ function populateRequestDomainSelect(): void {
  * Update submit button enabled state
  */
 function updateSubmitButtonState(): void {
-  const hasSelection = requestDomainSelectEl.value !== '';
-
-  const hasReason = requestReasonEl.value.trim().length >= 3;
-
-  btnSubmitRequest.disabled =
-    !hasSelection || !hasReason || !isRequestConfigured() || !isNativeAvailable;
+  btnSubmitRequest.disabled = !shouldEnableSubmitRequest({
+    hasSelectedDomain: requestDomainSelectEl.value !== '',
+    hasValidReason: requestReasonEl.value.trim().length >= 3,
+    isNativeAvailable,
+    isRequestConfigured: isRequestConfigured(),
+  });
 }
 
 /**
@@ -423,17 +414,6 @@ function updateSubmitButtonState(): void {
 async function submitDomainRequest(): Promise<void> {
   const domain = requestDomainSelectEl.value;
   const reason = requestReasonEl.value.trim();
-  const selectedInfo = blockedDomainsData[domain];
-
-  if (!domain || reason.length < 3) {
-    showRequestStatus('❌ Selecciona un dominio y escribe un motivo', 'error');
-    return;
-  }
-
-  if (!isRequestConfigured() || !isNativeAvailable) {
-    showRequestStatus('❌ Configuración incompleta para solicitar dominios', 'error');
-    return;
-  }
 
   // Disable button while submitting
   btnSubmitRequest.disabled = true;
@@ -441,47 +421,39 @@ async function submitDomainRequest(): Promise<void> {
   showRequestStatus('Enviando solicitud...', 'pending');
 
   try {
-    const payload: Partial<SubmitRequestResult> = await browser.runtime.sendMessage(
-      buildSubmitBlockedDomainRequestMessage({
-        domain,
-        reason,
-        origin: selectedInfo?.origin ?? undefined,
-        error: selectedInfo?.errors?.[0],
-      })
-    );
+    const result = await submitPopupDomainRequest({
+      blockedDomainsData,
+      buildSubmitMessage: buildSubmitBlockedDomainRequestMessage,
+      domain,
+      isNativeAvailable,
+      isRequestConfigured: isRequestConfigured(),
+      reason,
+      sendMessage: (message) => browser.runtime.sendMessage(message),
+    });
 
-    if (payload.success === true && payload.id) {
-      showRequestStatus(
-        `✅ Solicitud enviada para ${domain}. Queda pendiente de aprobación.`,
-        'success'
-      );
+    showRequestStatus(result.userMessage, result.success ? 'success' : 'error');
+
+    if (result.success) {
       showToast('✅ Solicitud enviada');
-
-      // Clear form
-      requestDomainSelectEl.value = '';
-      requestReasonEl.value = '';
-      await loadDomainStatuses();
-      renderDomainsList();
+      if (result.shouldResetForm) {
+        requestDomainSelectEl.value = '';
+        requestReasonEl.value = '';
+      }
+      if (result.shouldReloadDomainStatuses) {
+        await loadDomainStatuses();
+        renderDomainsList();
+      }
     } else {
-      const errorMsg = payload.error ?? 'Error desconocido';
-      showRequestStatus(`❌ ${errorMsg}`, 'error');
-      showToast(`❌ ${errorMsg}`);
+      showToast(result.userMessage);
     }
   } catch (error) {
-    let errorMsg = 'Error de conexión';
-    const err = error instanceof Error ? error : new Error(String(error));
+    const errorMessage = getErrorMessage(error);
 
-    if (err.name === 'AbortError') {
-      errorMsg = 'Timeout - servidor no responde';
-    } else if (err.message) {
-      errorMsg = err.message;
-    }
-
-    showRequestStatus(`❌ ${errorMsg}`, 'error');
+    showRequestStatus(`❌ ${errorMessage}`, 'error');
     showToast('❌ Error al enviar');
 
     if (CONFIG.debugMode) {
-      logger.error('[Popup] Request error', { error: err.message });
+      logger.error('[Popup] Request error', { error: errorMessage });
     }
   } finally {
     btnSubmitRequest.disabled = false;
@@ -508,15 +480,12 @@ function hideRequestStatus(): void {
 }
 
 async function retryDomainLocalUpdate(hostname: string): Promise<void> {
-  if (currentTabId === null) return;
-
   try {
-    const response = await browser.runtime.sendMessage({
-      action: 'retryLocalUpdate',
-      tabId: currentTabId,
+    const result = await retryPopupDomainLocalUpdate({
       hostname,
+      sendMessage: (message) => browser.runtime.sendMessage(message),
+      tabId: currentTabId,
     });
-    const result = response as { success: boolean };
     if (result.success) {
       showToast('Whitelist local actualizada');
     } else {
