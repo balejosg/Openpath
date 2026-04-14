@@ -15,6 +15,10 @@ api/src/trpc/routers/push.ts|api/tests/push-vapid.test.ts,api/tests/push-subscri
 api/src/trpc/routers/schedules.ts|api/tests/schedules-time-utils.test.ts,api/tests/schedules-crud.test.ts,api/tests/schedules-query.test.ts,api/tests/schedules-current.test.ts
 api/src/trpc/routers/healthcheck.ts|api/tests/healthcheck-live.test.ts,api/tests/healthcheck-ready.test.ts,api/tests/healthcheck-surface.test.ts
 api/src/routes/machines.ts|api/tests/machines-enrollment-routes.test.ts,api/tests/machines-delivery-routes.test.ts,api/tests/machines-events-routes.test.ts
+api/src/routes/machines/helpers.ts|api/tests/machines-enrollment-routes.test.ts,api/tests/machines-delivery-routes.test.ts,api/tests/machines-events-routes.test.ts
+api/src/routes/machines/enrollment.ts|api/tests/machines-enrollment-routes.test.ts
+api/src/routes/machines/delivery.ts|api/tests/machines-delivery-routes.test.ts,api/tests/token-delivery-core.test.ts,api/tests/token-delivery-windows-agent.test.ts,api/tests/token-delivery-windows-bootstrap.test.ts,api/tests/token-delivery-linux-agent.test.ts
+api/src/routes/machines/events.ts|api/tests/machines-events-routes.test.ts,api/tests/sse-events.test.ts,api/tests/sse-connection.test.ts
 api/src/trpc/routers/classrooms.ts|api/tests/classrooms-crud.test.ts,api/tests/classrooms-machines.test.ts,api/tests/classrooms-cleanup.test.ts
 api/src/trpc/routers/api-tokens.ts|api/tests/api-tokens-auth-guards.test.ts,api/tests/api-tokens-removed-procedures.test.ts
 api/src/lib/health-status.ts|api/tests/health-status-normalization.test.ts,api/tests/health-status-actions.test.ts,api/tests/health-status-contract.test.ts
