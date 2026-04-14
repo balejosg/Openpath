@@ -1,0 +1,177 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
+import {
+  applyPopupNativeAvailability,
+  applyPopupNativeError,
+  hidePopupRequestStatus,
+  hidePopupVerifyResults,
+  renderPopupVerifyResults,
+  resetPopupVerifyButton,
+  showPopupRequestStatus,
+  showPopupToast,
+  showPopupVerifyCommunicationError,
+  showPopupVerifyError,
+  showPopupVerifyLoading,
+} from '../src/lib/popup-feedback.js';
+
+class FakeClassList {
+  private readonly classes = new Set<string>();
+
+  add(...classNames: string[]): void {
+    classNames.forEach((className) => this.classes.add(className));
+  }
+
+  contains(className: string): boolean {
+    return this.classes.has(className);
+  }
+
+  remove(...classNames: string[]): void {
+    classNames.forEach((className) => this.classes.delete(className));
+  }
+
+  toString(): string[] {
+    return [...this.classes].sort();
+  }
+}
+
+class FakeElement {
+  classList = new FakeClassList();
+  className = '';
+  innerHTML = '';
+  textContent = '';
+  children: FakeElement[] = [];
+
+  appendChild(child: FakeElement): void {
+    this.children.push(child);
+  }
+}
+
+class FakeButton extends FakeElement {
+  disabled = false;
+}
+
+await describe('popup feedback helpers', async () => {
+  await test('shows toast messages and schedules cleanup', () => {
+    const toastEl = new FakeElement() as unknown as HTMLElement;
+    let capturedDelay = 0;
+    let scheduled: (() => void) | undefined;
+
+    showPopupToast({
+      duration: 2500,
+      message: 'Copiado',
+      scheduleTimeout: (callback: () => void, delay: number) => {
+        capturedDelay = delay;
+        scheduled = callback;
+        return 1;
+      },
+      toastEl,
+    });
+
+    assert.equal(toastEl.textContent, 'Copiado');
+    assert.equal(capturedDelay, 2500);
+    assert.equal((toastEl.classList as unknown as FakeClassList).contains('show'), true);
+    scheduled?.();
+    assert.equal((toastEl.classList as unknown as FakeClassList).contains('show'), false);
+  });
+
+  await test('applies native availability and fallback states', () => {
+    const btnVerify = new FakeButton() as unknown as HTMLButtonElement;
+    const nativeStatusEl = new FakeElement() as unknown as HTMLElement;
+
+    applyPopupNativeAvailability({
+      btnVerify,
+      nativeState: {
+        available: true,
+        className: 'status-indicator available',
+        label: 'Host nativo v1.2.3',
+      },
+      nativeStatusEl,
+    });
+
+    assert.equal(nativeStatusEl.textContent, 'Host nativo v1.2.3');
+    assert.equal(nativeStatusEl.className, 'status-indicator available');
+    assert.equal(btnVerify.disabled, false);
+
+    applyPopupNativeError({
+      btnVerify,
+      nativeStatusEl,
+    });
+
+    assert.equal(nativeStatusEl.textContent, 'Error de comunicación');
+    assert.equal(nativeStatusEl.className, 'status-indicator unavailable');
+    assert.equal(btnVerify.disabled, true);
+  });
+
+  await test('renders verify loading, results and reset state', () => {
+    const btnVerify = new FakeButton() as unknown as HTMLButtonElement;
+    const verifyListEl = new FakeElement() as unknown as HTMLElement;
+    const verifyResultsEl = new FakeElement() as unknown as HTMLElement;
+
+    showPopupVerifyLoading({
+      btnVerify,
+      verifyListEl,
+      verifyResultsEl,
+    });
+
+    assert.equal(btnVerify.disabled, true);
+    assert.equal(btnVerify.textContent, '⌛ Verificando...');
+    assert.match(verifyListEl.innerHTML, /Consultando host nativo/);
+    assert.equal((verifyResultsEl.classList as unknown as FakeClassList).contains('hidden'), false);
+
+    renderPopupVerifyResults({
+      createListItem: () => new FakeElement() as unknown as HTMLLIElement,
+      results: [
+        {
+          domain: 'allowed.example.com',
+          inWhitelist: true,
+          resolvedIp: '127.0.0.1',
+        },
+      ],
+      verifyListEl,
+    });
+
+    assert.equal((verifyListEl as unknown as FakeElement).children.length, 1);
+    assert.match(
+      (verifyListEl as unknown as FakeElement).children[0]?.innerHTML ?? '',
+      /PERMITIDO/
+    );
+
+    hidePopupVerifyResults({
+      verifyListEl,
+      verifyResultsEl,
+    });
+
+    assert.equal((verifyResultsEl.classList as unknown as FakeClassList).contains('hidden'), true);
+    assert.equal(verifyListEl.innerHTML, '');
+
+    showPopupVerifyError(verifyListEl, 'fallo');
+    assert.match(verifyListEl.innerHTML, /Error: fallo/);
+    showPopupVerifyCommunicationError(verifyListEl);
+    assert.match(verifyListEl.innerHTML, /Error al comunicar con el host nativo/);
+
+    resetPopupVerifyButton(btnVerify);
+    assert.equal(btnVerify.disabled, false);
+    assert.equal(btnVerify.textContent, '🔍 Verificar en Whitelist');
+  });
+
+  await test('shows and hides popup request status messages', () => {
+    const requestStatusEl = new FakeElement() as unknown as HTMLElement;
+
+    showPopupRequestStatus({
+      message: 'Enviado',
+      requestStatusEl,
+      type: 'success',
+    });
+
+    assert.equal(requestStatusEl.textContent, 'Enviado');
+    assert.deepEqual((requestStatusEl.classList as unknown as FakeClassList).toString(), [
+      'success',
+    ]);
+
+    hidePopupRequestStatus(requestStatusEl);
+
+    assert.equal((requestStatusEl.classList as unknown as FakeClassList).contains('hidden'), true);
+    assert.equal(requestStatusEl.textContent, '');
+  });
+});

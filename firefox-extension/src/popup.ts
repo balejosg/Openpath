@@ -7,6 +7,19 @@ import { logger, getErrorMessage } from './lib/logger.js';
 import { buildSubmitBlockedDomainRequestMessage } from './lib/blocked-screen-contract.js';
 import { createPopupElements, registerPopupEventHandlers } from './lib/popup-dom.js';
 import {
+  applyPopupNativeAvailability,
+  applyPopupNativeError,
+  hidePopupRequestStatus,
+  hidePopupVerifyResults,
+  renderPopupVerifyResults,
+  resetPopupVerifyButton,
+  showPopupRequestStatus,
+  showPopupToast,
+  showPopupVerifyCommunicationError,
+  showPopupVerifyError,
+  showPopupVerifyLoading,
+} from './lib/popup-feedback.js';
+import {
   DEFAULT_REQUEST_CONFIG,
   hasValidRequestConfig,
   loadRequestConfig,
@@ -19,11 +32,7 @@ import {
   shouldEnableSubmitRequest,
   submitPopupDomainRequest,
 } from './lib/popup-request-actions.js';
-import {
-  buildVerifyResultViewModels,
-  verifyPopupDomains,
-  type VerifyResult,
-} from './lib/popup-native-actions.js';
+import { verifyPopupDomains } from './lib/popup-native-actions.js';
 import {
   buildBlockedDomainsClipboardText,
   checkPopupNativeAvailability,
@@ -32,10 +41,7 @@ import {
   loadPopupDomainStatuses,
   resolveActivePopupTab,
 } from './lib/popup-runtime.js';
-import {
-  buildBlockedDomainListItems,
-  buildRequestStatusPresentation,
-} from './lib/popup-view-models.js';
+import { buildBlockedDomainListItems } from './lib/popup-view-models.js';
 const {
   tabDomainEl,
   countEl,
@@ -66,17 +72,12 @@ let blockedDomainsData: BlockedDomainsData = {};
 let isNativeAvailable = false;
 let domainStatusesData: Record<string, DomainStatus> = {};
 
-/**
- * Show a temporary toast message
- * @param message Message to show
- * @param duration Duration in ms
- */
 function showToast(message: string, duration = 3000): void {
-  toastEl.textContent = message;
-  toastEl.classList.add('show');
-  setTimeout(() => {
-    toastEl.classList.remove('show');
-  }, duration);
+  showPopupToast({
+    duration,
+    message,
+    toastEl,
+  });
 }
 
 function isRequestConfigured(): boolean {
@@ -205,7 +206,10 @@ async function clearDomains(): Promise<void> {
     blockedDomainsData = {};
     domainStatusesData = {};
     renderDomainsList();
-    hideVerifyResults();
+    hidePopupVerifyResults({
+      verifyListEl,
+      verifyResultsEl,
+    });
     hideRequestSection();
     showToast('Lista limpiada');
   } catch (error) {
@@ -229,17 +233,18 @@ async function checkNativeAvailable(): Promise<void> {
       browser.runtime.sendMessage(message)
     );
     isNativeAvailable = nativeState.available;
-    nativeStatusEl.textContent = nativeState.label;
-    nativeStatusEl.className = nativeState.className;
-
-    // Enable/disable verify button based on availability
-    btnVerify.disabled = !isNativeAvailable;
+    applyPopupNativeAvailability({
+      btnVerify,
+      nativeState,
+      nativeStatusEl,
+    });
     refreshRequestButtonState();
   } catch {
     isNativeAvailable = false;
-    nativeStatusEl.textContent = 'Error de comunicación';
-    nativeStatusEl.className = 'status-indicator unavailable';
-    btnVerify.disabled = true;
+    applyPopupNativeError({
+      btnVerify,
+      nativeStatusEl,
+    });
     refreshRequestButtonState();
   }
 }
@@ -251,10 +256,11 @@ async function verifyDomainsWithNative(): Promise<void> {
   const hasHostnames = Object.keys(blockedDomainsData).length > 0;
   if (!hasHostnames || !isNativeAvailable) return;
 
-  btnVerify.disabled = true;
-  btnVerify.textContent = '⌛ Verificando...';
-  verifyListEl.innerHTML = '<div class="loading">Consultando host nativo...</div>';
-  verifyResultsEl.classList.remove('hidden');
+  showPopupVerifyLoading({
+    btnVerify,
+    verifyListEl,
+    verifyResultsEl,
+  });
 
   try {
     const result = await verifyPopupDomains({
@@ -264,54 +270,24 @@ async function verifyDomainsWithNative(): Promise<void> {
     });
 
     if (result.ok) {
-      renderVerifyResults(result.results);
+      renderPopupVerifyResults({
+        results: result.results,
+        verifyListEl,
+      });
     } else if ('errorMessage' in result) {
-      verifyListEl.innerHTML = `<div class="error-text">Error: ${result.errorMessage}</div>`;
+      showPopupVerifyError(verifyListEl, result.errorMessage);
     } else {
-      hideVerifyResults();
+      hidePopupVerifyResults({
+        verifyListEl,
+        verifyResultsEl,
+      });
     }
   } catch (error) {
     logger.error('[Popup] Error verifying domains', { error: getErrorMessage(error) });
-    verifyListEl.innerHTML = '<div class="error-text">Error al comunicar con el host nativo</div>';
+    showPopupVerifyCommunicationError(verifyListEl);
   } finally {
-    btnVerify.disabled = false;
-    btnVerify.textContent = '🔍 Verificar en Whitelist';
+    resetPopupVerifyButton(btnVerify);
   }
-}
-
-/**
- * Render results of native verification
- */
-function renderVerifyResults(results: VerifyResult[]): void {
-  if (results.length === 0) {
-    verifyListEl.innerHTML = '<div>No hay resultados</div>';
-    return;
-  }
-
-  verifyListEl.innerHTML = '';
-  buildVerifyResultViewModels(results).forEach((result) => {
-    const item = document.createElement('li');
-    item.className = 'verify-item';
-
-    const ipInfo = result.resolvedIp ? `<span class="ip-info">${result.resolvedIp}</span>` : '';
-
-    item.innerHTML = `
-            <span class="verify-domain">${result.domain}</span>
-            <div class="verify-meta">
-                ${ipInfo}
-                <span class="verify-status ${result.statusClass}">${result.statusText}</span>
-            </div>
-        `;
-    verifyListEl.appendChild(item);
-  });
-}
-
-/**
- * Hide verification results
- */
-function hideVerifyResults(): void {
-  verifyResultsEl.classList.add('hidden');
-  verifyListEl.innerHTML = '';
 }
 
 let CONFIG: RequestConfig = { ...DEFAULT_REQUEST_CONFIG };
@@ -326,11 +302,14 @@ function toggleRequestSection(): void {
     // Show and populate
     requestSectionEl.classList.remove('hidden');
     populateRequestDomainSelect();
-    hideVerifyResults();
+    hidePopupVerifyResults({
+      verifyListEl,
+      verifyResultsEl,
+    });
   } else {
     // Hide
     requestSectionEl.classList.add('hidden');
-    hideRequestStatus();
+    hidePopupRequestStatus(requestStatusEl);
   }
 }
 
@@ -373,7 +352,11 @@ async function submitDomainRequest(): Promise<void> {
   // Disable button while submitting
   btnSubmitRequest.disabled = true;
   btnSubmitRequest.textContent = '⏳ Enviando...';
-  showRequestStatus('Enviando solicitud...', 'pending');
+  showPopupRequestStatus({
+    message: 'Enviando solicitud...',
+    requestStatusEl,
+    type: 'pending',
+  });
 
   try {
     const result = await submitPopupDomainRequest({
@@ -386,7 +369,11 @@ async function submitDomainRequest(): Promise<void> {
       sendMessage: (message) => browser.runtime.sendMessage(message),
     });
 
-    showRequestStatus(result.userMessage, result.success ? 'success' : 'error');
+    showPopupRequestStatus({
+      message: result.userMessage,
+      requestStatusEl,
+      type: result.success ? 'success' : 'error',
+    });
 
     if (result.success) {
       showToast('✅ Solicitud enviada');
@@ -404,7 +391,11 @@ async function submitDomainRequest(): Promise<void> {
   } catch (error) {
     const errorMessage = getErrorMessage(error);
 
-    showRequestStatus(`❌ ${errorMessage}`, 'error');
+    showPopupRequestStatus({
+      message: `❌ ${errorMessage}`,
+      requestStatusEl,
+      type: 'error',
+    });
     showToast('❌ Error al enviar');
 
     if (CONFIG.debugMode) {
@@ -415,24 +406,6 @@ async function submitDomainRequest(): Promise<void> {
     btnSubmitRequest.textContent = 'Enviar Solicitud';
     updateSubmitButtonState();
   }
-}
-
-/**
- * Show request status message
- */
-function showRequestStatus(message: string, type = 'info'): void {
-  const presentation = buildRequestStatusPresentation(type);
-  requestStatusEl.classList.remove(...presentation.classesToRemove);
-  requestStatusEl.classList.add(...presentation.classesToAdd);
-  requestStatusEl.textContent = message;
-}
-
-/**
- * Hide request status message
- */
-function hideRequestStatus(): void {
-  requestStatusEl.classList.add('hidden');
-  requestStatusEl.textContent = '';
 }
 
 async function retryDomainLocalUpdate(hostname: string): Promise<void> {
