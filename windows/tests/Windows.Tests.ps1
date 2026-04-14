@@ -935,9 +935,18 @@ Describe "DNS Module" {
 
         It "Keeps Acrylic hosts modeling and rendering split into helpers" {
             $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
-            $content = Get-Content $modulePath -Raw
+            $configPath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Config.ps1"
+            $moduleContent = Get-Content $modulePath -Raw
+            $configContent = Get-Content $configPath -Raw
 
-            Assert-ContentContainsAll -Content $content -Needles @(
+            Assert-ContentContainsAll -Content $moduleContent -Needles @(
+                "DNS.Acrylic.Install.ps1",
+                "DNS.Acrylic.Config.ps1",
+                "DNS.Acrylic.Service.ps1",
+                "DNS.Diagnostics.ps1"
+            )
+
+            Assert-ContentContainsAll -Content $configContent -Needles @(
                 'function Get-OpenPathDnsSettings',
                 'NX *',
                 'function Get-AcrylicForwardRules',
@@ -949,11 +958,11 @@ Describe "DNS Module" {
                 '"FW >$normalizedDomain"'
             )
 
-            $content | Should -Not -Match '\$content = @"'
+            $configContent | Should -Not -Match '\$content = @"'
         }
 
         It "Retries Acrylic DNS resolution before reporting failure" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Diagnostics.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
@@ -966,7 +975,7 @@ Describe "DNS Module" {
         }
 
         It "Configures Acrylic to ignore and avoid caching upstream negative responses" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Config.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
@@ -1178,7 +1187,7 @@ Describe "DNS Module" {
 
     Context "Acrylic installation fallback" {
         It "Pins the Acrylic portable installer to a release with modern hosts-cache fixes" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Install.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
@@ -1189,7 +1198,7 @@ Describe "DNS Module" {
         }
 
         It "Falls back to Chocolatey when the direct Acrylic download fails" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Install.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
@@ -1705,15 +1714,21 @@ Describe "Update Script" {
 
         It "Restores checkpoint and falls back to backup on update failure" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
+            $runtimePath = Join-Path $PSScriptRoot ".." "lib" "Update.Runtime.psm1"
             $content = Get-Content $scriptPath -Raw
+            $runtimeContent = Get-Content $runtimePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Restore-OpenPathCheckpoint',
-                'function Write-UpdateCatchLog',
                 'Attempting checkpoint rollback',
                 'Falling back to backup whitelist rollback',
                 'Copy-Item $backupPath $whitelistPath -Force',
                 'Write-UpdateCatchLog "Update failed: $_" -Level ERROR'
+            )
+
+            Assert-ContentContainsAll -Content $runtimeContent -Needles @(
+                'function Write-UpdateCatchLog',
+                'function Restore-OpenPathCheckpoint'
             )
         }
     }
@@ -1739,9 +1754,10 @@ Describe "Update Script" {
             Assert-ContentContainsAll -Content $content -Needles @(
                 'staleWhitelistMaxAgeHours',
                 'Enter-StaleWhitelistFailsafe',
-                'STALE_FAILSAFE',
-                'Restore-OpenPathProtectedMode -Config $Config'
+                'STALE_FAILSAFE'
             )
+
+            $content | Should -Match 'Restore-OpenPathProtectedMode -Config \$config'
         }
     }
 
