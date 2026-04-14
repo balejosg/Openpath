@@ -5,7 +5,6 @@
 
 import { logger, getErrorMessage } from './lib/logger.js';
 import { buildSubmitBlockedDomainRequestMessage } from './lib/blocked-screen-contract.js';
-import { formatNativeHostStatusLabel } from './lib/native-status-label.js';
 import {
   DEFAULT_REQUEST_CONFIG,
   hasValidRequestConfig,
@@ -26,21 +25,12 @@ import {
   shouldEnableSubmitRequest,
   submitPopupDomainRequest,
 } from './lib/popup-request-actions.js';
-
-interface VerifyResult {
-  domain: string;
-  inWhitelist: boolean;
-  resolvedIp?: string;
-  in_whitelist?: boolean;
-  resolved_ip?: string;
-  error?: string;
-}
-
-interface VerifyResponse {
-  success: boolean;
-  results: VerifyResult[];
-  error?: string;
-}
+import {
+  buildVerifyResultViewModels,
+  resolveNativeAvailabilityState,
+  verifyPopupDomains,
+  type VerifyResult,
+} from './lib/popup-native-actions.js';
 
 /**
  * Helper to get DOM elements safely
@@ -260,19 +250,12 @@ function hideRequestSection(): void {
 async function checkNativeAvailable(): Promise<void> {
   try {
     const response = await browser.runtime.sendMessage({ action: 'isNativeAvailable' });
-    const res = response as { available?: boolean; success?: boolean; version?: string };
-    isNativeAvailable = res.available ?? res.success ?? false;
-
-    if (isNativeAvailable) {
-      nativeStatusEl.textContent = formatNativeHostStatusLabel({
-        available: true,
-        version: res.version,
-      });
-      nativeStatusEl.className = 'status-indicator available';
-    } else {
-      nativeStatusEl.textContent = formatNativeHostStatusLabel({ available: false });
-      nativeStatusEl.className = 'status-indicator unavailable';
-    }
+    const nativeState = resolveNativeAvailabilityState(
+      response as { available?: boolean; success?: boolean; version?: string }
+    );
+    isNativeAvailable = nativeState.available;
+    nativeStatusEl.textContent = nativeState.label;
+    nativeStatusEl.className = nativeState.className;
 
     // Enable/disable verify button based on availability
     btnVerify.disabled = !isNativeAvailable;
@@ -290,8 +273,8 @@ async function checkNativeAvailable(): Promise<void> {
  * Verify domains against local whitelist via Native Messaging
  */
 async function verifyDomainsWithNative(): Promise<void> {
-  const hostnames = Object.keys(blockedDomainsData).sort();
-  if (hostnames.length === 0 || !isNativeAvailable) return;
+  const hasHostnames = Object.keys(blockedDomainsData).length > 0;
+  if (!hasHostnames || !isNativeAvailable) return;
 
   btnVerify.disabled = true;
   btnVerify.textContent = '⌛ Verificando...';
@@ -299,17 +282,18 @@ async function verifyDomainsWithNative(): Promise<void> {
   verifyResultsEl.classList.remove('hidden');
 
   try {
-    const response = await browser.runtime.sendMessage({
-      action: 'checkWithNative',
-      domains: hostnames,
+    const result = await verifyPopupDomains({
+      blockedDomainsData,
+      isNativeAvailable,
+      sendMessage: (message) => browser.runtime.sendMessage(message),
     });
 
-    const res = response as VerifyResponse;
-
-    if (res.success) {
-      renderVerifyResults(res.results);
+    if (result.ok) {
+      renderVerifyResults(result.results);
+    } else if ('errorMessage' in result) {
+      verifyListEl.innerHTML = `<div class="error-text">Error: ${result.errorMessage}</div>`;
     } else {
-      verifyListEl.innerHTML = `<div class="error-text">Error: ${res.error ?? 'Error desconocido'}</div>`;
+      hideVerifyResults();
     }
   } catch (error) {
     logger.error('[Popup] Error verifying domains', { error: getErrorMessage(error) });
@@ -330,21 +314,17 @@ function renderVerifyResults(results: VerifyResult[]): void {
   }
 
   verifyListEl.innerHTML = '';
-  results.forEach((res) => {
+  buildVerifyResultViewModels(results).forEach((result) => {
     const item = document.createElement('li');
     item.className = 'verify-item';
 
-    const inWhitelist = res.in_whitelist ?? res.inWhitelist;
-    const resolvedIp = res.resolvedIp ?? res.resolved_ip;
-    const statusClass = inWhitelist ? 'status-allowed' : 'status-blocked';
-    const statusText = inWhitelist ? 'PERMITIDO' : 'BLOQUEADO';
-    const ipInfo = resolvedIp ? `<span class="ip-info">${resolvedIp}</span>` : '';
+    const ipInfo = result.resolvedIp ? `<span class="ip-info">${result.resolvedIp}</span>` : '';
 
     item.innerHTML = `
-            <span class="verify-domain">${res.domain}</span>
+            <span class="verify-domain">${result.domain}</span>
             <div class="verify-meta">
                 ${ipInfo}
-                <span class="verify-status ${statusClass}">${statusText}</span>
+                <span class="verify-status ${result.statusClass}">${result.statusText}</span>
             </div>
         `;
     verifyListEl.appendChild(item);
