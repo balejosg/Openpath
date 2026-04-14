@@ -37,6 +37,7 @@ export default tseslint.config(
   },
   {
     ignores: [
+      'coverage/',
       'dist/',
       'build/',
       'node_modules/',
