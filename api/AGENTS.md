@@ -103,6 +103,13 @@ cd api
 NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/coverage-regressions-storage.test.ts tests/coverage-regressions-legacy-storage.test.ts tests/coverage-regressions-router-validation.test.ts
 ```
 
+Classrooms split example:
+
+```bash
+cd api
+NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/classrooms-crud.test.ts tests/classrooms-machines.test.ts tests/classrooms-cleanup.test.ts
+```
+
 ## Anti-Patterns
 
 - direct DB queries in routers
