@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -18,7 +18,8 @@ import { cn } from '../lib/utils';
 import { getRuleTypeBadge } from '../lib/ruleDetection';
 import type { Rule } from '../lib/rules';
 import { useRuleEditor } from '../hooks/useRuleEditor';
-import { toDomainGroups, type DomainGroup } from '../lib/rule-groups';
+import { type DomainGroup } from '../lib/rule-groups';
+import { useHierarchicalRulesGroups } from '../hooks/useHierarchicalRulesGroups';
 
 export type { DomainGroup } from '../lib/rule-groups';
 
@@ -62,8 +63,6 @@ export const HierarchicalRulesTable: React.FC<HierarchicalRulesTableProps> = ({
   isAllSelected,
   hasSelection,
 }) => {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
   const canEdit = !readOnly && onSave !== undefined;
   const hasSelectionFeature =
     !readOnly &&
@@ -71,17 +70,10 @@ export const HierarchicalRulesTable: React.FC<HierarchicalRulesTableProps> = ({
     onToggleSelection !== undefined &&
     onToggleSelectAll !== undefined;
 
-  const groups = useMemo(() => {
-    if (preGroupedDomains && preGroupedDomains.length > 0) {
-      return preGroupedDomains;
-    }
-
-    if (!rules || rules.length === 0) {
-      return [];
-    }
-
-    return toDomainGroups(rules);
-  }, [rules, preGroupedDomains]);
+  const { expandedGroups, groups, toggleGroup } = useHierarchicalRulesGroups(
+    rules,
+    preGroupedDomains
+  );
   const allRules = useMemo(() => groups.flatMap((group) => group.rules), [groups]);
   const {
     cancelEdit,
@@ -96,19 +88,6 @@ export const HierarchicalRulesTable: React.FC<HierarchicalRulesTableProps> = ({
     onSave,
     resolveRule: (id) => allRules.find((rule) => rule.id === id),
   });
-
-  // Toggle group expansion
-  const toggleGroup = useCallback((root: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(root)) {
-        next.delete(root);
-      } else {
-        next.add(root);
-      }
-      return next;
-    });
-  }, []);
 
   // Loading state
   if (loading) {

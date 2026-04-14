@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from 'react';
+import React from 'react';
 import {
   Trash2,
   Edit2,
@@ -19,16 +19,10 @@ import { cn } from '../lib/utils';
 import { getRuleTypeBadge } from '../lib/ruleDetection';
 import type { Rule, RuleType } from '../lib/rules';
 import { useRuleEditor } from '../hooks/useRuleEditor';
+import { useRuleTableSort } from '../hooks/useRuleTableSort';
 
 export type { Rule, RuleType };
-
-export type SortField = 'value' | 'type' | 'createdAt';
-export type SortDirection = 'asc' | 'desc';
-
-export interface SortConfig {
-  field: SortField;
-  direction: SortDirection;
-}
+export type { SortConfig, SortDirection, SortField } from '../hooks/useRuleTableSort';
 
 interface RulesTableProps {
   rules: Rule[];
@@ -65,8 +59,6 @@ export const RulesTable: React.FC<RulesTableProps> = ({
   isAllSelected,
   hasSelection,
 }) => {
-  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
-
   const hasSelectionFeature =
     !readOnly && selectedIds !== undefined && onToggleSelection !== undefined;
   const {
@@ -84,45 +76,7 @@ export const RulesTable: React.FC<RulesTableProps> = ({
     onSave,
     resolveRule: (id) => rules.find((rule) => rule.id === id),
   });
-
-  // Handle column header click for sorting
-  const handleSort = useCallback((field: SortField) => {
-    setSortConfig((current) => {
-      if (current?.field === field) {
-        // Toggle direction or clear if already desc
-        if (current.direction === 'asc') {
-          return { field, direction: 'desc' };
-        }
-        return null; // Clear sort
-      }
-      // New field, start with asc
-      return { field, direction: 'asc' };
-    });
-  }, []);
-
-  // Sort rules based on current config
-  const sortedRules = useMemo(() => {
-    if (!sortConfig) return rules;
-
-    return [...rules].sort((a, b) => {
-      const { field, direction } = sortConfig;
-      let comparison = 0;
-
-      switch (field) {
-        case 'value':
-          comparison = a.value.localeCompare(b.value);
-          break;
-        case 'type':
-          comparison = a.type.localeCompare(b.type);
-          break;
-        case 'createdAt':
-          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-          break;
-      }
-
-      return direction === 'desc' ? -comparison : comparison;
-    });
-  }, [rules, sortConfig]);
+  const { handleSort, sortConfig, sortedRules } = useRuleTableSort(rules);
 
   // Render sort indicator
   const renderSortIcon = (field: SortField) => {
@@ -135,22 +89,6 @@ export const RulesTable: React.FC<RulesTableProps> = ({
       <ArrowDown size={14} className="text-blue-600" />
     );
   };
-
-  // Render sortable header
-  const renderSortableHeader = (field: SortField, label: string, headerClassName: string) => (
-    <th className={headerClassName}>
-      <button
-        onClick={() => handleSort(field)}
-        className="flex items-center gap-1 hover:text-slate-700 transition-colors group/sort"
-        data-testid={`sort-${field}`}
-      >
-        {label}
-        <span className="opacity-50 group-hover/sort:opacity-100 transition-opacity">
-          {renderSortIcon(field)}
-        </span>
-      </button>
-    </th>
-  );
 
   const getTypeIcon = (type: RuleType) => {
     switch (type) {
@@ -224,10 +162,43 @@ export const RulesTable: React.FC<RulesTableProps> = ({
                   </button>
                 </th>
               )}
-              {renderSortableHeader('value', 'Valor', 'px-4 py-3')}
-              {renderSortableHeader('type', 'Tipo', 'px-4 py-3 w-32')}
+              <th className="px-4 py-3">
+                <button
+                  onClick={() => handleSort('value')}
+                  className="flex items-center gap-1 hover:text-slate-700 transition-colors group/sort"
+                  data-testid="sort-value"
+                >
+                  Valor
+                  <span className="opacity-50 group-hover/sort:opacity-100 transition-opacity">
+                    {renderSortIcon('value')}
+                  </span>
+                </button>
+              </th>
+              <th className="px-4 py-3 w-32">
+                <button
+                  onClick={() => handleSort('type')}
+                  className="flex items-center gap-1 hover:text-slate-700 transition-colors group/sort"
+                  data-testid="sort-type"
+                >
+                  Tipo
+                  <span className="opacity-50 group-hover/sort:opacity-100 transition-opacity">
+                    {renderSortIcon('type')}
+                  </span>
+                </button>
+              </th>
               <th className="px-4 py-3 hidden md:table-cell">Comentario</th>
-              {renderSortableHeader('createdAt', 'Fecha', 'px-4 py-3 w-28 hidden sm:table-cell')}
+              <th className="px-4 py-3 w-28 hidden sm:table-cell">
+                <button
+                  onClick={() => handleSort('createdAt')}
+                  className="flex items-center gap-1 hover:text-slate-700 transition-colors group/sort"
+                  data-testid="sort-createdAt"
+                >
+                  Fecha
+                  <span className="opacity-50 group-hover/sort:opacity-100 transition-opacity">
+                    {renderSortIcon('createdAt')}
+                  </span>
+                </button>
+              </th>
               {!readOnly && <th className="px-4 py-3 w-20 text-right">Acciones</th>}
             </tr>
           </thead>

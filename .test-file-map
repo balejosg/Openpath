@@ -98,6 +98,11 @@ react-spa/src/components/users/UsersResetDialogs.tsx|react-spa/src/views/__tests
 react-spa/src/components/users/UsersDeleteDialog.tsx|react-spa/src/views/__tests__/Users.test.tsx
 react-spa/src/components/RulesTable.tsx|react-spa/src/components/__tests__/RulesTable.test.tsx
 react-spa/src/components/HierarchicalRulesTable.tsx|react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
+react-spa/src/hooks/useGroupedRulesManager.ts|react-spa/src/hooks/__tests__/useGroupedRulesManager.test.tsx
+react-spa/src/hooks/useGroupedRulesData.ts|react-spa/src/hooks/__tests__/useGroupedRulesManager.test.tsx
+react-spa/src/hooks/useGroupedRulesSelection.ts|react-spa/src/hooks/__tests__/useGroupedRulesManager.test.tsx
+react-spa/src/hooks/useRuleTableSort.ts|react-spa/src/components/__tests__/RulesTable.test.tsx
+react-spa/src/hooks/useHierarchicalRulesGroups.ts|react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
 react-spa/src/components/BulkImportModal.tsx|react-spa/src/components/__tests__/BulkImportModal.test.tsx
 react-spa/src/hooks/useUsersViewModel.ts|react-spa/src/views/__tests__/Users.test.tsx
 react-spa/src/hooks/useDashboardViewModel.ts|react-spa/src/views/__tests__/Dashboard.test.tsx
