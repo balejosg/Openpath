@@ -19,8 +19,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "typecheck": "npm --prefix .. run build --workspace=@openpath/shared && npm --prefix .. run build --workspace=@openpath/api && tsc --noEmit",
-    "lint": "npm --prefix .. run build --workspace=@openpath/shared && npm --prefix .. run build --workspace=@openpath/api && eslint --config ../eslint.config.js src/ --max-warnings=0",
+    "typecheck": "tsc -b ../shared ../api/tsconfig.build.json --pretty false && tsc --noEmit",
+    "lint": "tsc -b ../shared ../api/tsconfig.build.json --pretty false && eslint --config ../eslint.config.js src/ --max-warnings=0",
     "lint:fix": "eslint --config ../eslint.config.js src/ --fix --max-warnings=0",
     "size": "size-limit",
     "size:why": "size-limit --why"

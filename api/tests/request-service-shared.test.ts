@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-test('request-service-shared module loads', async () => {
+void test('request-service-shared module loads', async () => {
   const mod = await import('../src/services/request-service-shared.js');
-  assert.ok(mod);
+  assert.notEqual(mod, undefined);
 });

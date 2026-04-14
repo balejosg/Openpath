@@ -6,7 +6,7 @@ import {
   hasEnrollmentRole,
 } from '../src/services/enrollment-service-shared.js';
 
-test('enrollment-service-shared exposes role checks and windows script generation', () => {
+void test('enrollment-service-shared exposes role checks and windows script generation', () => {
   assert.equal(hasEnrollmentRole([{ role: 'teacher' }]), true);
   assert.equal(hasEnrollmentRole([{ role: 'student' }]), false);
 

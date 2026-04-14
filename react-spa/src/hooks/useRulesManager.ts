@@ -20,7 +20,7 @@ interface UseRulesManagerOptions {
   onToast: (message: string, type: 'success' | 'error', undoAction?: () => void) => void;
 }
 
-interface UseRulesManagerReturn {
+export interface UseRulesManagerReturn {
   // Data
   rules: Rule[];
   total: number;

@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "moduleResolution": "bundler",
+    "composite": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
@@ -19,5 +20,5 @@
     "noEmit": true,
     "strict": true
   },
-  "exclude": ["e2e", "playwright.config.ts"]
+  "exclude": ["e2e/**/*.spec.ts", "e2e/test-results/**", "playwright.config.ts"]
 }

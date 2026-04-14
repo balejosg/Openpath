@@ -28,7 +28,7 @@ interface UseGroupedRulesManagerOptions {
   onToast: (message: string, type: 'success' | 'error', undoAction?: () => void) => void;
 }
 
-interface UseGroupedRulesManagerReturn {
+export interface UseGroupedRulesManagerReturn {
   // Data
   domainGroups: DomainGroup[];
   totalGroups: number;

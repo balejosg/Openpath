@@ -6,7 +6,7 @@ import {
   mapToWeeklySchedule,
 } from '../src/services/schedule-service-shared.js';
 
-test('schedule-service-shared maps weekly and one-off schedules', () => {
+void test('schedule-service-shared maps weekly and one-off schedules', () => {
   const weekly = mapToWeeklySchedule({
     id: 'schedule-weekly',
     classroomId: 'classroom-1',

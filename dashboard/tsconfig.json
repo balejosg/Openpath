@@ -3,11 +3,13 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
     "rootDir": "."
   },
+  "references": [{ "path": "../shared" }, { "path": "../api/tsconfig.build.json" }],
   "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules", "dist"]
 }

@@ -24,7 +24,7 @@ interface RequestCreationInput {
 
 type DomainRequestStatus = 'pending' | 'approved' | 'rejected';
 
-interface StoredDomainRequest {
+export interface StoredDomainRequest {
   clientVersion: string | null;
   createdAt: string;
   domain: string;

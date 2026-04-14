@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { mapDBRoleToRole } from '../src/services/user-service-shared.js';
 
-test('user-service-shared maps database roles to public roles', () => {
+void test('user-service-shared maps database roles to public roles', () => {
   const role = mapDBRoleToRole({
     id: 'role-1',
     userId: 'user-1',

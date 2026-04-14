@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./shared" },
+    { "path": "./api/tsconfig.build.json" },
+    { "path": "./dashboard" },
+    { "path": "./firefox-extension/tsconfig.build.json" }
+  ]
+}

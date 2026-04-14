@@ -1,5 +1,5 @@
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
-import type { TRPCLink } from '@trpc/client';
+import type { TRPCClient, TRPCLink } from '@trpc/client';
 import type { AppRouter } from '@openpath/api';
 import { clearAuthAndReload, getAuthTokenForHeader } from './auth-storage';
 
@@ -106,7 +106,7 @@ function createDynamicHttpBatchLink(): TRPCLink<AppRouter> {
  * Cliente tRPC configurado.
  * Uso: await trpc.groups.list.query()
  */
-export const trpc = createTRPCClient<AppRouter>({
+export const trpc: TRPCClient<AppRouter> = createTRPCClient<AppRouter>({
   links: [createDynamicHttpBatchLink()],
 });
 
