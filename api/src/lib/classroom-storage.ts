@@ -1,19 +1,59 @@
 /**
  * OpenPath - Strict Internet Access Control
- * Copyright (C) 2025 OpenPath Authors
  *
- * Classroom Storage - PostgreSQL-based classroom and machine management using Drizzle ORM
+ * Public classroom storage facade. Internal responsibilities are split across:
+ * - classroom-storage-shared.ts
+ * - classroom-storage-classrooms.ts
+ * - classroom-storage-machines.ts
+ * - classroom-storage-policy.ts
  */
 
-import { createHash } from 'node:crypto';
-import { v4 as uuidv4 } from 'uuid';
-import { eq, sql, count, inArray } from 'drizzle-orm';
-import { db, classrooms, machines } from '../db/index.js';
-import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
-import { getCurrentSchedule, getCurrentSchedulesByClassroomIds } from './schedule-storage.js';
-import { sanitizeSlug, resolveCurrentGroup, type CurrentGroupSource } from '@openpath/shared';
-import { isMachineExempt, UNRESTRICTED_GROUP_ID } from './exemption-storage.js';
+import {
+  buildMachineKey,
+  machineHostnameMatches,
+  serializePolicyGroupId,
+  toClassroomType,
+  toMachineDisplayHostname,
+  type DBClassroom,
+} from './classroom-storage-shared.js';
+import {
+  createClassroom,
+  deleteClassroom,
+  getAllClassrooms,
+  getClassroomById,
+  getClassroomByName,
+  getCurrentGroupId,
+  getStats,
+  setActiveGroup,
+  updateClassroom,
+} from './classroom-storage-classrooms.js';
+import {
+  deleteMachine,
+  getAllMachines,
+  getMachineByDownloadTokenHash,
+  getMachineByHostname,
+  getMachineById,
+  getMachineOnlyByHostname,
+  getMachineTokenStatus,
+  getMachinesByClassroom,
+  getMachinesByClassroomIds,
+  registerMachine,
+  removeMachinesByClassroom,
+  setMachineDownloadTokenHash,
+  updateMachineLastSeen,
+} from './classroom-storage-machines.js';
+import {
+  getWhitelistUrlForMachine,
+  resolveClassroomGroupContext,
+  resolveClassroomPolicyScope,
+  resolveClassroomPolicyScopesForClassrooms,
+  resolveEffectiveClassroomPolicyContext,
+  resolveEffectiveMachineEnforcementPolicyContext,
+  resolveEffectiveMachinePolicyContext,
+  resolveMachineEnforcementContext,
+  resolveMachineGroupContext,
+} from './classroom-storage-policy.js';
 import type { Classroom, MachineStatus } from '../types/index.js';
 import type {
   IClassroomStorage,
@@ -21,675 +61,79 @@ import type {
   UpdateClassroomData,
 } from '../types/storage.js';
 
-// =============================================================================
-// Types
-// =============================================================================
-
-type DBClassroom = typeof classrooms.$inferSelect;
-type DBMachine = typeof machines.$inferSelect;
-
-interface ClassroomWithCount {
-  id: string;
-  name: string;
-  displayName: string;
-  defaultGroupId: string | null;
-  activeGroupId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  machineCount: number;
-}
-
-export interface ClassroomPolicyScopeSource {
-  id: string;
-  name: string;
-  displayName: string;
-  defaultGroupId: string | null;
-  activeGroupId: string | null;
-}
-
-export interface WhitelistUrlResult {
-  groupId: string;
-  classroomId: string;
-  classroomName: string;
-}
-
-export type EffectivePolicyContextMode = 'grouped' | 'unrestricted';
-export type EffectivePolicyContextReason = CurrentGroupSource | 'exemption';
-
-export interface EffectivePolicyContext {
-  classroomId: string;
-  classroomName: string;
-  groupId: string | null;
-  mode: EffectivePolicyContextMode;
-  reason: EffectivePolicyContextReason;
-}
-
-export interface PolicyGroupIdSource {
-  mode: EffectivePolicyContextMode;
-  groupId: string | null;
-}
-
-export interface ClassroomPolicyScope {
-  classroomId: string;
-  classroomName: string;
-  classroomDisplayName: string;
-  defaultGroupId: string | null;
-  activeGroupId: string | null;
-  currentGroupId: string | null;
-  currentGroupSource: CurrentGroupSource;
-  mode: EffectivePolicyContextMode;
-}
-
-export interface ClassroomStats {
-  classrooms: number;
-  machines: number;
-  classroomsWithActiveGroup: number;
-}
-
-function toMachineDisplayHostname(
-  machine: Pick<DBMachine, 'hostname' | 'reportedHostname'>
-): string {
-  const reportedHostname = machine.reportedHostname?.trim();
-  return reportedHostname ?? machine.hostname;
-}
-
-export function buildMachineKey(classroomId: string, reportedHostname: string): string {
-  const normalizedHostname = reportedHostname.trim().toLowerCase();
-  const safeHostname = sanitizeSlug(normalizedHostname).slice(0, 220) || 'machine';
-  const classroomHash = createHash('sha256').update(classroomId).digest('hex').slice(0, 12);
-  return `${safeHostname}--${classroomHash}`;
-}
-
-export function machineHostnameMatches(
-  machine: Pick<DBMachine, 'hostname' | 'reportedHostname'>,
-  hostname: string
-): boolean {
-  const candidate = hostname.trim().toLowerCase();
-  if (!candidate) {
-    return false;
-  }
-
-  const normalizedPersisted = machine.hostname.trim().toLowerCase();
-  const normalizedReported = machine.reportedHostname?.trim().toLowerCase();
-
-  return candidate === normalizedPersisted || candidate === normalizedReported;
-}
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-async function resolveClassroomPolicyScopeForRecord(
-  classroom: ClassroomPolicyScopeSource,
-  now: Date
-): Promise<ClassroomPolicyScope> {
-  const currentSchedule = await getCurrentSchedule(classroom.id, now);
-  return buildClassroomPolicyScope(classroom, currentSchedule?.groupId ?? null);
-}
-
-function buildClassroomPolicyScope(
-  classroom: ClassroomPolicyScopeSource,
-  scheduleGroupId: string | null
-): ClassroomPolicyScope {
-  const currentGroup = resolveCurrentGroup({
-    activeGroupId: classroom.activeGroupId,
-    scheduleGroupId,
-    defaultGroupId: classroom.defaultGroupId,
-  });
-
-  return {
-    classroomId: classroom.id,
-    classroomName: classroom.name,
-    classroomDisplayName: classroom.displayName,
-    defaultGroupId: classroom.defaultGroupId,
-    activeGroupId: classroom.activeGroupId,
-    currentGroupId: currentGroup.id,
-    currentGroupSource: currentGroup.source,
-    mode: currentGroup.id === null ? 'unrestricted' : 'grouped',
-  };
-}
-
-function toEffectivePolicyContext(scope: ClassroomPolicyScope): EffectivePolicyContext {
-  return {
-    classroomId: scope.classroomId,
-    classroomName: scope.classroomName,
-    groupId: scope.currentGroupId,
-    mode: scope.mode,
-    reason: scope.currentGroupSource,
-  };
-}
-
-export function serializePolicyGroupId(context: PolicyGroupIdSource): string | null {
-  return context.mode === 'unrestricted' ? UNRESTRICTED_GROUP_ID : context.groupId;
-}
-
-function toLegacyWhitelistUrlResult(context: EffectivePolicyContext): WhitelistUrlResult {
-  return {
-    groupId: serializePolicyGroupId(context) ?? '',
-    classroomId: context.classroomId,
-    classroomName: context.classroomName,
-  };
-}
-
-function toClassroomType(classroom: DBClassroom, machineList: DBMachine[] = []): Classroom {
-  return {
-    id: classroom.id,
-    name: classroom.name,
-    displayName: classroom.displayName,
-    machines: machineList.map((m) => ({
-      id: m.id,
-      hostname: toMachineDisplayHostname(m),
-      classroomId: m.classroomId,
-      version: m.version ?? undefined,
-      lastSeen: m.lastSeen?.toISOString() ?? null,
-      status: 'unknown' as MachineStatus,
-    })),
-    createdAt: classroom.createdAt?.toISOString() ?? new Date().toISOString(),
-    updatedAt: classroom.updatedAt?.toISOString() ?? new Date().toISOString(),
-    defaultGroupId: classroom.defaultGroupId,
-    activeGroupId: classroom.activeGroupId,
-  };
-}
-
-// =============================================================================
-// Classroom CRUD
-// =============================================================================
-
-/**
- * Get all classrooms with their machine counts.
- *
- * @returns Promise resolving to array of classrooms with counts
- */
-export async function getAllClassrooms(): Promise<ClassroomWithCount[]> {
-  const result = await db
-    .select({
-      id: classrooms.id,
-      name: classrooms.name,
-      displayName: classrooms.displayName,
-      defaultGroupId: classrooms.defaultGroupId,
-      activeGroupId: classrooms.activeGroupId,
-      createdAt: classrooms.createdAt,
-      updatedAt: classrooms.updatedAt,
-      machineCount: sql<number>`COUNT(${machines.id})::int`.as('machineCount'),
-    })
-    .from(classrooms)
-    .leftJoin(machines, eq(machines.classroomId, classrooms.id))
-    .groupBy(classrooms.id)
-    .orderBy(sql`${classrooms.createdAt} DESC`);
-
-  return result.map((row) => ({
-    id: row.id,
-    name: row.name,
-    displayName: row.displayName,
-    defaultGroupId: row.defaultGroupId,
-    activeGroupId: row.activeGroupId,
-    createdAt: row.createdAt ?? new Date(),
-    updatedAt: row.updatedAt ?? new Date(),
-    machineCount: row.machineCount,
-  }));
-}
-
-export async function getClassroomById(id: string): Promise<DBClassroom | null> {
-  const result = await db.select().from(classrooms).where(eq(classrooms.id, id)).limit(1);
-
-  return result[0] ?? null;
-}
-
-export async function getClassroomByName(name: string): Promise<DBClassroom | null> {
-  const normalizedName = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
-  const result = await db
-    .select()
-    .from(classrooms)
-    .where(eq(classrooms.name, normalizedName))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Create a new classroom.
- * Generates a URL-safe name (slug) from the provided name.
- *
- * @param classroomData - Data for the new classroom
- * @returns Promise resolving to the created classroom record
- * @throws {Error} If a classroom with the same generated slug already exists
- */
-export async function createClassroom(
-  classroomData: CreateClassroomData & { defaultGroupId?: string }
-): Promise<DBClassroom> {
-  const { name, displayName, defaultGroupId } = classroomData;
-  const slug = sanitizeSlug(name, { maxLength: 100, allowUnderscore: true });
-  if (!slug) {
-    throw new Error('Classroom name is invalid');
-  }
-
-  // Check if exists
-  const existing = await getClassroomByName(slug);
-  if (existing) {
-    throw new Error(`Classroom with name "${slug}" already exists`);
-  }
-
-  const id = `room_${uuidv4().slice(0, 8)}`;
-
-  const [result] = await db
-    .insert(classrooms)
-    .values({
-      id,
-      name: slug,
-      displayName: displayName ?? name,
-      defaultGroupId: defaultGroupId ?? null,
-    })
-    .returning();
-
-  if (!result) {
-    throw new Error(`Failed to create classroom "${slug}"`);
-  }
-  return result;
-}
-
-export async function updateClassroom(
-  id: string,
-  updates: UpdateClassroomData & { defaultGroupId?: string }
-): Promise<DBClassroom | null> {
-  const updateValues: Partial<typeof classrooms.$inferInsert> = {};
-
-  if (updates.displayName !== undefined) {
-    updateValues.displayName = updates.displayName;
-  }
-  if (updates.defaultGroupId !== undefined) {
-    updateValues.defaultGroupId = updates.defaultGroupId;
-  }
-
-  if (Object.keys(updateValues).length === 0) {
-    return getClassroomById(id);
-  }
-
-  const [result] = await db
-    .update(classrooms)
-    .set(updateValues)
-    .where(eq(classrooms.id, id))
-    .returning();
-
-  return result ?? null;
-}
-
-export async function setActiveGroup(
-  id: string,
-  groupId: string | null
-): Promise<DBClassroom | null> {
-  const [result] = await db
-    .update(classrooms)
-    .set({ activeGroupId: groupId })
-    .where(eq(classrooms.id, id))
-    .returning();
-
-  return result ?? null;
-}
-
-export async function getCurrentGroupId(id: string): Promise<string | null> {
-  const classroom = await getClassroomById(id);
-  if (!classroom) return null;
-  return classroom.activeGroupId ?? classroom.defaultGroupId;
-}
-
-export async function deleteClassroom(id: string): Promise<boolean> {
-  return getRowCount(await db.delete(classrooms).where(eq(classrooms.id, id))) > 0;
-}
-
-// =============================================================================
-// Machine CRUD
-// =============================================================================
-
-export async function getAllMachines(classroomId?: string): Promise<DBMachine[]> {
-  if (classroomId) {
-    return await db
-      .select()
-      .from(machines)
-      .where(eq(machines.classroomId, classroomId))
-      .orderBy(sql`${machines.createdAt} DESC`);
-  }
-
-  const result = await db
-    .select()
-    .from(machines)
-    .orderBy(sql`${machines.createdAt} DESC`);
-
-  return result;
-}
-
-export async function getMachineById(id: string): Promise<DBMachine | null> {
-  const result = await db.select().from(machines).where(eq(machines.id, id)).limit(1);
-
-  return result[0] ?? null;
-}
-
-export async function getMachinesByClassroom(classroomId: string): Promise<DBMachine[]> {
-  const result = await db.select().from(machines).where(eq(machines.classroomId, classroomId));
-
-  return result;
-}
-
-export async function getMachinesByClassroomIds(
-  classroomIds: string[]
-): Promise<Map<string, DBMachine[]>> {
-  const normalizedClassroomIds = [...new Set(classroomIds.filter((id) => id.length > 0))];
-  const machinesByClassroomId = new Map<string, DBMachine[]>(
-    normalizedClassroomIds.map((id) => [id, []])
-  );
-
-  if (normalizedClassroomIds.length === 0) {
-    return machinesByClassroomId;
-  }
-
-  const result = await db
-    .select()
-    .from(machines)
-    .where(inArray(machines.classroomId, normalizedClassroomIds))
-    .orderBy(sql`${machines.createdAt} DESC`);
-
-  for (const machine of result) {
-    if (!machine.classroomId) {
-      continue;
-    }
-
-    const machineList = machinesByClassroomId.get(machine.classroomId);
-    if (machineList) {
-      machineList.push(machine);
-    } else {
-      machinesByClassroomId.set(machine.classroomId, [machine]);
-    }
-  }
-
-  return machinesByClassroomId;
-}
-
-export async function getMachineByHostname(hostname: string): Promise<DBMachine | null> {
-  const normalizedHostname = hostname.toLowerCase().trim();
-  const result = await db
-    .select()
-    .from(machines)
-    .where(eq(machines.hostname, normalizedHostname))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Register a machine to a classroom.
- * If the machine already exists, it is updated (moved to new classroom).
- *
- * @param machineData - Machine registration data
- * @returns Promise resolving to the machine record
- */
-export async function registerMachine(machineData: {
-  hostname: string;
-  reportedHostname?: string;
-  classroomId: string;
-  version?: string;
-}): Promise<DBMachine> {
-  const { hostname, reportedHostname, classroomId, version } = machineData;
-  const normalizedHostname = hostname.toLowerCase();
-  const normalizedReportedHostname = reportedHostname?.trim() ?? normalizedHostname;
-
-  // Check if machine already exists
-  const existing = await getMachineByHostname(normalizedHostname);
-  if (existing) {
-    // Update existing machine
-    const [result] = await db
-      .update(machines)
-      .set({
-        classroomId,
-        reportedHostname: normalizedReportedHostname,
-        version: version ?? existing.version,
-        lastSeen: new Date(),
-      })
-      .where(eq(machines.id, existing.id))
-      .returning();
-
-    if (!result) {
-      throw new Error(`Failed to update machine "${hostname}"`);
-    }
-    return result;
-  }
-
-  // Create new machine
-  const id = `machine_${uuidv4().slice(0, 8)}`;
-  const [result] = await db
-    .insert(machines)
-    .values({
-      id,
-      hostname: normalizedHostname,
-      reportedHostname: normalizedReportedHostname,
-      classroomId,
-      version: version ?? 'unknown',
-    })
-    .returning();
-
-  if (!result) {
-    throw new Error('Failed to register machine');
-  }
-
-  return result;
-}
-
-export async function updateMachineLastSeen(hostname: string): Promise<DBMachine | null> {
-  const machine = await getMachineByHostname(hostname);
-  if (!machine) return null;
-
-  const [result] = await db
-    .update(machines)
-    .set({ lastSeen: new Date() })
-    .where(eq(machines.id, machine.id))
-    .returning();
-
-  return result ?? null;
-}
-
-/**
- * Get the machine record by hostname
- */
-export async function getMachineOnlyByHostname(hostname: string): Promise<DBMachine | null> {
-  const normalizedHostname = hostname.toLowerCase().trim();
-  const result = await db
-    .select()
-    .from(machines)
-    .where(eq(machines.hostname, normalizedHostname))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-export async function deleteMachine(hostname: string): Promise<boolean> {
-  const machine = await getMachineByHostname(hostname);
-  if (!machine) return false;
-
-  return getRowCount(await db.delete(machines).where(eq(machines.id, machine.id))) > 0;
-}
-
-export async function removeMachinesByClassroom(classroomId: string): Promise<number> {
-  return getRowCount(await db.delete(machines).where(eq(machines.classroomId, classroomId)));
-}
-
-/**
- * Resolve the correct whitelist group for a machine based on its classroom state.
- * Priority:
- * 1. Active override group (if set by teacher)
- * 2. Scheduled class group (if current time matches a schedule)
- * 3. Default classroom group
- *
- * @param hostname - Machine hostname
- * @returns Promise resolving to group context or null if machine/classroom not found
- */
-export async function resolveMachineGroupContext(
-  hostname: string,
-  now: Date = new Date()
-): Promise<WhitelistUrlResult | null> {
-  const context = await resolveEffectiveMachinePolicyContext(hostname, now);
-  return context ? toLegacyWhitelistUrlResult(context) : null;
-}
-
-export async function resolveClassroomPolicyScope(
-  classroomId: string,
-  now: Date = new Date()
-): Promise<ClassroomPolicyScope | null> {
-  const classroom = await getClassroomById(classroomId);
-  if (!classroom) return null;
-
-  return resolveClassroomPolicyScopeForRecord(classroom, now);
-}
-
-export async function resolveClassroomPolicyScopesForClassrooms(
-  classroomRecords: ClassroomPolicyScopeSource[],
-  now: Date = new Date()
-): Promise<Map<string, ClassroomPolicyScope>> {
-  const normalizedClassrooms = classroomRecords.filter((classroom) => classroom.id.length > 0);
-  const scheduleMap = await getCurrentSchedulesByClassroomIds(
-    normalizedClassrooms.map((classroom) => classroom.id),
-    now
-  );
-
-  return new Map(
-    normalizedClassrooms.map((classroom) => [
-      classroom.id,
-      buildClassroomPolicyScope(classroom, scheduleMap.get(classroom.id)?.groupId ?? null),
-    ])
-  );
-}
-
-export async function resolveEffectiveClassroomPolicyContext(
-  classroomId: string,
-  now: Date = new Date()
-): Promise<EffectivePolicyContext | null> {
-  const scope = await resolveClassroomPolicyScope(classroomId, now);
-  return scope ? toEffectivePolicyContext(scope) : null;
-}
-
-export async function resolveEffectiveMachinePolicyContext(
-  hostname: string,
-  now: Date = new Date()
-): Promise<EffectivePolicyContext | null> {
-  const machine = await getMachineByHostname(hostname);
-  if (!machine) return null;
-
-  const classroomId = machine.classroomId;
-  if (!classroomId) return null;
-
-  const classroom = await getClassroomById(classroomId);
-  if (!classroom) return null;
-
-  const scope = await resolveClassroomPolicyScopeForRecord(classroom, now);
-  return toEffectivePolicyContext(scope);
-}
-
-/**
- * Resolve the effective enforcement context for a machine.
- * This may return a sentinel groupId when the machine is temporarily unrestricted.
- */
-export async function resolveMachineEnforcementContext(
-  hostname: string,
-  now: Date = new Date()
-): Promise<WhitelistUrlResult | null> {
-  const context = await resolveEffectiveMachineEnforcementPolicyContext(hostname, now);
-  return context ? toLegacyWhitelistUrlResult(context) : null;
-}
-
-export async function resolveEffectiveMachineEnforcementPolicyContext(
-  hostname: string,
-  now: Date = new Date()
-): Promise<EffectivePolicyContext | null> {
-  const machine = await getMachineByHostname(hostname);
-  if (!machine) return null;
-
-  const classroomId = machine.classroomId;
-  if (!classroomId) return null;
-
-  const classroom = await getClassroomById(classroomId);
-  if (!classroom) return null;
-
-  const exempt = await isMachineExempt(machine.id, classroomId, now);
-  if (exempt) {
-    return {
-      classroomId: classroom.id,
-      classroomName: classroom.name,
-      groupId: null,
-      mode: 'unrestricted',
-      reason: 'exemption',
-    };
-  }
-
-  const scope = await resolveClassroomPolicyScopeForRecord(classroom, now);
-  return toEffectivePolicyContext(scope);
-}
-
-/**
- * Resolve the correct whitelist group for a classroom based on its current state.
- * Priority:
- * 1. Active override group (if set by teacher)
- * 2. Scheduled class group (if current time matches a schedule)
- * 3. Default classroom group
- */
-export async function resolveClassroomGroupContext(
-  classroomId: string,
-  now: Date = new Date()
-): Promise<WhitelistUrlResult | null> {
-  const context = await resolveEffectiveClassroomPolicyContext(classroomId, now);
-  return context ? toLegacyWhitelistUrlResult(context) : null;
-}
-
-export async function getWhitelistUrlForMachine(
-  hostname: string
-): Promise<WhitelistUrlResult | null> {
-  return resolveMachineEnforcementContext(hostname);
-}
-
-export async function getStats(): Promise<ClassroomStats> {
-  const classroomResult = await db
-    .select({
-      total: count(),
-      active: sql<number>`COUNT(*) FILTER (WHERE ${classrooms.activeGroupId} IS NOT NULL)`.as(
-        'active'
-      ),
-    })
-    .from(classrooms);
-
-  const machineResult = await db
-    .select({
-      total: count(),
-    })
-    .from(machines);
-
-  return {
-    classrooms: classroomResult[0]?.total ?? 0,
-    machines: machineResult[0]?.total ?? 0,
-    classroomsWithActiveGroup: classroomResult[0]?.active ?? 0,
-  };
-}
-
-// =============================================================================
-// Storage Instance
-// =============================================================================
+export {
+  buildMachineKey,
+  createClassroom,
+  deleteClassroom,
+  deleteMachine,
+  getAllClassrooms,
+  getAllMachines,
+  getClassroomById,
+  getClassroomByName,
+  getCurrentGroupId,
+  getMachineByDownloadTokenHash,
+  getMachineByHostname,
+  getMachineById,
+  getMachineOnlyByHostname,
+  getMachineTokenStatus,
+  getMachinesByClassroom,
+  getMachinesByClassroomIds,
+  getStats,
+  getWhitelistUrlForMachine,
+  machineHostnameMatches,
+  registerMachine,
+  removeMachinesByClassroom,
+  resolveClassroomGroupContext,
+  resolveClassroomPolicyScope,
+  resolveClassroomPolicyScopesForClassrooms,
+  resolveEffectiveClassroomPolicyContext,
+  resolveEffectiveMachineEnforcementPolicyContext,
+  resolveEffectiveMachinePolicyContext,
+  resolveMachineEnforcementContext,
+  resolveMachineGroupContext,
+  serializePolicyGroupId,
+  setActiveGroup,
+  setMachineDownloadTokenHash,
+  toMachineDisplayHostname,
+  updateClassroom,
+  updateMachineLastSeen,
+};
+
+export type {
+  ClassroomPolicyScope,
+  ClassroomPolicyScopeSource,
+  ClassroomStats,
+  ClassroomWithCount,
+  DBClassroom,
+  DBMachine,
+  EffectivePolicyContext,
+  EffectivePolicyContextMode,
+  EffectivePolicyContextReason,
+  PolicyGroupIdSource,
+  WhitelistUrlResult,
+} from './classroom-storage-shared.js';
 
 export const classroomStorage: IClassroomStorage = {
   getAllClassrooms: async () => {
     const allClassrooms = await getAllClassrooms();
     const result: Classroom[] = [];
 
-    for (const c of allClassrooms) {
-      const machineList = await getMachinesByClassroom(c.id);
-      const classroom = toClassroomType(
+    for (const classroom of allClassrooms) {
+      const machineList = await getMachinesByClassroom(classroom.id);
+      const classroomType = toClassroomType(
         {
-          id: c.id,
-          name: c.name,
-          displayName: c.displayName,
-          defaultGroupId: c.defaultGroupId,
-          activeGroupId: c.activeGroupId,
-          createdAt: c.createdAt,
-          updatedAt: c.updatedAt,
+          id: classroom.id,
+          name: classroom.name,
+          displayName: classroom.displayName,
+          defaultGroupId: classroom.defaultGroupId,
+          activeGroupId: classroom.activeGroupId,
+          createdAt: classroom.createdAt,
+          updatedAt: classroom.updatedAt,
         } as DBClassroom,
         machineList
       );
-      classroom.machineCount = c.machineCount;
-      result.push(classroom);
+      classroomType.machineCount = classroom.machineCount;
+      result.push(classroomType);
     }
 
     return result;
@@ -735,7 +179,7 @@ export const classroomStorage: IClassroomStorage = {
   removeMachine: async (classroomId: string, hostname: string) => {
     const machine = await getMachineByHostname(hostname);
     if (machine?.classroomId !== classroomId) return false;
-    return deleteMachine(hostname);
+    return await deleteMachine(hostname);
   },
   getMachineByHostname: async (hostname: string) => {
     const machine = await getMachineByHostname(hostname);
@@ -763,76 +207,3 @@ export const classroomStorage: IClassroomStorage = {
 logger.debug('Classroom storage initialized');
 
 export default classroomStorage;
-
-// =============================================================================
-// Machine Download Token Operations
-// =============================================================================
-
-/**
- * Find a machine by its download token hash.
- * Used for public whitelist endpoint authentication.
- *
- * @param tokenHash - SHA-256 hash of the download token
- * @returns Machine record or null if not found
- */
-export async function getMachineByDownloadTokenHash(tokenHash: string): Promise<DBMachine | null> {
-  const result = await db
-    .select()
-    .from(machines)
-    .where(eq(machines.downloadTokenHash, tokenHash))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
- * Set the download token hash for a machine.
- * Used during registration and rotation.
- *
- * @param machineId - Machine ID
- * @param tokenHash - SHA-256 hash of the new token
- * @returns Updated machine or null if not found
- */
-export async function setMachineDownloadTokenHash(
-  machineId: string,
-  tokenHash: string
-): Promise<DBMachine | null> {
-  const [result] = await db
-    .update(machines)
-    .set({
-      downloadTokenHash: tokenHash,
-      downloadTokenLastRotatedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(machines.id, machineId))
-    .returning();
-
-  return result ?? null;
-}
-
-/**
- * Check if a machine has a download token configured.
- *
- * @param machineId - Machine ID
- * @returns Object with hasToken boolean and lastRotatedAt date
- */
-export async function getMachineTokenStatus(machineId: string): Promise<{
-  hasToken: boolean;
-  lastRotatedAt: Date | null;
-} | null> {
-  const result = await db
-    .select({
-      downloadTokenHash: machines.downloadTokenHash,
-      downloadTokenLastRotatedAt: machines.downloadTokenLastRotatedAt,
-    })
-    .from(machines)
-    .where(eq(machines.id, machineId))
-    .limit(1);
-
-  if (!result[0]) return null;
-
-  return {
-    hasToken: result[0].downloadTokenHash !== null,
-    lastRotatedAt: result[0].downloadTokenLastRotatedAt,
-  };
-}
