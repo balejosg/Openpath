@@ -68,6 +68,10 @@ $ErrorActionPreference = "Stop"
 $OpenPathRoot = "C:\OpenPath"
 $scriptDir = $PSScriptRoot
 $apiBaseUrl = if ($ApiUrl) { $ApiUrl.TrimEnd('/') } else { '' }
+$installerHelperRoot = Join-Path $scriptDir 'lib\install'
+
+. (Join-Path $installerHelperRoot 'Installer.ChromiumGuidance.ps1')
+. (Join-Path $installerHelperRoot 'Installer.Dns.ps1')
 
 function Write-InstallerNotice {
     param(
@@ -509,111 +513,6 @@ else {
     Write-Host "  ADVERTENCIA: Chromium managed rollout metadata not found in browser-extension\chromium-managed or firefox-extension\build\chromium-managed; Edge/Chrome managed extension install skipped" -ForegroundColor Yellow
 }
 
-function New-OpenPathInternetShortcut {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Url
-    )
-
-    $shortcutContent = @(
-        '[InternetShortcut]',
-        "URL=$Url"
-    ) -join [Environment]::NewLine
-
-    Set-Content -Path $Path -Value $shortcutContent -Encoding ASCII
-}
-
-function Get-OpenPathChromiumBrowserTargets {
-    param(
-        [string]$ChromeStoreUrl = '',
-        [string]$EdgeStoreUrl = ''
-    )
-
-    $browserTargets = @()
-
-    if ($ChromeStoreUrl) {
-        $chromeExecutablePath = @(
-            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-            "$env:LocalAppData\Google\Chrome\Application\chrome.exe"
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-        $browserTargets += [PSCustomObject]@{
-            Name = 'Google Chrome'
-            ExecutablePath = [string]$chromeExecutablePath
-            StoreUrl = [string]$ChromeStoreUrl
-            ShortcutName = 'Install OpenPath for Google Chrome.url'
-        }
-    }
-
-    if ($EdgeStoreUrl) {
-        $edgeExecutablePath = @(
-            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-            "$env:LocalAppData\Microsoft\Edge\Application\msedge.exe"
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-        $browserTargets += [PSCustomObject]@{
-            Name = 'Microsoft Edge'
-            ExecutablePath = [string]$edgeExecutablePath
-            StoreUrl = [string]$EdgeStoreUrl
-            ShortcutName = 'Install OpenPath for Microsoft Edge.url'
-        }
-    }
-
-    return @($browserTargets)
-}
-
-function Install-OpenPathChromiumUnmanagedGuidance {
-    param(
-        [string]$ChromeStoreUrl = '',
-        [string]$EdgeStoreUrl = '',
-        [switch]$Unattended
-    )
-
-    $browserTargets = Get-OpenPathChromiumBrowserTargets `
-        -ChromeStoreUrl $ChromeStoreUrl `
-        -EdgeStoreUrl $EdgeStoreUrl
-
-    if ($browserTargets.Count -eq 0) {
-        return $false
-    }
-
-    $guidanceRoot = "$OpenPathRoot\browser-extension\chromium-unmanaged"
-    Remove-Item $guidanceRoot -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $guidanceRoot -Force | Out-Null
-
-    foreach ($browserTarget in $browserTargets) {
-        $shortcutPath = Join-Path $guidanceRoot $browserTarget.ShortcutName
-        New-OpenPathInternetShortcut -Path $shortcutPath -Url $browserTarget.StoreUrl
-        Write-InstallerVerbose "  Chromium store guidance staged in $shortcutPath"
-
-        if (-not $Unattended) {
-            if ($browserTarget.ExecutablePath) {
-                try {
-                    Start-Process -FilePath $browserTarget.ExecutablePath -ArgumentList $browserTarget.StoreUrl | Out-Null
-                    Write-InstallerVerbose "  Opened $($browserTarget.Name) store page for OpenPath extension"
-                }
-                catch {
-                    Write-Host "  ADVERTENCIA: No se pudo abrir $($browserTarget.Name) automaticamente: $_" -ForegroundColor Yellow
-                }
-            }
-            else {
-                Write-Host "  ADVERTENCIA: $($browserTarget.Name) no se detecto localmente; abre manualmente $shortcutPath" -ForegroundColor Yellow
-            }
-        }
-    }
-
-    if ($Unattended) {
-        Write-Host "  Chromium store guidance staged for unattended install" -ForegroundColor Yellow
-    }
-
-    return $true
-}
-
 if (-not $chromiumManagedSource) {
     if (-not (Install-OpenPathChromiumUnmanagedGuidance `
         -ChromeStoreUrl $ChromeExtensionStoreUrl `
@@ -630,88 +529,6 @@ Write-InstallerVerbose "  Modulos copiados"
 # Import modules
 Import-Module "$OpenPathRoot\lib\Common.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Firewall.psm1" -Force
-
-function Test-InstallerDirectDnsServer {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Server,
-
-        [string]$ProbeDomain = 'google.com'
-    )
-
-    if (-not $Server -or $Server -in @('127.0.0.1', '0.0.0.0')) {
-        return $false
-    }
-
-    if ($Server -notmatch '^\d{1,3}(?:\.\d{1,3}){3}$') {
-        return $false
-    }
-
-    try {
-        $result = Resolve-DnsName -Name $ProbeDomain -Server $Server -DnsOnly -ErrorAction Stop
-        return ($null -ne $result)
-    }
-    catch {
-        return $false
-    }
-}
-
-function Test-InstallerDisfavoredDnsServer {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Server
-    )
-
-    return $Server -in @(
-        '168.63.129.16'
-    )
-}
-
-function Get-InstallerPrimaryDNS {
-    $preferredCandidates = @(
-        Get-DnsClientServerAddress -AddressFamily IPv4 |
-            ForEach-Object { @($_.ServerAddresses) } |
-            Where-Object {
-                $_ -and
-                $_ -notin @('127.0.0.1', '0.0.0.0') -and
-                $_ -match '^\d{1,3}(?:\.\d{1,3}){3}$'
-            }
-    )
-
-    $gateway = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1).NextHop
-    if (
-        $gateway -and
-        $gateway -notin @('127.0.0.1', '0.0.0.0') -and
-        $gateway -match '^\d{1,3}(?:\.\d{1,3}){3}$'
-    ) {
-        $preferredCandidates += $gateway
-    }
-
-    $preferredCandidates = @($preferredCandidates | Select-Object -Unique)
-    $disfavoredCandidates = @(
-        $preferredCandidates | Where-Object { Test-InstallerDisfavoredDnsServer -Server $_ }
-    )
-    $preferredCandidates = @(
-        $preferredCandidates | Where-Object { -not (Test-InstallerDisfavoredDnsServer -Server $_) }
-    )
-    $fallbackCandidates = @('8.8.8.8', '1.1.1.1', '9.9.9.9', '8.8.4.4')
-
-    foreach ($candidate in (@($preferredCandidates) + @($fallbackCandidates) + @($disfavoredCandidates))) {
-        if (Test-InstallerDirectDnsServer -Server $candidate) {
-            return $candidate
-        }
-    }
-
-    if ($preferredCandidates.Count -gt 0) {
-        return $preferredCandidates[0]
-    }
-
-    if ($disfavoredCandidates.Count -gt 0) {
-        return $disfavoredCandidates[0]
-    }
-
-    return '8.8.8.8'
-}
 
 # Step 3: Create configuration
 Show-InstallerProgress -Step 3 -Total 7 -Status 'Creando configuracion'

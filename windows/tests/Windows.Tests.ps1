@@ -102,7 +102,8 @@ Describe "Common Module" {
     Context "Protected mode helpers" {
         It "Defines Restore-OpenPathProtectedMode with optional Acrylic restart" {
             $commonPath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
-            $content = Get-Content $commonPath -Raw
+            $domainsHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Domains.ps1"
+            $content = Get-Content $domainsHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'function Restore-OpenPathProtectedMode',
@@ -1720,7 +1721,7 @@ Describe "Update Script" {
     Context "Health report" {
         It "Sends health report to API after successful update" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
-            $commonPath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
+            $commonPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Http.ps1"
             $updateContent = Get-Content $scriptPath -Raw
             $commonContent = Get-Content $commonPath -Raw
 
@@ -2171,6 +2172,8 @@ Describe "Installer" {
         It "Uses PowerShell verbose semantics and progress helpers for installer output" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
             $content = Get-Content $scriptPath -Raw
+            $guidanceHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.ChromiumGuidance.ps1"
+            $guidanceHelper = Get-Content $guidanceHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '[CmdletBinding()]',
@@ -2178,7 +2181,13 @@ Describe "Installer" {
                 'Write-Progress -Activity ''Installing OpenPath''',
                 'function Write-InstallerVerbose',
                 'Write-Verbose $Message',
-                'Show-InstallerProgress -Step 1 -Total 7 -Status ''Creando estructura de directorios'''
+                'Show-InstallerProgress -Step 1 -Total 7 -Status ''Creando estructura de directorios''',
+                "Installer.ChromiumGuidance.ps1"
+            )
+
+            Assert-ContentContainsAll -Content $guidanceHelper -Needles @(
+                'function Get-OpenPathChromiumBrowserTargets',
+                'function Install-OpenPathChromiumUnmanagedGuidance'
             )
         }
 
@@ -2194,10 +2203,13 @@ Describe "Installer" {
         It "Uses an installer helper instead of indexing directly into adapter DNS arrays" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
             $content = Get-Content $scriptPath -Raw
+            $dnsHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Dns.ps1"
+            $dnsHelper = Get-Content $dnsHelperPath -Raw
 
-            $content.Contains('function Get-InstallerPrimaryDNS') | Should -BeTrue
+            $content.Contains('Installer.Dns.ps1') | Should -BeTrue
             $content.Contains('$primaryDNS = Get-InstallerPrimaryDNS') | Should -BeTrue
             $content.Contains('Select-Object -First 1).ServerAddresses[0]') | Should -BeFalse
+            $dnsHelper.Contains('function Get-InstallerPrimaryDNS') | Should -BeTrue
         }
     }
 
@@ -2280,7 +2292,7 @@ Describe "Enrollment script" {
 Describe "Whitelist Validation" {
     Context "Content validation" {
         It "Common module validates minimum domain count" {
-            $modulePath = Join-Path $PSScriptRoot ".." "lib" "Common.psm1"
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Http.ps1"
             $content = Get-Content $modulePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
