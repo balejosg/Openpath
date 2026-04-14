@@ -5,6 +5,7 @@
 
 import { logger, getErrorMessage } from './lib/logger.js';
 import { buildSubmitBlockedDomainRequestMessage } from './lib/blocked-screen-contract.js';
+import { createPopupElements, registerPopupEventHandlers } from './lib/popup-dom.js';
 import {
   DEFAULT_REQUEST_CONFIG,
   hasValidRequestConfig,
@@ -35,39 +36,25 @@ import {
   buildBlockedDomainListItems,
   buildRequestStatusPresentation,
 } from './lib/popup-view-models.js';
-
-/**
- * Helper to get DOM elements safely
- * @param id Element ID
- * @returns The element
- * @throws Error if element not found
- */
-function getElement(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`Required element #${id} not found`);
-  return el;
-}
-
-// DOM Elements
-const tabDomainEl = getElement('tab-domain');
-const countEl = getElement('count');
-const domainsListEl = getElement('domains-list');
-const emptyMessageEl = getElement('empty-message');
-const btnCopy = getElement('btn-copy') as HTMLButtonElement;
-const btnVerify = getElement('btn-verify') as HTMLButtonElement;
-const btnClear = getElement('btn-clear') as HTMLButtonElement;
-const btnRequest = getElement('btn-request') as HTMLButtonElement;
-const toastEl = getElement('toast');
-const nativeStatusEl = getElement('native-status');
-const verifyResultsEl = getElement('verify-results');
-const verifyListEl = getElement('verify-list');
-
-// Request form elements
-const requestSectionEl = getElement('request-section');
-const requestDomainSelectEl = getElement('request-domain-select') as HTMLSelectElement;
-const requestReasonEl = getElement('request-reason') as HTMLInputElement;
-const btnSubmitRequest = getElement('btn-submit-request') as HTMLButtonElement;
-const requestStatusEl = getElement('request-status');
+const {
+  tabDomainEl,
+  countEl,
+  domainsListEl,
+  emptyMessageEl,
+  btnCopy,
+  btnVerify,
+  btnClear,
+  btnRequest,
+  toastEl,
+  nativeStatusEl,
+  verifyResultsEl,
+  verifyListEl,
+  requestSectionEl,
+  requestDomainSelectEl,
+  requestReasonEl,
+  btnSubmitRequest,
+  requestStatusEl,
+} = createPopupElements();
 
 // Current tab ID
 let currentTabId: number | null = null;
@@ -500,41 +487,35 @@ async function init(): Promise<void> {
   }
 }
 
-// Event Listeners
-btnCopy.addEventListener('click', () => {
-  void copyToClipboard();
-});
-btnClear.addEventListener('click', () => {
-  void clearDomains();
-});
-btnVerify.addEventListener('click', () => {
-  void verifyDomainsWithNative();
-});
-btnRequest.addEventListener('click', toggleRequestSection);
-btnSubmitRequest.addEventListener('click', () => {
-  void submitDomainRequest();
-});
-requestDomainSelectEl.addEventListener('change', updateSubmitButtonState);
-requestReasonEl.addEventListener('input', updateSubmitButtonState);
-domainsListEl.addEventListener('click', (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  if (!target.classList.contains('retry-update-btn')) {
-    return;
-  }
-
-  const hostname = target.dataset.hostname;
-  if (!hostname) {
-    return;
-  }
-
-  void retryDomainLocalUpdate(hostname);
-});
-
-// Inicializar al cargar
-document.addEventListener('DOMContentLoaded', () => {
-  void init();
+registerPopupEventHandlers({
+  elements: {
+    btnCopy,
+    btnClear,
+    btnRequest,
+    btnSubmitRequest,
+    btnVerify,
+    domainsListEl,
+    requestDomainSelectEl,
+    requestReasonEl,
+  },
+  onClear: () => {
+    void clearDomains();
+  },
+  onCopy: () => {
+    void copyToClipboard();
+  },
+  onDomReady: () => {
+    void init();
+  },
+  onRequestInputChange: updateSubmitButtonState,
+  onRetryUpdate: (hostname) => {
+    void retryDomainLocalUpdate(hostname);
+  },
+  onSubmitRequest: () => {
+    void submitDomainRequest();
+  },
+  onToggleRequest: toggleRequestSection,
+  onVerify: () => {
+    void verifyDomainsWithNative();
+  },
 });
