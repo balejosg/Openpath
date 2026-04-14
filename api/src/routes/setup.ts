@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from 'express';
 
-import * as setupStorage from '../lib/setup-storage.js';
 import { verifyAccessTokenFromRequest } from '../lib/server-request-auth.js';
 import SetupService from '../services/setup.service.js';
 import { createAsyncRouteHandler, sendJsonInternalError } from './route-helpers.js';
@@ -144,8 +143,8 @@ export function registerSetupRoutes(app: Express): void {
           res.json({ valid: false });
           return;
         }
-        const valid = await setupStorage.validateRegistrationToken(token);
-        res.json({ valid });
+        const result = await SetupService.validateToken(token);
+        res.json(result);
       }
     )
   );

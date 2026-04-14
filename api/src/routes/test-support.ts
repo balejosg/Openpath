@@ -1,9 +1,8 @@
 import type { Express, Request, Response } from 'express';
 
-import * as classroomStorage from '../lib/classroom-storage.js';
-import { verifyAccessTokenFromRequest } from '../lib/server-request-auth.js';
-import { runScheduleBoundaryTickOnce } from '../lib/rule-events.js';
 import { config } from '../config.js';
+import { verifyAccessTokenFromRequest } from '../lib/server-request-auth.js';
+import TestSupportService from '../services/test-support.service.js';
 import { createAsyncRouteHandler, sendJsonInternalError } from './route-helpers.js';
 
 function getBodyField(body: unknown, key: string): unknown {
@@ -59,35 +58,11 @@ async function handleMachineContext(
   }
 
   const now = deps.getCurrentEvaluationTime();
-  const machine = await classroomStorage.getMachineByHostname(hostname);
-  const effectiveContext = await classroomStorage.resolveEffectiveMachineEnforcementPolicyContext(
-    hostname,
-    now
-  );
-  const context = await classroomStorage.resolveMachineEnforcementContext(hostname, now);
-  const classroom = machine?.classroomId
-    ? await classroomStorage.getClassroomById(machine.classroomId)
-    : null;
+  const snapshot = await TestSupportService.getMachineContextSnapshot(hostname, now);
 
   res.json({
     success: true,
-    machine: machine
-      ? {
-          id: machine.id,
-          hostname: machine.hostname,
-          reportedHostname: machine.reportedHostname,
-          classroomId: machine.classroomId,
-        }
-      : null,
-    effectiveContext,
-    context,
-    classroom: classroom
-      ? {
-          id: classroom.id,
-          defaultGroupId: classroom.defaultGroupId,
-          activeGroupId: classroom.activeGroupId,
-        }
-      : null,
+    ...snapshot,
   });
 }
 
@@ -101,14 +76,7 @@ async function handleAutoApprove(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  Object.defineProperty(config, 'autoApproveMachineRequests', {
-    value: enabled,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
-
-  res.json({ success: true, enabled: config.autoApproveMachineRequests });
+  res.json({ success: true, ...TestSupportService.setAutoApproveMachineRequests(enabled) });
 }
 
 async function handleClock(
@@ -159,8 +127,7 @@ async function handleTickBoundaries(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  await runScheduleBoundaryTickOnce(at);
-  res.json({ success: true, at: at.toISOString() });
+  res.json({ success: true, ...(await TestSupportService.tickScheduleBoundaries(at)) });
 }
 
 export function registerTestSupportRoutes(
