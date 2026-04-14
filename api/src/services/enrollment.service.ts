@@ -30,6 +30,17 @@ export interface EnrollmentScriptOutput {
   script: string;
 }
 
+function hasEnrollmentRole(roles: readonly unknown[]): boolean {
+  return roles.some((role): boolean => {
+    if (typeof role !== 'object' || role === null) {
+      return false;
+    }
+
+    const roleName = (role as { role?: unknown }).role;
+    return roleName === 'admin' || roleName === 'teacher';
+  });
+}
+
 function buildWindowsEnrollmentScript(params: {
   classroomId: string;
   enrollmentToken: string;
@@ -180,16 +191,7 @@ export async function issueEnrollmentTicket(input: {
   classroomId: string;
   user: JWTPayload;
 }): Promise<EnrollmentServiceResult<EnrollmentTicketOutput>> {
-  const hasEnrollmentRole = input.user.roles.some((role): boolean => {
-    if (typeof role !== 'object' || role === null || !('role' in role)) {
-      return false;
-    }
-
-    const roleName = (role as { role?: unknown }).role;
-    return roleName === 'admin' || roleName === 'teacher';
-  });
-
-  if (!hasEnrollmentRole) {
+  if (!hasEnrollmentRole(input.user.roles)) {
     return {
       ok: false,
       error: { code: 'FORBIDDEN', message: 'Teacher access required' },

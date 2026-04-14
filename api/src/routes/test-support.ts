@@ -14,6 +14,17 @@ function getBodyField(body: unknown, key: string): unknown {
   return (body as Record<string, unknown>)[key];
 }
 
+function hasTeacherOrAdminRole(roles: readonly unknown[]): boolean {
+  return roles.some((role): boolean => {
+    if (typeof role !== 'object' || role === null) {
+      return false;
+    }
+
+    const roleName = (role as { role?: unknown }).role;
+    return roleName === 'admin' || roleName === 'teacher';
+  });
+}
+
 async function requireTeacherOrAdmin(req: Request, res: Response): Promise<boolean> {
   const decoded = await verifyAccessTokenFromRequest(req);
   if (!decoded) {
@@ -21,15 +32,7 @@ async function requireTeacherOrAdmin(req: Request, res: Response): Promise<boole
     return false;
   }
 
-  const hasTeacherOrAdminRole = decoded.roles.some((role): boolean => {
-    if (typeof role !== 'object' || role === null || !('role' in role)) {
-      return false;
-    }
-
-    const roleName = (role as { role?: unknown }).role;
-    return roleName === 'admin' || roleName === 'teacher';
-  });
-  if (!hasTeacherOrAdminRole) {
+  if (!hasTeacherOrAdminRole(decoded.roles)) {
     res.status(403).json({ success: false, error: 'Teacher access required' });
     return false;
   }
