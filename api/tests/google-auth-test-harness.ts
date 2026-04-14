@@ -54,7 +54,9 @@ export function createGoogleAuthHarness(
 
   return {
     getApiUrl: () => getHarness().apiUrl,
-    parseTRPC: async (response: Response): Promise<{ code?: string; data?: unknown; error?: string }> => {
+    parseTRPC: async (
+      response: Response
+    ): Promise<{ code?: string; data?: unknown; error?: string }> => {
       const json = (await response.json()) as TRPCResponse;
       if (json.result !== undefined) {
         return { data: json.result.data };

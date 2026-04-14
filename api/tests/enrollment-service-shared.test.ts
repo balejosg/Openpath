@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  buildWindowsEnrollmentScript,
+  hasEnrollmentRole,
+} from '../src/services/enrollment-service-shared.js';
+
+test('enrollment-service-shared exposes role checks and windows script generation', () => {
+  assert.equal(hasEnrollmentRole([{ role: 'teacher' }]), true);
+  assert.equal(hasEnrollmentRole([{ role: 'student' }]), false);
+
+  const script = buildWindowsEnrollmentScript({
+    classroomId: 'classroom-1',
+    enrollmentToken: 'token-1',
+    publicUrl: 'https://example.test',
+  });
+
+  assert.match(script, /Install-OpenPath\.ps1/);
+  assert.match(script, /classroom-1/);
+});
