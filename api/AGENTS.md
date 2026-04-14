@@ -38,11 +38,11 @@ Current procedure types:
 
 ## Testing
 
-Prefer existing scripts because they already assign stable ports:
+Prefer existing scripts because they already provision an ephemeral loopback port and keep the Node test runner serial:
 
 ```bash
-npm run test:auth --workspace=@openpath/api      # PORT 3001
-npm run test:e2e --workspace=@openpath/api       # PORT 3002
+npm run test:auth --workspace=@openpath/api
+npm run test:e2e --workspace=@openpath/api
 npm run test:health-status --workspace=@openpath/api
 npm run test:healthcheck --workspace=@openpath/api
 npm run test:integration --workspace=@openpath/api
@@ -50,8 +50,8 @@ npm run test:api-tokens --workspace=@openpath/api
 npm run test:machines --workspace=@openpath/api
 npm run test:schedules --workspace=@openpath/api
 npm run test:server --workspace=@openpath/api
-npm run test:security --workspace=@openpath/api  # PORT 3004
-npm run test:setup --workspace=@openpath/api     # PORT 3005
+npm run test:security --workspace=@openpath/api
+npm run test:setup --workspace=@openpath/api
 ```
 
 Single-file example:
@@ -72,14 +72,14 @@ Auth split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3001 node --import tsx --test --test-concurrency=1 --test-force-exit tests/auth-registration.test.ts tests/auth-google-login.test.ts tests/auth-session.test.ts tests/auth-password.test.ts tests/auth-admin-guards.test.ts
+tsx scripts/run-node-test-suite.ts tests/auth-registration.test.ts tests/auth-google-login.test.ts tests/auth-session.test.ts tests/auth-password.test.ts tests/auth-admin-guards.test.ts
 ```
 
 Google auth split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3010 node --import tsx --test --test-concurrency=1 --test-force-exit tests/google-auth-config.test.ts tests/google-auth-misconfig.test.ts tests/google-auth-invalid-token.test.ts
+tsx scripts/run-node-test-suite.ts tests/google-auth-config.test.ts tests/google-auth-misconfig.test.ts tests/google-auth-invalid-token.test.ts
 ```
 
 Backup split example:
@@ -93,7 +93,7 @@ API smoke split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3006 node --import tsx --test --test-concurrency=1 --test-force-exit tests/api-basic-http.test.ts tests/api-submit-routes.test.ts tests/api-requests-trpc.test.ts tests/api-request-auth-guards.test.ts tests/lib/machine-proof.test.ts tests/lib/public-request-input.test.ts tests/lib/exemption-storage.test.ts tests/routes/public-requests.test.ts
+tsx scripts/run-node-test-suite.ts tests/api-basic-http.test.ts tests/api-submit-routes.test.ts tests/api-requests-trpc.test.ts tests/api-request-auth-guards.test.ts tests/lib/machine-proof.test.ts tests/lib/public-request-input.test.ts tests/lib/exemption-storage.test.ts tests/routes/public-requests.test.ts
 ```
 
 Storage unit split example:
@@ -107,28 +107,28 @@ Security split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3004 node --import tsx --test --test-concurrency=1 --test-force-exit tests/security-headers.test.ts tests/security-authorization.test.ts tests/security-auth.test.ts tests/security-input-validation.test.ts tests/security-privacy-rate-limits.test.ts
+tsx scripts/run-node-test-suite.ts tests/security-headers.test.ts tests/security-authorization.test.ts tests/security-auth.test.ts tests/security-input-validation.test.ts tests/security-privacy-rate-limits.test.ts
 ```
 
 Setup split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3005 node --import tsx --test --test-concurrency=1 --test-force-exit tests/setup-status.test.ts tests/setup-first-admin.test.ts tests/setup-token-validation.test.ts tests/setup-auth-guards.test.ts tests/setup.test.ts
+tsx scripts/run-node-test-suite.ts tests/setup-status.test.ts tests/setup-first-admin.test.ts tests/setup-token-validation.test.ts tests/setup-auth-guards.test.ts
 ```
 
 E2E teacher split example:
 
 ```bash
 cd api
-npm --prefix .. run build --workspace=@openpath/shared && NODE_ENV=test PORT=3002 node --import tsx --test --test-concurrency=1 --test-force-exit tests/e2e-admin-bootstrap.test.ts tests/e2e-teacher-profile.test.ts tests/e2e-teacher-requests.test.ts tests/e2e-teacher-boundaries.test.ts tests/e2e.test.ts
+tsx scripts/run-node-test-suite.ts tests/e2e-admin-bootstrap.test.ts tests/e2e-teacher-profile.test.ts tests/e2e-teacher-requests.test.ts tests/e2e-teacher-boundaries.test.ts
 ```
 
 Push split example:
 
 ```bash
 cd api
-NODE_ENV=test PORT=3003 node --import tsx --test --test-concurrency=1 --test-force-exit tests/push-vapid.test.ts tests/push-subscription.test.ts tests/push-status.test.ts tests/push-unsubscribe.test.ts tests/push.test.ts
+tsx scripts/run-node-test-suite.ts tests/push-vapid.test.ts tests/push-subscription.test.ts tests/push-status.test.ts tests/push-unsubscribe.test.ts
 ```
 
 SSE split example:

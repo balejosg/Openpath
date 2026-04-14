@@ -56,6 +56,9 @@ export function registerAuthHttpLifecycle(): void {
   before(async () => {
     setGoogleClientId(TEST_GOOGLE_CLIENT_ID);
     harness = await startHttpTestHarness({
+      env: {
+        GOOGLE_CLIENT_ID: TEST_GOOGLE_CLIENT_ID,
+      },
       readyDelayMs: DEFAULT_READY_DELAY_MS,
       resetDb: true,
     });
