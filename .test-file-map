@@ -74,6 +74,16 @@ api/tests/runtime/db.ts|api/tests/auth.service.test.ts,api/tests/context.test.ts
 api/tests/runtime/identifiers.ts|api/tests/groups-rule-ops.test.ts,api/tests/groups-teacher-access.test.ts,api/tests/machine-auth-scope-enrollment.test.ts,api/tests/machine-auth-scope-boundaries.test.ts,api/tests/machine-auth-scope-operational.test.ts
 api/tests/runtime/trpc.ts|api/tests/groups-auth.test.ts,api/tests/groups-export.test.ts,api/tests/setup-status.test.ts,api/tests/setup-first-admin.test.ts,api/tests/setup-token-validation.test.ts,api/tests/setup-auth-guards.test.ts,api/tests/e2e-admin-bootstrap.test.ts,api/tests/e2e-teacher-profile.test.ts,api/tests/e2e-teacher-requests.test.ts,api/tests/e2e-teacher-boundaries.test.ts
 api/tests/runtime/auth.ts|api/tests/auth-registration.test.ts,api/tests/email-verification.test.ts,api/tests/setup-status.test.ts,api/tests/setup-first-admin.test.ts,api/tests/setup-token-validation.test.ts,api/tests/setup-auth-guards.test.ts,api/tests/e2e-admin-bootstrap.test.ts,api/tests/e2e-teacher-profile.test.ts,api/tests/e2e-teacher-requests.test.ts,api/tests/e2e-teacher-boundaries.test.ts
+dashboard/src/index.ts|dashboard/tests/api.test.ts
+dashboard/src/app.ts|dashboard/tests/api.test.ts
+dashboard/src/app-middleware.ts|dashboard/tests/api.test.ts
+dashboard/src/app-auth.ts|dashboard/tests/api.test.ts
+dashboard/src/app-groups.ts|dashboard/tests/api.test.ts
+dashboard/src/app-errors.ts|dashboard/tests/api.test.ts
+dashboard/src/api-client.ts|dashboard/tests/client.test.ts,dashboard/tests/api.test.ts
+dashboard/src/api-client-auth.ts|dashboard/tests/client.test.ts,dashboard/tests/api.test.ts
+dashboard/src/api-client-groups.ts|dashboard/tests/client.test.ts,dashboard/tests/api.test.ts
+dashboard/src/api-client-types.ts|dashboard/tests/client.test.ts,dashboard/tests/api.test.ts
 react-spa/src/components/dashboard/DashboardQuickAccessSection.tsx|react-spa/src/views/__tests__/Dashboard.test.tsx
 react-spa/src/components/classrooms/ClassroomListPane.tsx|react-spa/src/views/__tests__/Classrooms.test.tsx
 react-spa/src/components/classrooms/NewClassroomModal.tsx|react-spa/src/views/__tests__/Classrooms.test.tsx
