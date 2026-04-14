@@ -7,7 +7,6 @@ import {
   requireEnrollmentTokenAccess,
 } from '../trpc.js';
 import { TRPCError } from '@trpc/server';
-import * as classroomStorage from '../../lib/classroom-storage.js';
 import ClassroomService from '../../services/classroom.service.js';
 import type {
   ClassroomServiceError,
@@ -143,7 +142,7 @@ export const classroomsRouter = router({
   }),
 
   stats: adminProcedure.query(async () => {
-    return await classroomStorage.getStats();
+    return await ClassroomService.getStats();
   }),
 
   // Shared Secret / Machine endpoints
@@ -192,10 +191,11 @@ export const classroomsRouter = router({
   deleteMachine: adminProcedure
     .input(z.object({ hostname: z.string() }))
     .mutation(async ({ input }) => {
-      if (!(await classroomStorage.deleteMachine(input.hostname))) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Machine not found' });
+      const result = await ClassroomService.deleteMachine(input.hostname);
+      if (!result.ok) {
+        throwClassroomServiceError(result.error);
       }
-      return { success: true };
+      return result.data;
     }),
 
   listMachines: adminProcedure

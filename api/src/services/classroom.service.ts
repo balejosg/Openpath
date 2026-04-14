@@ -611,6 +611,18 @@ export async function deleteClassroom(id: string): Promise<ClassroomResult<{ suc
   return { ok: true, data: { success: true } };
 }
 
+export async function getStats(): Promise<Awaited<ReturnType<typeof classroomStorage.getStats>>> {
+  return await classroomStorage.getStats();
+}
+
+export async function deleteMachine(hostname: string): Promise<ClassroomResult<{ success: true }>> {
+  if (!(await classroomStorage.deleteMachine(hostname))) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Machine not found' } };
+  }
+
+  return { ok: true, data: { success: true } };
+}
+
 export async function listMachines(classroomId?: string): Promise<ClassroomMachineListItem[]> {
   const allMachines = await classroomStorage.getAllMachines(classroomId);
   return allMachines.map((machine) => ({
@@ -659,6 +671,8 @@ export default {
   deleteExemptionForClassroom,
   listExemptionsForClassroom,
   deleteClassroom,
+  getStats,
+  deleteMachine,
   listMachines,
   rotateMachineToken,
   registerMachine,
