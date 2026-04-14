@@ -1,105 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './views/Dashboard';
-import TeacherDashboard from './views/TeacherDashboard';
-import Classrooms from './views/Classrooms';
-import Groups from './views/Groups';
-import UsersView from './views/Users';
-import Login from './views/Login';
-import Register from './views/Register';
-import ForgotPassword from './views/ForgotPassword';
-import ResetPassword from './views/ResetPassword';
-import Settings from './views/Settings';
-import DomainRequests from './views/DomainRequests';
-import RulesManager from './views/RulesManager';
 import { isAuthenticated, onAuthChange, isAdmin } from './lib/auth';
-
-type AuthView = 'login' | 'register' | 'forgot-password' | 'reset-password';
-
-interface SelectedGroup {
-  id: string;
-  name: string;
-  readOnly?: boolean;
-}
-
-function normalizePathname(pathname: string): string {
-  const trimmed = pathname.replace(/\/+$/, '');
-  return trimmed.length === 0 ? '/' : trimmed;
-}
-
-function getTabFromPathname(pathname: string): string {
-  const normalized = normalizePathname(pathname);
-
-  if (normalized === '/' || normalized.startsWith('/dashboard')) return 'dashboard';
-  if (normalized.startsWith('/aulas')) return 'classrooms';
-  if (normalized.startsWith('/politicas') || normalized.startsWith('/grupos')) return 'groups';
-  if (normalized.startsWith('/reglas')) return 'rules';
-  if (normalized.startsWith('/usuarios')) return 'users';
-  if (normalized.startsWith('/dominios')) return 'domains';
-  if (normalized.startsWith('/configuracion') || normalized.startsWith('/settings'))
-    return 'settings';
-
-  return 'dashboard';
-}
-
-function getAuthViewFromPathname(pathname: string): AuthView {
-  const normalized = normalizePathname(pathname);
-
-  if (normalized.startsWith('/register')) return 'register';
-  if (normalized.startsWith('/forgot-password')) return 'forgot-password';
-  if (normalized.startsWith('/reset-password')) return 'reset-password';
-  if (normalized.startsWith('/login') || normalized === '/') return 'login';
-
-  // Unknown path while unauthenticated: show login but keep URL (deep-link intent).
-  return 'login';
-}
-
-function isAuthPath(pathname: string): boolean {
-  const normalized = normalizePathname(pathname);
-  return (
-    normalized === '/' ||
-    normalized.startsWith('/login') ||
-    normalized.startsWith('/register') ||
-    normalized.startsWith('/forgot-password') ||
-    normalized.startsWith('/reset-password')
-  );
-}
-
-function getPathForTab(tab: string): string {
-  switch (tab) {
-    case 'dashboard':
-      return '/';
-    case 'classrooms':
-      return '/aulas';
-    case 'groups':
-      return '/politicas';
-    case 'rules':
-      return '/reglas';
-    case 'users':
-      return '/usuarios';
-    case 'domains':
-      return '/dominios';
-    case 'settings':
-      return '/configuracion';
-    default:
-      return '/';
-  }
-}
-
-function getPathForAuthView(view: AuthView): string {
-  switch (view) {
-    case 'register':
-      return '/register';
-    case 'forgot-password':
-      return '/forgot-password';
-    case 'reset-password':
-      return '/reset-password';
-    case 'login':
-    default:
-      return '/login';
-  }
-}
+import AppAuthContent from './app-auth-content';
+import AppMainContent, { getTitleForTab, type SelectedGroup } from './app-main-content';
+import {
+  type AuthView,
+  getAuthViewFromPathname,
+  getPathForAuthView,
+  getPathForTab,
+  getTabFromPathname,
+  isAuthPath,
+} from './app-navigation';
 
 const App: React.FC = () => {
   const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -217,113 +129,15 @@ const App: React.FC = () => {
 
   const admin = isAdmin();
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return admin ? (
-          <Dashboard
-            onNavigateToRules={handleNavigateToRules}
-            onNavigateToClassroom={handleNavigateToClassroom}
-          />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'classrooms':
-        return (
-          <Classrooms
-            initialSelectedClassroomId={pendingSelectedClassroomId}
-            onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
-          />
-        );
-      case 'groups':
-        return <Groups onNavigateToRules={handleNavigateToRules} />;
-      case 'rules':
-        return selectedGroup ? (
-          <RulesManager
-            groupId={selectedGroup.id}
-            groupName={selectedGroup.name}
-            readOnly={selectedGroup.readOnly}
-            onBack={handleBackFromRules}
-          />
-        ) : (
-          <Groups onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'users':
-        return admin ? (
-          <UsersView />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      case 'settings':
-        return <Settings />;
-      case 'domains':
-        return admin ? (
-          <DomainRequests />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-      default:
-        return admin ? (
-          <Dashboard
-            onNavigateToRules={handleNavigateToRules}
-            onNavigateToClassroom={handleNavigateToClassroom}
-          />
-        ) : (
-          <TeacherDashboard onNavigateToRules={handleNavigateToRules} />
-        );
-    }
-  };
-
-  const getTitle = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return admin ? 'Vista General' : 'Mi Panel';
-      case 'classrooms':
-        return admin ? 'Gestión de Aulas' : 'Aulas';
-      case 'groups':
-        return admin ? 'Grupos y Políticas' : 'Mis Políticas';
-      case 'rules':
-        return selectedGroup ? `Reglas: ${selectedGroup.name}` : 'Gestión de Reglas';
-      case 'users':
-        return admin ? 'Administración de Usuarios' : 'Mi Panel';
-      case 'domains':
-        return admin ? 'Solicitudes de Acceso' : 'Mi Panel';
-      case 'settings':
-        return 'Configuración';
-      default:
-        return 'OpenPath';
-    }
-  };
-
   if (!isAuth) {
-    switch (authView) {
-      case 'register':
-        return (
-          <Register onRegister={handleRegister} onNavigateToLogin={() => setAuthView('login')} />
-        );
-      case 'forgot-password':
-        return (
-          <ForgotPassword
-            onNavigateToLogin={() => setAuthView('login')}
-            onNavigateToReset={() => setAuthView('reset-password')}
-          />
-        );
-      case 'reset-password':
-        return (
-          <ResetPassword
-            onNavigateToLogin={() => setAuthView('login')}
-            onNavigateToForgot={() => setAuthView('forgot-password')}
-          />
-        );
-      default:
-        return (
-          <Login
-            onLogin={handleLogin}
-            onNavigateToRegister={() => setAuthView('register')}
-            onNavigateToForgot={() => setAuthView('forgot-password')}
-          />
-        );
-    }
+    return (
+      <AppAuthContent
+        authView={authView}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onSelectAuthView={setAuthView}
+      />
+    );
   }
 
   return (
@@ -340,10 +154,24 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} title={getTitle()} />
+        <Header
+          onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          title={getTitleForTab(activeTab, admin, selectedGroup)}
+        />
 
         <main className="flex-1 p-6 md:p-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
+          <div className="max-w-7xl mx-auto">
+            <AppMainContent
+              activeTab={activeTab}
+              admin={admin}
+              pendingSelectedClassroomId={pendingSelectedClassroomId}
+              selectedGroup={selectedGroup}
+              onBackFromRules={handleBackFromRules}
+              onInitialSelectedClassroomIdConsumed={handlePendingSelectedClassroomIdConsumed}
+              onNavigateToClassroom={handleNavigateToClassroom}
+              onNavigateToRules={handleNavigateToRules}
+            />
+          </div>
         </main>
       </div>
     </div>
