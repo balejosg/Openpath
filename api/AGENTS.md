@@ -131,6 +131,13 @@ cd api
 NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/classrooms-crud.test.ts tests/classrooms-machines.test.ts tests/classrooms-cleanup.test.ts
 ```
 
+Machine auth scope split example:
+
+```bash
+cd api
+NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/machine-auth-scope-enrollment.test.ts tests/machine-auth-scope-boundaries.test.ts tests/machine-auth-scope-operational.test.ts tests/machine-auth-scope.test.ts
+```
+
 Blocked domains split example:
 
 ```bash

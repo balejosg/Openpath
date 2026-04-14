@@ -35,6 +35,7 @@
     "test:push": "NODE_ENV=test PORT=3003 node --import tsx --test --test-concurrency=1 --test-force-exit tests/push-vapid.test.ts tests/push-subscription.test.ts tests/push-status.test.ts tests/push-unsubscribe.test.ts tests/push.test.ts",
     "test:security": "NODE_ENV=test PORT=3004 node --import tsx --test --test-concurrency=1 --test-force-exit tests/security-headers.test.ts tests/security-authorization.test.ts tests/security-auth.test.ts tests/security-input-validation.test.ts tests/security-privacy-rate-limits.test.ts",
     "test:classrooms": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/classrooms-crud.test.ts tests/classrooms-machines.test.ts tests/classrooms-cleanup.test.ts",
+    "test:machine-auth-scope": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/machine-auth-scope-enrollment.test.ts tests/machine-auth-scope-boundaries.test.ts tests/machine-auth-scope-operational.test.ts tests/machine-auth-scope.test.ts",
     "test:token-delivery": "NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit tests/token-delivery-*.test.ts",
     "test:token-delivery:core": "NODE_ENV=test node --import tsx --test --test-force-exit tests/token-delivery-core.test.ts",
     "test:token-delivery:windows": "NODE_ENV=test node --import tsx --test --test-force-exit tests/token-delivery-windows-agent.test.ts tests/token-delivery-windows-bootstrap.test.ts",
