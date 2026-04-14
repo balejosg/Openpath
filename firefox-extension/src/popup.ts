@@ -25,14 +25,19 @@ import {
   loadRequestConfig,
   type RequestConfig,
 } from './lib/config-storage.js';
-import { shouldEnableRequestAction, type BlockedDomainsData } from './lib/popup-state.js';
+import type { BlockedDomainsData } from './lib/popup-state.js';
 import {
-  buildRequestDomainOptions,
   retryPopupDomainLocalUpdate,
-  shouldEnableSubmitRequest,
   submitPopupDomainRequest,
 } from './lib/popup-request-actions.js';
 import { verifyPopupDomains } from './lib/popup-native-actions.js';
+import {
+  hidePopupRequestSection,
+  renderPopupDomainsList,
+  syncPopupRequestButtonState,
+  syncPopupSubmitButtonState,
+  togglePopupRequestSection,
+} from './lib/popup-ui.js';
 import {
   buildBlockedDomainsClipboardText,
   checkPopupNativeAvailability,
@@ -41,7 +46,6 @@ import {
   loadPopupDomainStatuses,
   resolveActivePopupTab,
 } from './lib/popup-runtime.js';
-import { buildBlockedDomainListItems } from './lib/popup-view-models.js';
 const {
   tabDomainEl,
   countEl,
@@ -85,21 +89,13 @@ function isRequestConfigured(): boolean {
 }
 
 function refreshRequestButtonState(): void {
-  const hasDomains = Object.keys(blockedDomainsData).length > 0;
-  const canRequest = shouldEnableRequestAction({
-    hasDomains,
+  syncPopupRequestButtonState({
+    btnRequest,
+    hasDomains: Object.keys(blockedDomainsData).length > 0,
     nativeAvailable: isNativeAvailable,
     requestConfigured: isRequestConfigured(),
+    requestSectionEl,
   });
-
-  if (canRequest) {
-    btnRequest.classList.remove('hidden');
-    btnRequest.disabled = false;
-  } else {
-    btnRequest.classList.add('hidden');
-    btnRequest.disabled = true;
-    hideRequestSection();
-  }
 }
 
 /**
@@ -135,48 +131,18 @@ async function loadDomainStatuses(): Promise<void> {
  * Render the list of blocked domains in the UI
  */
 function renderDomainsList(): void {
-  const hostnames = Object.keys(blockedDomainsData).sort();
-
-  if (hostnames.length === 0) {
-    countEl.textContent = '0';
-    domainsListEl.classList.add('hidden');
-    emptyMessageEl.classList.remove('hidden');
-    btnCopy.disabled = true;
-    btnVerify.disabled = true;
-    btnRequest.disabled = true;
-    refreshRequestButtonState();
-    return;
-  }
-
-  countEl.textContent = hostnames.length.toString();
-  domainsListEl.classList.remove('hidden');
-  emptyMessageEl.classList.add('hidden');
-  btnCopy.disabled = false;
-  btnVerify.disabled = !isNativeAvailable;
-  refreshRequestButtonState();
-
-  domainsListEl.innerHTML = '';
-  buildBlockedDomainListItems({
+  renderPopupDomainsList({
     blockedDomainsData,
+    btnCopy,
+    btnVerify,
+    countEl,
     currentTabId,
     domainStatusesData,
-  }).forEach((viewModel) => {
-    const item = document.createElement('li');
-    item.className = 'domain-item';
-    const retryButton = viewModel.retryHostname
-      ? `<button class="retry-update-btn" data-hostname="${viewModel.retryHostname}" title="Reintentar actualización local">Reintentar</button>`
-      : '';
-
-    item.innerHTML = `
-            <span class="domain-name" title="${viewModel.hostname}">${viewModel.hostname}</span>
-            <span class="domain-meta">
-                <span class="domain-count" title="Intentos de conexión">${viewModel.attempts.toString()}</span>
-                <span class="domain-status ${viewModel.statusClassName}" title="${viewModel.statusLabel}">${viewModel.statusLabel}</span>
-                ${retryButton}
-            </span>
-        `;
-    domainsListEl.appendChild(item);
+    domainsListEl,
+    emptyMessageEl,
+    isNativeAvailable,
   });
+  refreshRequestButtonState();
 }
 
 /**
@@ -210,18 +176,11 @@ async function clearDomains(): Promise<void> {
       verifyListEl,
       verifyResultsEl,
     });
-    hideRequestSection();
+    hidePopupRequestSection(requestSectionEl);
     showToast('Lista limpiada');
   } catch (error) {
     logger.error('[Popup] Error clearing domains', { error: getErrorMessage(error) });
   }
-}
-
-/**
- * Hide request section
- */
-function hideRequestSection(): void {
-  requestSectionEl.classList.add('hidden');
 }
 
 /**
@@ -296,45 +255,29 @@ let CONFIG: RequestConfig = { ...DEFAULT_REQUEST_CONFIG };
  * Toggle request section visibility
  */
 function toggleRequestSection(): void {
-  const isHidden = requestSectionEl.classList.contains('hidden');
-
-  if (isHidden) {
-    // Show and populate
-    requestSectionEl.classList.remove('hidden');
-    populateRequestDomainSelect();
-    hidePopupVerifyResults({
-      verifyListEl,
-      verifyResultsEl,
-    });
-  } else {
-    // Hide
-    requestSectionEl.classList.add('hidden');
-    hidePopupRequestStatus(requestStatusEl);
-  }
-}
-
-/**
- * Populate the domain select dropdown with origin info
- */
-function populateRequestDomainSelect(): void {
-  requestDomainSelectEl.innerHTML = '<option value="">Seleccionar dominio...</option>';
-
-  buildRequestDomainOptions(blockedDomainsData).forEach(({ hostname, origin }) => {
-    const option = document.createElement('option');
-    option.value = hostname;
-    option.textContent = hostname;
-    option.dataset.origin = origin;
-    requestDomainSelectEl.appendChild(option);
+  togglePopupRequestSection({
+    blockedDomainsData,
+    onHide: () => {
+      hidePopupRequestStatus(requestStatusEl);
+    },
+    onShow: () => {
+      hidePopupVerifyResults({
+        verifyListEl,
+        verifyResultsEl,
+      });
+      updateSubmitButtonState();
+    },
+    requestDomainSelectEl,
+    requestSectionEl,
   });
-
-  updateSubmitButtonState();
 }
 
 /**
  * Update submit button enabled state
  */
 function updateSubmitButtonState(): void {
-  btnSubmitRequest.disabled = !shouldEnableSubmitRequest({
+  syncPopupSubmitButtonState({
+    btnSubmitRequest,
     hasSelectedDomain: requestDomainSelectEl.value !== '',
     hasValidReason: requestReasonEl.value.trim().length >= 3,
     isNativeAvailable,
