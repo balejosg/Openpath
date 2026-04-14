@@ -16,7 +16,6 @@ import {
   normalizeBlockedDomains,
   normalizeDomainStatuses,
   shouldEnableRequestAction,
-  statusMeta,
   type BlockedDomainsData,
 } from './lib/popup-state.js';
 import {
@@ -31,6 +30,10 @@ import {
   verifyPopupDomains,
   type VerifyResult,
 } from './lib/popup-native-actions.js';
+import {
+  buildBlockedDomainListItems,
+  buildRequestStatusPresentation,
+} from './lib/popup-view-models.js';
 
 /**
  * Helper to get DOM elements safely
@@ -172,25 +175,22 @@ function renderDomainsList(): void {
   refreshRequestButtonState();
 
   domainsListEl.innerHTML = '';
-  hostnames.forEach((hostname) => {
-    const info = blockedDomainsData[hostname];
-    if (!info) return;
-    const attempts = info.count ?? info.errors?.length ?? 1;
-
+  buildBlockedDomainListItems({
+    blockedDomainsData,
+    currentTabId,
+    domainStatusesData,
+  }).forEach((viewModel) => {
     const item = document.createElement('li');
     item.className = 'domain-item';
-    const status = domainStatusesData[hostname];
-    const meta = statusMeta(status);
-    const retryButton =
-      meta.retryable && currentTabId !== null
-        ? `<button class="retry-update-btn" data-hostname="${hostname}" title="Reintentar actualización local">Reintentar</button>`
-        : '';
+    const retryButton = viewModel.retryHostname
+      ? `<button class="retry-update-btn" data-hostname="${viewModel.retryHostname}" title="Reintentar actualización local">Reintentar</button>`
+      : '';
 
     item.innerHTML = `
-            <span class="domain-name" title="${hostname}">${hostname}</span>
+            <span class="domain-name" title="${viewModel.hostname}">${viewModel.hostname}</span>
             <span class="domain-meta">
-                <span class="domain-count" title="Intentos de conexión">${attempts.toString()}</span>
-                <span class="domain-status ${meta.className}" title="${meta.label}">${meta.label}</span>
+                <span class="domain-count" title="Intentos de conexión">${viewModel.attempts.toString()}</span>
+                <span class="domain-status ${viewModel.statusClassName}" title="${viewModel.statusLabel}">${viewModel.statusLabel}</span>
                 ${retryButton}
             </span>
         `;
@@ -446,8 +446,9 @@ async function submitDomainRequest(): Promise<void> {
  * Show request status message
  */
 function showRequestStatus(message: string, type = 'info'): void {
-  requestStatusEl.classList.remove('hidden', 'success', 'error', 'pending');
-  requestStatusEl.classList.add(type);
+  const presentation = buildRequestStatusPresentation(type);
+  requestStatusEl.classList.remove(...presentation.classesToRemove);
+  requestStatusEl.classList.add(...presentation.classesToAdd);
   requestStatusEl.textContent = message;
 }
 
