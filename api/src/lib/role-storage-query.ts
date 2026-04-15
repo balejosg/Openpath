@@ -11,9 +11,9 @@ import {
   type DBRole,
   type RoleStats,
   type TeacherInfo,
-  getDbRoleValues,
   toRoleType,
 } from './role-storage-shared.js';
+import { getDbRoleValues } from './role-storage-legacy.js';
 import { normalizeUserRoleString } from '@openpath/shared/roles';
 
 export async function getUserRoles(userId: string): Promise<DBRole[]> {

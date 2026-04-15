@@ -6,7 +6,6 @@
 import { inArray } from 'drizzle-orm';
 import { db, roles, whitelistGroups } from '../db/index.js';
 import { logger } from './logger.js';
-import type { UserRole } from '../types/index.js';
 import type { Role } from '../types/storage.js';
 import { normalizeUserRoleString } from '@openpath/shared/roles';
 
@@ -44,17 +43,6 @@ export function toRoleType(dbRole: DBRole): Role {
     createdAt: dbRole.createdAt?.toISOString() ?? new Date().toISOString(),
     expiresAt: null,
   };
-}
-
-export function getDbRoleValues(role: UserRole): string[] {
-  switch (role) {
-    case 'admin':
-      return ['admin', 'openpath-admin'];
-    case 'teacher':
-      return ['teacher'];
-    case 'student':
-      return ['student', 'user', 'viewer'];
-  }
 }
 
 export async function normalizeAndValidateRoleGroupIds(groupIds: string[]): Promise<string[]> {

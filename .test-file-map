@@ -60,6 +60,7 @@ api/src/lib/request-storage-legacy.ts|api/tests/request-service-shared.test.ts,a
 api/src/lib/request-storage-query.ts|api/tests/request-query.service.test.ts,api/tests/api-requests-trpc.test.ts
 api/src/lib/request-storage-command.ts|api/tests/request-command.service.test.ts,api/tests/api-submit-routes.test.ts
 api/src/lib/role-storage-shared.ts|api/tests/roles-assignment.test.ts,api/tests/roles-revoke.test.ts,api/tests/roles-authorization.test.ts,api/tests/roles-list-teachers.test.ts
+api/src/lib/role-storage-legacy.ts|api/tests/roles-assignment.test.ts,api/tests/roles-revoke.test.ts,api/tests/roles-authorization.test.ts,api/tests/roles-list-teachers.test.ts
 api/src/lib/role-storage-query.ts|api/tests/roles-authorization.test.ts,api/tests/roles-list-teachers.test.ts
 api/src/lib/role-storage-command.ts|api/tests/roles-assignment.test.ts,api/tests/roles-revoke.test.ts
 api/src/lib/user-storage-shared.ts|api/tests/user-service-shared.test.ts,api/tests/service-coverage-user-storage.test.ts
@@ -143,6 +144,9 @@ react-spa/src/hooks/useDashboardViewModel.ts|react-spa/src/views/__tests__/Dashb
 react-spa/src/hooks/useRuleEditor.ts|react-spa/src/components/__tests__/RulesTable.test.tsx,react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
 react-spa/src/hooks/useBulkImportModalState.ts|react-spa/src/components/__tests__/BulkImportModal.test.tsx
 react-spa/src/lib/rule-groups.ts|react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
+react-spa/src/lib/auth-storage-core.ts|react-spa/src/lib/__tests__/auth-storage.test.ts
+react-spa/src/lib/auth-storage-legacy.ts|react-spa/src/lib/__tests__/auth-storage.test.ts
+react-spa/src/lib/auth-role-compat.ts|react-spa/src/lib/__tests__/auth.test.ts,react-spa/src/lib/__tests__/roles.test.ts
 react-spa/src/app-navigation.ts|react-spa/src/__tests__/app-navigation.test.ts
 react-spa/src/app-auth-content.tsx|react-spa/src/__tests__/app-auth-content.test.tsx
 react-spa/src/app-main-content.tsx|react-spa/src/__tests__/app-main-content.test.tsx
@@ -153,6 +157,9 @@ firefox-extension/src/lib/popup-controller.ts|firefox-extension/tests/popup.test
 firefox-extension/src/lib/popup-controller-state.ts|firefox-extension/tests/popup.test.ts,firefox-extension/tests/popup-submit-contract.test.ts
 firefox-extension/src/lib/popup-domain-controller.ts|firefox-extension/tests/popup.test.ts,firefox-extension/tests/popup-runtime.test.ts
 firefox-extension/src/lib/popup-request-controller.ts|firefox-extension/tests/popup.test.ts,firefox-extension/tests/popup-submit-contract.test.ts,firefox-extension/tests/popup-request-actions.test.ts
+firefox-extension/src/lib/config-storage-shared.ts|firefox-extension/tests/config-storage.test.ts,firefox-extension/tests/request-api.test.ts
+firefox-extension/src/lib/config-storage-native.ts|firefox-extension/tests/config-storage.test.ts
+firefox-extension/src/lib/config-storage-legacy.ts|firefox-extension/tests/config-storage.test.ts
 linux/install.sh|tests/install.bats,tests/linux-e2e.bats
 linux/lib/common.sh|tests/install.bats,tests/captive-portal.bats,tests/openpath-update.bats
 linux/lib/install-helpers.sh|tests/install.bats,tests/linux-e2e.bats

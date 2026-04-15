@@ -10,14 +10,15 @@ import {
   setAuthSession,
 } from './auth-storage';
 import type { UserRole } from '@openpath/shared';
-import { normalizeUserRoleString } from '@openpath/shared/roles';
+import type { LegacyUserRole } from '@openpath/shared/roles';
+import { userHasRole } from './auth-role-compat';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   roles: {
-    role: UserRole | 'openpath-admin' | 'user' | 'viewer';
+    role: UserRole | LegacyUserRole;
     groupIds?: string[];
   }[];
 }
@@ -47,8 +48,7 @@ export function isAuthenticated(): boolean {
  */
 export function isAdmin(): boolean {
   const user = getCurrentUser();
-  if (!user || !Array.isArray(user.roles)) return false;
-  return user.roles.some((r) => normalizeUserRoleString(r.role) === 'admin');
+  return userHasRole(user?.roles, 'admin');
 }
 
 /**
@@ -56,8 +56,7 @@ export function isAdmin(): boolean {
  */
 export function isTeacher(): boolean {
   const user = getCurrentUser();
-  if (!user || !Array.isArray(user.roles)) return false;
-  return user.roles.some((r) => normalizeUserRoleString(r.role) === 'teacher');
+  return userHasRole(user?.roles, 'teacher');
 }
 
 /**
@@ -65,8 +64,7 @@ export function isTeacher(): boolean {
  */
 export function isStudent(): boolean {
   const user = getCurrentUser();
-  if (!user || !Array.isArray(user.roles)) return false;
-  return user.roles.some((r) => normalizeUserRoleString(r.role) === 'student');
+  return userHasRole(user?.roles, 'student');
 }
 
 const TEACHER_GROUPS_FEATURE_KEY = 'openpath_teacher_groups_enabled';

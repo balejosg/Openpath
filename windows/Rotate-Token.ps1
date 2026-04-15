@@ -37,6 +37,50 @@ param(
     [string]$Secret = ""
 )
 
+function Get-LegacyRotationAuthToken {
+    param(
+        [Parameter(Mandatory = $true)][string]$SecretOverride
+    )
+
+    if ($SecretOverride) {
+        return $SecretOverride
+    }
+
+    return ''
+}
+
+function Resolve-OpenPathRotationAuth {
+    param(
+        [Parameter(Mandatory = $true)][psobject]$Config,
+        [Parameter(Mandatory = $true)][string]$SecretOverride
+    )
+
+    $machineToken = ''
+    if ($Config.PSObject.Properties['whitelistUrl'] -and $Config.whitelistUrl) {
+        $machineToken = Get-OpenPathMachineTokenFromWhitelistUrl -WhitelistUrl ([string]$Config.whitelistUrl)
+    }
+
+    if ($machineToken) {
+        return [pscustomobject]@{
+            Token = $machineToken
+            Source = 'machine token'
+        }
+    }
+
+    $legacyToken = Get-LegacyRotationAuthToken -SecretOverride $SecretOverride
+    if ($legacyToken) {
+        return [pscustomobject]@{
+            Token = $legacyToken
+            Source = 'legacy shared secret'
+        }
+    }
+
+    return [pscustomobject]@{
+        Token = ''
+        Source = ''
+    }
+}
+
 $ErrorActionPreference = "Stop"
 $OpenPathRoot = "C:\OpenPath"
 $ConfigPath = "$OpenPathRoot\data\config.json"
@@ -73,12 +117,8 @@ if (-not $config.apiUrl -or -not $config.classroom) {
 
 $hostname = Get-OpenPathMachineName
 $apiUrl = $config.apiUrl
-$machineToken = ''
-if ($config.PSObject.Properties['whitelistUrl'] -and $config.whitelistUrl) {
-    $machineToken = Get-OpenPathMachineTokenFromWhitelistUrl -WhitelistUrl ([string]$config.whitelistUrl)
-}
-
-$authToken = if ($machineToken) { $machineToken } else { $Secret }
+$rotationAuth = Resolve-OpenPathRotationAuth -Config $config -SecretOverride $Secret
+$authToken = $rotationAuth.Token
 
 Write-Host "Rotating download token..." -ForegroundColor Yellow
 Write-Host "  Hostname: $hostname"
@@ -90,6 +130,8 @@ if (-not $authToken) {
     Write-Host "  Expected whitelistUrl with a machine token in config, or -Secret for legacy fallback" -ForegroundColor Yellow
     exit 1
 }
+
+Write-Host "  Authentication: $($rotationAuth.Source)"
 
 try {
     $headers = @{

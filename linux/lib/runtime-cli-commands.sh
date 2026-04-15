@@ -306,10 +306,12 @@ cmd_rotate_token() {
     hostname=$(get_registered_machine_name)
     local auth_token=""
     local auth_source="token de máquina"
-    auth_token=$(get_machine_token_from_whitelist_url_file 2>/dev/null || true)
-    if [ -z "$auth_token" ] && [ -f "$ETC_CONFIG_DIR/api-secret.conf" ]; then
-        auth_token=$(cat "$ETC_CONFIG_DIR/api-secret.conf")
-        auth_source="secreto legacy"
+    auth_token=$(resolve_rotation_auth_token)
+    if [ -z "$auth_token" ]; then
+        auth_token=$(load_rotation_legacy_secret 2>/dev/null || true)
+        if [ -n "$auth_token" ]; then
+            auth_source="secreto legacy"
+        fi
     fi
 
     if [ -z "$auth_token" ]; then
@@ -343,4 +345,17 @@ cmd_rotate_token() {
         echo "  Respuesta: $response"
         exit 1
     fi
+}
+
+load_rotation_legacy_secret() {
+    if [ -f "$ETC_CONFIG_DIR/api-secret.conf" ]; then
+        cat "$ETC_CONFIG_DIR/api-secret.conf"
+        return 0
+    fi
+
+    return 1
+}
+
+resolve_rotation_auth_token() {
+    get_machine_token_from_whitelist_url_file 2>/dev/null || true
 }

@@ -1,6 +1,11 @@
 import type { UserRole } from './schemas/index.js';
 
 export type LegacyUserRole = 'openpath-admin' | 'user' | 'viewer';
+const ROLE_STORAGE_ALIASES: Record<UserRole, readonly string[]> = {
+  admin: ['admin', 'openpath-admin'],
+  teacher: ['teacher'],
+  student: ['student', 'user', 'viewer'],
+};
 
 /**
  * Normalize a role string to the canonical OpenPath roles.
@@ -24,4 +29,12 @@ export function normalizeUserRoleString(input: unknown): UserRole | null {
   if (role === 'user' || role === 'viewer') return 'student';
 
   return null;
+}
+
+export function hasNormalizedUserRole(input: unknown, expectedRole: UserRole): boolean {
+  return normalizeUserRoleString(input) === expectedRole;
+}
+
+export function getStoredRoleAliases(role: UserRole): readonly string[] {
+  return ROLE_STORAGE_ALIASES[role];
 }
