@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
+import { resolveTestInputs } from './test-suite-discovery.js';
 
 interface ParsedArguments {
   testFiles: string[];
@@ -56,7 +57,9 @@ async function getAvailablePort(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const { testFiles, watch } = parseArguments(process.argv.slice(2));
+  const parsed = parseArguments(process.argv.slice(2));
+  const testFiles = resolveTestInputs(parsed.testFiles);
+  const { watch } = parsed;
 
   if (testFiles.length === 0) {
     console.error(

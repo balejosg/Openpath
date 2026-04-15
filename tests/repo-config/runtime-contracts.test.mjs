@@ -51,6 +51,34 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('api workspace keeps versioned migrations as the default path and reserves db:push for forced syncs', () => {
+    const apiPackageJson = readJson('api/package.json');
+    const dbMigrate = apiPackageJson.scripts['db:migrate'];
+    const dbPush = apiPackageJson.scripts['db:push'];
+    const verifyMigrations = apiPackageJson.scripts['verify:migrations'];
+
+    assert.equal(typeof dbMigrate, 'string');
+    assert.equal(typeof dbPush, 'string');
+    assert.equal(typeof verifyMigrations, 'string');
+
+    assert.ok(
+      dbMigrate.includes('drizzle-kit migrate'),
+      'api/package.json should use drizzle-kit migrate for the default db:migrate path'
+    );
+    assert.ok(
+      !dbMigrate.includes('drizzle-kit push'),
+      'api/package.json should stop routing db:migrate through drizzle-kit push'
+    );
+    assert.ok(
+      dbPush.includes('drizzle-kit push --force'),
+      'api/package.json should keep db:push as the explicit force-sync path'
+    );
+    assert.ok(
+      verifyMigrations.includes('drizzle-kit check'),
+      'api/package.json should verify migration metadata with drizzle-kit check'
+    );
+  });
+
   test('playwright e2e startup uses a stable API server and only reuses an existing server when explicitly requested', () => {
     const playwrightConfig = readText('react-spa/playwright.config.ts');
     const e2eStartupScript = readText('scripts/start-api-e2e.sh');

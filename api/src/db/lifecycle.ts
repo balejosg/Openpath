@@ -1,6 +1,8 @@
 import { logger } from '../lib/logger.js';
 import { pool } from './pool.js';
-import type { DbExecutor } from './index.js';
+import type { migrate as drizzleMigrate } from 'drizzle-orm/node-postgres/migrator';
+
+type MigrationDatabase = Parameters<typeof drizzleMigrate>[0];
 
 export async function testConnection(): Promise<boolean> {
   try {
@@ -15,7 +17,7 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
-export async function initializeSchema(db: DbExecutor): Promise<boolean> {
+export async function initializeSchema(db: MigrationDatabase): Promise<boolean> {
   try {
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
@@ -48,7 +50,7 @@ export async function initializeSchema(db: DbExecutor): Promise<boolean> {
     }
 
     logger.info('Running database migrations', { migrationsFolder });
-    await migrate(db as never, { migrationsFolder });
+    await migrate(db, { migrationsFolder });
     logger.info('Database migrations completed successfully');
     return true;
   } catch (error) {
