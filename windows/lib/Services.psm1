@@ -4,6 +4,7 @@
 # Import common functions
 $modulePath = Split-Path $PSScriptRoot -Parent
 Import-Module "$modulePath\lib\Common.psm1" -Force -ErrorAction SilentlyContinue
+. (Join-Path $PSScriptRoot 'internal\Services.TaskBuilders.ps1')
 
 $script:TaskPrefix = "OpenPath"
 $script:UsersRunTaskAce = '(A;;GRGX;;;BU)'
@@ -59,108 +60,54 @@ function Register-OpenPathTask {
     Write-OpenPathLog "Registering scheduled tasks..."
 
     $openPathRoot = "C:\OpenPath"
-    
-    # Task 1: Update OpenPath (15-minute fallback sync)
-    $updateAction = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$openPathRoot\scripts\Update-OpenPath.ps1`""
-    
-    # Omit RepetitionDuration so Task Scheduler repeats indefinitely on all supported Windows versions.
-    $updateTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
-        -RepetitionInterval (New-TimeSpan -Minutes $UpdateIntervalMinutes)
-    
     $updatePrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-    
     $updateSettings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries `
         -StartWhenAvailable `
         -RestartCount 3 `
         -RestartInterval (New-TimeSpan -Minutes 1)
-    
-    Register-ScheduledTask -TaskName "$script:TaskPrefix-Update" `
-        -Action $updateAction `
-        -Trigger $updateTrigger `
+
+    $updateDefinition = New-OpenPathUpdateTaskDefinition `
+        -OpenPathRoot $openPathRoot `
+        -TaskPrefix $script:TaskPrefix `
+        -UpdateIntervalMinutes $UpdateIntervalMinutes `
         -Principal $updatePrincipal `
-        -Settings $updateSettings `
-        -Force | Out-Null
+        -DefaultSettings $updateSettings
+    Register-OpenPathTaskDefinition -Definition $updateDefinition
+    Grant-OpenPathTaskRunAccessToUsers -TaskName $updateDefinition.TaskName | Out-Null
+    Write-OpenPathLog "Registered: $($updateDefinition.TaskName) (every $UpdateIntervalMinutes min)"
 
-    Grant-OpenPathTaskRunAccessToUsers -TaskName "$script:TaskPrefix-Update" | Out-Null
-    
-    Write-OpenPathLog "Registered: $script:TaskPrefix-Update (every $UpdateIntervalMinutes min)"
-    
-    # Task 2: Watchdog (every 1 minute)
-    $watchdogAction = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$openPathRoot\scripts\Test-DNSHealth.ps1`""
-    
-    $watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
-        -RepetitionInterval (New-TimeSpan -Minutes $WatchdogIntervalMinutes)
-    
-    Register-ScheduledTask -TaskName "$script:TaskPrefix-Watchdog" `
-        -Action $watchdogAction `
-        -Trigger $watchdogTrigger `
+    $watchdogDefinition = New-OpenPathWatchdogTaskDefinition `
+        -OpenPathRoot $openPathRoot `
+        -TaskPrefix $script:TaskPrefix `
+        -WatchdogIntervalMinutes $WatchdogIntervalMinutes `
         -Principal $updatePrincipal `
-        -Settings $updateSettings `
-        -Force | Out-Null
-    
-    Write-OpenPathLog "Registered: $script:TaskPrefix-Watchdog (every $WatchdogIntervalMinutes min)"
-    
-    # Task 3: Startup task (run update on boot)
-    $startupTrigger = New-ScheduledTaskTrigger -AtStartup
-    
-    Register-ScheduledTask -TaskName "$script:TaskPrefix-Startup" `
-        -Action $updateAction `
-        -Trigger $startupTrigger `
+        -DefaultSettings $updateSettings
+    Register-OpenPathTaskDefinition -Definition $watchdogDefinition
+    Write-OpenPathLog "Registered: $($watchdogDefinition.TaskName) (every $WatchdogIntervalMinutes min)"
+
+    $startupDefinition = New-OpenPathStartupTaskDefinition `
+        -OpenPathRoot $openPathRoot `
+        -TaskPrefix $script:TaskPrefix `
         -Principal $updatePrincipal `
-        -Settings $updateSettings `
-        -Force | Out-Null
-    
-    Write-OpenPathLog "Registered: $script:TaskPrefix-Startup (at boot)"
-    
-    # Task 4: SSE Listener (persistent, starts at boot)
-    $sseAction = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$openPathRoot\scripts\Start-SSEListener.ps1`""
-    
-    $sseTrigger = New-ScheduledTaskTrigger -AtStartup
-    
-    $sseSettings = New-ScheduledTaskSettingsSet `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable `
-        -RestartCount 9999 `
-        -RestartInterval (New-TimeSpan -Minutes 1) `
-        -ExecutionTimeLimit (New-TimeSpan -Days 0)
-    
-    Register-ScheduledTask -TaskName "$script:TaskPrefix-SSE" `
-        -Action $sseAction `
-        -Trigger $sseTrigger `
-        -Principal $updatePrincipal `
-        -Settings $sseSettings `
-        -Force | Out-Null
+        -DefaultSettings $updateSettings
+    Register-OpenPathTaskDefinition -Definition $startupDefinition
+    Write-OpenPathLog "Registered: $($startupDefinition.TaskName) (at boot)"
 
-    Write-OpenPathLog "Registered: $script:TaskPrefix-SSE (persistent SSE listener)"
+    $sseDefinition = New-OpenPathSseTaskDefinition `
+        -OpenPathRoot $openPathRoot `
+        -TaskPrefix $script:TaskPrefix `
+        -Principal $updatePrincipal
+    Register-OpenPathTaskDefinition -Definition $sseDefinition
+    Write-OpenPathLog "Registered: $($sseDefinition.TaskName) (persistent SSE listener)"
 
-    # Task 5: Agent software self-update (daily, silent)
-    $agentUpdateAction = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$openPathRoot\OpenPath.ps1`" self-update --silent"
-
-    $agentUpdateTrigger = New-ScheduledTaskTrigger -Daily -At 3am -RandomDelay (New-TimeSpan -Minutes 45)
-
-    $agentUpdateSettings = New-ScheduledTaskSettingsSet `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable `
-        -RestartCount 3 `
-        -RestartInterval (New-TimeSpan -Minutes 10) `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-
-    Register-ScheduledTask -TaskName "$script:TaskPrefix-AgentUpdate" `
-        -Action $agentUpdateAction `
-        -Trigger $agentUpdateTrigger `
-        -Principal $updatePrincipal `
-        -Settings $agentUpdateSettings `
-        -Force | Out-Null
-
-    Write-OpenPathLog "Registered: $script:TaskPrefix-AgentUpdate (daily silent software update)"
+    $agentUpdateDefinition = New-OpenPathAgentUpdateTaskDefinition `
+        -OpenPathRoot $openPathRoot `
+        -TaskPrefix $script:TaskPrefix `
+        -Principal $updatePrincipal
+    Register-OpenPathTaskDefinition -Definition $agentUpdateDefinition
+    Write-OpenPathLog "Registered: $($agentUpdateDefinition.TaskName) (daily silent software update)"
 
     return $true
 }

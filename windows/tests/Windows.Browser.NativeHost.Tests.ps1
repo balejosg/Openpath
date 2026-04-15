@@ -31,7 +31,9 @@ Describe "Browser Module - Native Host" {
 
         It "Grants standard users read and execute access to the update task" {
             $servicesModulePath = Join-Path $PSScriptRoot ".." "lib" "Services.psm1"
+            $taskHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Services.TaskBuilders.ps1"
             $content = Get-Content $servicesModulePath -Raw
+            $taskHelperContent = Get-Content $taskHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'function Grant-OpenPathTaskRunAccessToUsers',
@@ -39,7 +41,12 @@ Describe "Browser Module - Native Host" {
                 'GetSecurityDescriptor(0xF)',
                 'SetSecurityDescriptor($updatedSecurityDescriptor, 0)',
                 "(A;;GRGX;;;BU)",
-                'Grant-OpenPathTaskRunAccessToUsers -TaskName "$script:TaskPrefix-Update"'
+                'Grant-OpenPathTaskRunAccessToUsers -TaskName $updateDefinition.TaskName'
+            )
+
+            Assert-ContentContainsAll -Content $taskHelperContent -Needles @(
+                'function New-OpenPathUpdateTaskDefinition',
+                'TaskName = "$TaskPrefix-Update"'
             )
         }
     }

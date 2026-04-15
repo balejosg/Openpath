@@ -19,16 +19,16 @@ Describe "Services Module" {
         }
 
         It "Includes daily silent agent update task" {
-            $servicesPath = Join-Path $PSScriptRoot ".." "lib" "Services.psm1"
-            $content = Get-Content $servicesPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Services.TaskBuilders.ps1"
+            $content = Get-Content $helperPath -Raw
 
-            $content.Contains('$script:TaskPrefix-AgentUpdate') | Should -BeTrue
+            $content.Contains('$TaskPrefix-AgentUpdate') | Should -BeTrue
             $content.Contains('self-update --silent') | Should -BeTrue
         }
 
         It "Avoids explicit max repetition duration for recurring tasks" {
-            $servicesPath = Join-Path $PSScriptRoot ".." "lib" "Services.psm1"
-            $content = Get-Content $servicesPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Services.TaskBuilders.ps1"
+            $content = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '$updateTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2)',
@@ -131,4 +131,3 @@ Describe "SSE Listener" {
         }
     }
 }
-

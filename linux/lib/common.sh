@@ -284,6 +284,9 @@ check_root() {
 CRITICAL_FILES=(
     "$INSTALL_DIR/lib/common.sh"
     "$INSTALL_DIR/lib/dns.sh"
+    "$INSTALL_DIR/lib/dns-validation.sh"
+    "$INSTALL_DIR/lib/dns-runtime.sh"
+    "$INSTALL_DIR/lib/dns-dnsmasq.sh"
     "$INSTALL_DIR/lib/firewall.sh"
     "$INSTALL_DIR/lib/firewall-rule-helpers.sh"
     "$INSTALL_DIR/lib/firewall-snapshot.sh"
@@ -326,6 +329,9 @@ load_libraries() {
         browser-process.sh \
         browser-firefox.sh \
         browser-native-host.sh \
+        dns-validation.sh \
+        dns-runtime.sh \
+        dns-dnsmasq.sh \
         firewall-rule-helpers.sh \
         firewall-snapshot.sh \
         firewall-runtime.sh \

@@ -31,15 +31,22 @@ Describe "Update Script" {
     Context "Rollback system" {
         It "Creates rolling checkpoints before applying new whitelist" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
+            $configHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Update.Script.Config.ps1"
             $whitelistHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Whitelist.ps1"
             $content = Get-Content $scriptPath -Raw
+            $configHelperContent = Get-Content $configHelperPath -Raw
             $commonContent = Get-Content $whitelistHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'whitelist.backup.txt',
-                'Copy-Item $whitelistPath $backupPath -Force',
+                'Backup-OpenPathWhitelistState',
+                'Get-OpenPathUpdatePolicySettings'
+            )
+
+            Assert-ContentContainsAll -Content $configHelperContent -Needles @(
+                'Copy-Item $WhitelistPath $BackupPath -Force',
                 'Save-OpenPathWhitelistCheckpoint',
-                'maxCheckpoints'
+                'MaxCheckpoints'
             )
 
             Assert-ContentContainsAll -Content $commonContent -Needles @(
@@ -51,21 +58,20 @@ Describe "Update Script" {
 
         It "Restores checkpoint and falls back to backup on update failure" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
-            $runtimePath = Join-Path $PSScriptRoot ".." "lib" "Update.Runtime.psm1"
+            $runtimePath = Join-Path $PSScriptRoot ".." "lib" "internal" "Update.Script.Rollback.ps1"
             $content = Get-Content $scriptPath -Raw
             $runtimeContent = Get-Content $runtimePath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'Restore-OpenPathCheckpoint',
-                'Attempting checkpoint rollback',
-                'Falling back to backup whitelist rollback',
-                'Copy-Item $backupPath $whitelistPath -Force',
+                'Invoke-OpenPathUpdateRollback',
                 'Write-UpdateCatchLog "Update failed: $_" -Level ERROR'
             )
 
             Assert-ContentContainsAll -Content $runtimeContent -Needles @(
-                'function Write-UpdateCatchLog',
-                'function Restore-OpenPathCheckpoint'
+                'Attempting checkpoint rollback',
+                'Falling back to backup whitelist rollback',
+                'Copy-Item $BackupPath $WhitelistPath -Force',
+                'Restore-OpenPathCheckpoint'
             )
         }
     }
@@ -86,26 +92,38 @@ Describe "Update Script" {
     Context "Stale whitelist fail-safe" {
         It "Includes stale threshold logic and restores protected mode via shared helper" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Update.Script.Apply.ps1"
             $content = Get-Content $scriptPath -Raw
+            $helperContent = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'staleWhitelistMaxAgeHours',
+                'Get-OpenPathUpdatePolicySettings',
+                'Handle-OpenPathDownloadFailure'
+            )
+
+            Assert-ContentContainsAll -Content $helperContent -Needles @(
+                'StaleWhitelistMaxAgeHours',
                 'Enter-StaleWhitelistFailsafe',
                 'STALE_FAILSAFE'
             )
 
-            $content | Should -Match 'Restore-OpenPathProtectedMode -Config \$config'
+            $helperContent | Should -Match 'Restore-OpenPathProtectedMode -Config \$Config'
         }
     }
 
     Context "Protected mode recovery" {
         It "Restores local DNS and firewall through the shared helper after applying a valid whitelist" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
+            $applyHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Update.Script.Apply.ps1"
+            $rollbackHelperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Update.Script.Rollback.ps1"
             $content = Get-Content $scriptPath -Raw
+            $applyContent = Get-Content $applyHelperPath -Raw
+            $rollbackContent = Get-Content $rollbackHelperPath -Raw
 
-            $content | Should -Match '(?s)elseif \(\$whitelist\.IsDisabled\).*?Restore-OriginalDNS'
-            $content | Should -Match '(?s)# Save whitelist to local file.*?Update-AcrylicHost.*?Restore-OpenPathProtectedMode -Config \$config'
-            $content | Should -Match '(?s)Falling back to backup whitelist rollback.*?Restore-OpenPathProtectedMode -Config \$config -ErrorAction SilentlyContinue'
+            $content | Should -Match '(?s)elseif \(\$downloadResult\.Whitelist\.IsDisabled\).*?Handle-OpenPathDisabledWhitelist'
+            $applyContent | Should -Match '(?s)Handle-OpenPathDisabledWhitelist.*?Restore-OriginalDNS'
+            $applyContent | Should -Match '(?s)Handle-OpenPathWhitelistApply.*?Update-AcrylicHost.*?Restore-OpenPathProtectedMode -Config \$Config'
+            $rollbackContent | Should -Match '(?s)Falling back to backup whitelist rollback.*?Restore-OpenPathProtectedMode -Config \$Config -ErrorAction SilentlyContinue'
         }
     }
 }

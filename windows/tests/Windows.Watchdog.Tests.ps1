@@ -19,8 +19,8 @@ Describe "Watchdog Script" {
 
     Context "Firefox policy refresh" {
         It "Reapplies Firefox policies from the local whitelist so later Firefox installs become managed automatically" {
-            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
-            $content = Get-Content $scriptPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
+            $content = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '$localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path "$OpenPathRoot\data\whitelist.txt"',
@@ -32,8 +32,8 @@ Describe "Watchdog Script" {
 
     Context "SSE listener monitoring" {
         It "Checks and restarts SSE listener task" {
-            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
-            $content = Get-Content $scriptPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
+            $content = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'OpenPath-SSE',
@@ -92,8 +92,8 @@ Describe "Watchdog Script" {
 
     Context "Integrity checks" {
         It "Verifies baseline integrity and handles tampering" {
-            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
-            $content = Get-Content $scriptPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
+            $content = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Test-OpenPathIntegrity',
@@ -106,12 +106,18 @@ Describe "Watchdog Script" {
     Context "Watchdog health states" {
         It "Reports STALE_FAILSAFE and CRITICAL states" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
             $content = Get-Content $scriptPath -Raw
+            $helperContent = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'STALE_FAILSAFE',
-                'CRITICAL',
+                'Get-OpenPathWatchdogOutcome',
                 'Send-OpenPathHealthReport'
+            )
+
+            Assert-ContentContainsAll -Content $helperContent -Needles @(
+                'STALE_FAILSAFE',
+                'CRITICAL'
             )
         }
     }
@@ -129,9 +135,15 @@ Describe "Watchdog Script" {
     Context "Checkpoint recovery" {
         It "Attempts checkpoint recovery when watchdog reaches CRITICAL" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
             $content = Get-Content $scriptPath -Raw
+            $helperContent = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
+                'Get-OpenPathWatchdogOutcome'
+            )
+
+            Assert-ContentContainsAll -Content $helperContent -Needles @(
                 'enableCheckpointRollback',
                 'Restore-CheckpointFromWatchdog',
                 'Checkpoint rollback restored DNS state'
@@ -139,16 +151,15 @@ Describe "Watchdog Script" {
         }
 
         It "Does not let SSE listener failures alone trigger checkpoint rollback" {
-            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
-            $content = Get-Content $scriptPath -Raw
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
+            $content = Get-Content $helperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '$recoveryEligibleIssues = @()',
-                '$shouldIncrementFailCount = $status -eq ''DEGRADED'' -and $recoveryEligibleIssues.Count -gt 0',
+                '$shouldIncrementFailCount = $status -eq ''DEGRADED'' -and $RecoveryEligibleIssues.Count -gt 0',
                 '$issues += "SSE listener not running"'
             )
             $content.Contains('$recoveryEligibleIssues += "SSE listener not running"') | Should -BeFalse
         }
     }
 }
-
