@@ -203,6 +203,16 @@ jobs:
           chmod +x gh-pages/apt/apt-setup.sh
           chmod +x gh-pages/apt/apt-bootstrap.sh
 
+      - name: Write OpenPath promotion contract
+        run: |
+          OPENPATH_SHA="$(git rev-parse HEAD)"
+          mkdir -p gh-pages/promotion-contracts
+          node scripts/openpath-promotion-contract.mjs write \
+            --output "gh-pages/promotion-contracts/${OPENPATH_SHA}.json" \
+            --openpath-sha "$OPENPATH_SHA" \
+            --package-version "${{ inputs.version }}" \
+            --apt-suite "$SUITE"
+
       - name: Create index.html for apt directory
         if: inputs.create-index
         run: |
