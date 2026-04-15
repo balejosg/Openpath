@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import assert from 'node:assert';
 
 import { Builder, By, until, type WebDriver, type WebElement } from 'selenium-webdriver';
@@ -11,28 +9,50 @@ import {
   buildWindowsBlockedDnsCommand,
   buildWindowsHttpProbeCommand,
   DEFAULT_BLOCKED_TIMEOUT_MS,
-  DEFAULT_EXTENSION_PATH,
-  DEFAULT_POLL_MS,
   DEFAULT_TIMEOUT_MS,
-  delay,
   ensureDirectory,
-  escapeRegExp,
   FIREFOX_EXTENSION_ID,
   getDiagnosticsDir,
-  getDisableSseCommand,
-  getEnableSseCommand,
-  getFixtureIpForHostname,
   getPolicyMode,
-  getUpdateCommand,
   normalizeBoolean,
-  normalizeWhitelistContents,
   optionalEnv,
-  readWhitelistFile,
   runPlatformCommand,
-  shellEscape,
   shouldSkipBundledExtension,
-  isWindows,
+  DEFAULT_EXTENSION_PATH,
 } from './student-policy-env';
+import {
+  openAndExpectBlocked,
+  openAndExpectLoaded,
+  saveDiagnostics,
+  waitForBlockedScreen,
+  waitForDomStatus,
+} from './student-policy-driver-browser';
+import {
+  assertDnsAllowed,
+  assertDnsBlocked,
+  assertHttpBlocked,
+  assertHttpReachable,
+  assertWhitelistContains,
+  assertWhitelistMissing,
+  forceLocalUpdate,
+  waitForConvergence,
+  withSseDisabled,
+} from './student-policy-driver-platform';
+import {
+  evaluateBlockedPathDebug,
+  getActiveTabId,
+  getBlockedPathRulesDebug,
+  getDomainStatuses,
+  getNativeBlockedPathsDebug,
+  refreshBlockedPathRules,
+  rerunFetchProbe,
+  rerunIframeProbe,
+  rerunPortalSubdomainProbe,
+  rerunXhrProbe,
+  runCrossOriginFetchProbe,
+  sendRuntimeMessage,
+} from './student-policy-driver-runtime';
+import type { StudentPolicyDriverState } from './student-policy-driver-state';
 import type {
   BlockedScreenExpectation,
   ConvergenceOptions,
@@ -52,7 +72,7 @@ async function discoverFirefoxExtensionUuid(profileDir: string): Promise<string>
   });
 }
 
-export class StudentPolicyDriver {
+export class StudentPolicyDriver implements StudentPolicyDriverState {
   public readonly scenario: StudentScenario;
 
   public readonly diagnosticsDir: string;
@@ -154,91 +174,18 @@ export class StudentPolicyDriver {
 
   public async openAndExpectLoaded(options: OpenAndExpectLoadedOptions): Promise<void> {
     await this.withSessionRetry(async () => {
-      const driver = this.getDriver();
-      await driver.get(options.url);
-
-      const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      if (options.title !== undefined) {
-        await driver.wait(until.titleContains(options.title), timeoutMs);
-      }
-
-      if (options.selector !== undefined) {
-        await driver.wait(until.elementLocated(By.css(options.selector)), timeoutMs);
-      }
+      await openAndExpectLoaded(this, options);
     });
   }
 
   public async openAndExpectBlocked(options: OpenAndExpectBlockedOptions): Promise<void> {
     await this.withSessionRetry(async () => {
-      const driver = this.getDriver();
-      const timeoutMs = options.timeoutMs ?? DEFAULT_BLOCKED_TIMEOUT_MS;
-      try {
-        await driver.get(options.url);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.includes('about:neterror') ||
-          message.includes('dnsNotFound') ||
-          message.includes('NS_ERROR_UNKNOWN_HOST') ||
-          message.includes('Reached error page')
-        ) {
-          return;
-        }
-        throw error;
-      }
-
-      if (options.forbiddenSelector !== undefined) {
-        const found = await driver.wait(
-          async () => {
-            const elements = await driver.findElements(By.css(options.forbiddenSelector ?? 'body'));
-            return elements.length === 0;
-          },
-          timeoutMs,
-          `Expected selector ${options.forbiddenSelector} to remain absent for blocked page`
-        );
-        assert.strictEqual(found, true);
-        return;
-      }
-
-      if (options.forbiddenText !== undefined) {
-        const body = await driver.findElement(By.css('body'));
-        const bodyText = await body.getText();
-        assert.ok(!bodyText.includes(options.forbiddenText));
-        return;
-      }
-
-      const pageSource = await driver.getPageSource();
-      assert.ok(
-        !pageSource.includes('id="page-status">ok<') &&
-          !pageSource.includes('OpenPath Portal Fixture'),
-        'Blocked navigation unexpectedly rendered the success markers'
-      );
+      await openAndExpectBlocked(this, options);
     });
   }
 
   public async waitForBlockedScreen(expectation: BlockedScreenExpectation = {}): Promise<void> {
-    const driver = this.getDriver();
-    const timeoutMs = expectation.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-
-    await driver.wait(async () => {
-      const currentUrl = await driver.getCurrentUrl();
-      const title = await driver.getTitle();
-      return (
-        currentUrl.includes('/blocked/blocked.html') ||
-        currentUrl.includes('about:neterror?e=blockedByPolicy') ||
-        title.includes('Blocked Page')
-      );
-    }, timeoutMs);
-
-    const currentUrl = await driver.getCurrentUrl();
-    if (currentUrl.includes('/blocked/blocked.html') && expectation.reasonPrefix !== undefined) {
-      const url = new URL(currentUrl);
-      const errorValue = url.searchParams.get('error') ?? '';
-      assert.ok(
-        errorValue.startsWith(expectation.reasonPrefix),
-        `Expected blocked-screen error to start with ${expectation.reasonPrefix}, received ${errorValue}`
-      );
-    }
+    await waitForBlockedScreen(this, expectation);
   }
 
   public async openAndExpectBlockedScreen(
@@ -265,114 +212,39 @@ export class StudentPolicyDriver {
     expectedValue: string,
     options: ConvergenceOptions = {}
   ): Promise<void> {
-    const driver = this.getDriver();
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-
-    const element = await driver.wait(until.elementLocated(By.css(selector)), timeoutMs);
-    await driver.wait(async () => {
-      const text = (await element.getText()).trim();
-      return text === expectedValue;
-    }, timeoutMs);
+    await waitForDomStatus(this, selector, expectedValue, options);
   }
 
   public async assertDnsBlocked(hostname: string): Promise<void> {
-    const command = isWindows()
-      ? buildWindowsBlockedDnsCommand(hostname)
-      : `sh -c "dig @127.0.0.1 ${hostname} +short +time=3 || true"`;
-
-    const output = await runPlatformCommand(command);
-    const normalized = output.trim();
-    const fixtureIp = getFixtureIpForHostname(hostname);
-    assert.ok(
-      normalized === '' ||
-        normalized === '0.0.0.0' ||
-        (fixtureIp !== null && normalized !== fixtureIp),
-      `Expected DNS for ${hostname} to be blocked, received: ${normalized}`
-    );
+    await assertDnsBlocked(hostname);
   }
 
   public async assertDnsAllowed(hostname: string): Promise<void> {
-    const command = isWindows()
-      ? `powershell -NoLogo -Command "$result = Resolve-DnsName -Name '${hostname}' -Server 127.0.0.1 -DnsOnly -ErrorAction Stop; $result | Where-Object { $_.IPAddress } | ForEach-Object { $_.IPAddress }"`
-      : `sh -c "dig @127.0.0.1 ${hostname} +short +time=3 || true"`;
-
-    const output = await runPlatformCommand(command);
-    const normalized = output.trim();
-    const fixtureIp = getFixtureIpForHostname(hostname);
-    assert.ok(
-      normalized !== '' &&
-        normalized !== '0.0.0.0' &&
-        (fixtureIp === null || normalized === fixtureIp),
-      `Expected DNS for ${hostname} to be allowed, received: ${normalized}`
-    );
+    await assertDnsAllowed(hostname);
   }
 
   public async assertWhitelistContains(hostname: string): Promise<void> {
-    const contents = normalizeWhitelistContents(await readWhitelistFile());
-    assert.match(contents, new RegExp(`(^|\\n)${escapeRegExp(hostname)}($|\\n)`));
+    await assertWhitelistContains(hostname);
   }
 
   public async assertWhitelistMissing(hostname: string): Promise<void> {
-    const contents = normalizeWhitelistContents(await readWhitelistFile());
-    assert.doesNotMatch(contents, new RegExp(`(^|\\n)${escapeRegExp(hostname)}($|\\n)`));
+    await assertWhitelistMissing(hostname);
   }
 
   public async refreshBlockedPathRules(): Promise<void> {
-    const driver = this.getDriver();
-    await this.openPopupContext();
-    const result: { ok: boolean; value?: { success?: boolean; error?: string }; error?: string } =
-      await driver.executeAsyncScript(
-        `const done = arguments[arguments.length - 1];
-       Promise.resolve(browser.runtime.sendMessage({ action: 'refreshBlockedPathRules', tabId: 0 }))
-         .then((value) => done({ ok: true, value }))
-         .catch((error) => done({ ok: false, error: String(error) }));`
-      );
-
-    if (!result.ok) {
-      throw new Error(`Failed to refresh blocked-path rules: ${result.error ?? 'unknown error'}`);
-    }
-
-    if (result.value?.success !== true) {
-      throw new Error(
-        `Blocked-path refresh was rejected: ${result.value?.error ?? 'unknown runtime error'}`
-      );
-    }
+    await refreshBlockedPathRules(this);
   }
 
   public async forceLocalUpdate(): Promise<void> {
-    await runPlatformCommand(getUpdateCommand());
+    await forceLocalUpdate();
   }
 
   public async withSseDisabled<T>(callback: () => Promise<T>): Promise<T> {
-    await runPlatformCommand(getDisableSseCommand());
-    try {
-      return await callback();
-    } finally {
-      await runPlatformCommand(getEnableSseCommand());
-    }
+    return withSseDisabled(callback);
   }
 
   public async saveDiagnostics(name: string): Promise<void> {
-    const driver = this.getDriver();
-    const screenshotPath = path.join(this.diagnosticsDir, `${name}.png`);
-    const htmlPath = path.join(this.diagnosticsDir, `${name}.html`);
-    const jsonPath = path.join(this.diagnosticsDir, `${name}.json`);
-    const screenshot = await driver.takeScreenshot();
-    await fs.writeFile(screenshotPath, screenshot, 'base64');
-    await fs.writeFile(htmlPath, await driver.getPageSource(), 'utf8');
-    await fs.writeFile(
-      jsonPath,
-      JSON.stringify(
-        {
-          currentUrl: await driver.getCurrentUrl(),
-          title: await driver.getTitle(),
-          mode: getPolicyMode(),
-        },
-        null,
-        2
-      ),
-      'utf8'
-    );
+    await saveDiagnostics(this, name);
   }
 
   public async find(selector: string): Promise<WebElement> {
@@ -383,65 +255,19 @@ export class StudentPolicyDriver {
     assertion: () => Promise<void>,
     options: ConvergenceOptions = {}
   ): Promise<void> {
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
-    const deadline = Date.now() + timeoutMs;
-    let lastError: Error | null = null;
-
-    while (Date.now() < deadline) {
-      try {
-        await assertion();
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        await delay(pollMs);
-      }
-    }
-
-    throw lastError ?? new Error('Timed out waiting for convergence');
+    await waitForConvergence(assertion, options);
   }
 
   public async sendRuntimeMessage<T>(message: Record<string, unknown>): Promise<T> {
-    const driver = this.getDriver();
-    await this.openPopupContext();
-    const result: { ok: boolean; value?: T; error?: string } = await driver.executeAsyncScript(
-      `const [payload, done] = [arguments[0], arguments[arguments.length - 1]];
-       Promise.resolve(browser.runtime.sendMessage(payload))
-         .then((value) => done({ ok: true, value }))
-         .catch((error) => done({ ok: false, error: String(error) }));`,
-      message
-    );
-
-    if (!result.ok) {
-      throw new Error(result.error ?? 'Unknown browser.runtime.sendMessage failure');
-    }
-
-    return result.value as T;
+    return sendRuntimeMessage(this, message);
   }
 
   public async getActiveTabId(): Promise<number> {
-    const driver = this.getDriver();
-    await this.openPopupContext();
-    const result: number | null = await driver.executeAsyncScript(
-      `const done = arguments[arguments.length - 1];
-       browser.tabs.query({ active: true, currentWindow: true })
-         .then((tabs) => done(tabs[0]?.id ?? null))
-         .catch(() => done(null));`
-    );
-
-    if (result === null) {
-      throw new Error('Could not resolve active browser tab ID');
-    }
-
-    return result;
+    return getActiveTabId(this);
   }
 
   public async getDomainStatuses(): Promise<Record<string, DomainStatusPayload>> {
-    const payload = await this.sendRuntimeMessage<RuntimeResponse<never>>({
-      action: 'getDomainStatuses',
-      tabId: await this.getActiveTabId(),
-    });
-    return payload.statuses ?? {};
+    return getDomainStatuses(this);
   }
 
   public async getBlockedPathRulesDebug(): Promise<{
@@ -450,17 +276,7 @@ export class StudentPolicyDriver {
     rawRules: string[];
     compiledPatterns: string[];
   }> {
-    const payload = await this.sendRuntimeMessage<RuntimeResponse<never>>({
-      action: 'getBlockedPathRulesDebug',
-      tabId: 0,
-    });
-
-    return {
-      version: payload.version ?? '',
-      count: payload.count ?? 0,
-      rawRules: payload.rawRules ?? [],
-      compiledPatterns: payload.compiledPatterns ?? [],
-    };
+    return getBlockedPathRulesDebug(this);
   }
 
   public async getNativeBlockedPathsDebug(): Promise<{
@@ -470,95 +286,39 @@ export class StudentPolicyDriver {
     source?: string;
     error?: string;
   }> {
-    const payload = await this.sendRuntimeMessage<RuntimeResponse<never>>({
-      action: 'getNativeBlockedPathsDebug',
-      tabId: 0,
-    });
-
-    return {
-      success: payload.success === true,
-      count: payload.count ?? 0,
-      paths: (payload as RuntimeResponse<never> & { paths?: string[] }).paths ?? [],
-      source: (payload as RuntimeResponse<never> & { source?: string }).source,
-      error: payload.error,
-    };
+    return getNativeBlockedPathsDebug(this);
   }
 
   public async evaluateBlockedPathDebug(url: string, type: string): Promise<unknown> {
-    const payload = await this.sendRuntimeMessage<RuntimeResponse<never> & { outcome?: unknown }>({
-      action: 'evaluateBlockedPathDebug',
-      tabId: 0,
-      url,
-      type,
-    });
-
-    return payload.outcome ?? null;
+    return evaluateBlockedPathDebug(this, url, type);
   }
 
   public async runCrossOriginFetchProbe(targetUrl: string): Promise<'ok' | 'blocked'> {
-    const driver = this.getDriver();
-    const result: 'ok' | 'blocked' = await driver.executeAsyncScript(
-      `const [url, done] = [arguments[0], arguments[arguments.length - 1]];
-       fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' })
-         .then((response) => done(response.ok ? 'ok' : 'blocked'))
-         .catch(() => done('blocked'));`,
-      targetUrl
-    );
-    return result;
+    return runCrossOriginFetchProbe(this, targetUrl);
   }
 
   public async rerunPortalSubdomainProbe(): Promise<void> {
-    const driver = this.getDriver();
-    await driver.executeScript('return window.runSubdomainProbe && window.runSubdomainProbe();');
+    await rerunPortalSubdomainProbe(this);
   }
 
   public async rerunIframeProbe(): Promise<void> {
-    const driver = this.getDriver();
-    await driver.executeScript('return window.runIframeProbe && window.runIframeProbe();');
+    await rerunIframeProbe(this);
   }
 
   public async rerunXhrProbe(): Promise<void> {
-    const driver = this.getDriver();
-    await driver.executeScript('return window.runXhrProbe && window.runXhrProbe();');
+    await rerunXhrProbe(this);
   }
 
   public async rerunFetchProbe(): Promise<void> {
-    const driver = this.getDriver();
-    await driver.executeScript('return window.runFetchProbe && window.runFetchProbe();');
+    await rerunFetchProbe(this);
   }
 
   public async assertHttpReachable(url: string): Promise<void> {
-    const command = isWindows()
-      ? buildWindowsHttpProbeCommand(url)
-      : `curl -fsS ${shellEscape(url)} >/dev/null`;
-
-    await runPlatformCommand(command);
+    await assertHttpReachable(url);
   }
 
   public async assertHttpBlocked(url: string): Promise<void> {
-    const command = isWindows()
-      ? buildWindowsHttpProbeCommand(url)
-      : `curl -fsS ${shellEscape(url)} >/dev/null`;
-
-    try {
-      await runPlatformCommand(command);
-    } catch {
-      return;
-    }
-
-    throw new Error(`Expected HTTP access to be blocked for ${url}`);
-  }
-
-  private async openPopupContext(): Promise<void> {
-    const driver = this.getDriver();
-    try {
-      await driver.get(buildPopupUrl(this.getExtensionUuid()));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes('Navigation timed out')) {
-        throw error;
-      }
-    }
+    await assertHttpBlocked(url);
   }
 
   private async withSessionRetry<T>(callback: () => Promise<T>): Promise<T> {

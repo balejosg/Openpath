@@ -112,9 +112,16 @@ await describe('student policy backend harness', async () => {
       classroomId: scenario.classroom.id,
     });
 
-    assert.ok(classroom.machines?.some((machine) => machine.id === scenario.machine.id));
     assert.ok(
-      classroom.machines?.some((machine) => machine.hostname === scenario.machine.machineHostname)
+      classroom.machines?.some(
+        (machine: { id: string; hostname: string }) => machine.id === scenario.machine.id
+      )
+    );
+    assert.ok(
+      classroom.machines?.some(
+        (machine: { id: string; hostname: string }) =>
+          machine.hostname === scenario.machine.machineHostname
+      )
     );
   });
 
