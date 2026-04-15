@@ -1,0 +1,226 @@
+import {
+  buildFixtureUrl,
+  isRuleAlreadyPresent,
+  normalizeUrl,
+  parseJsonBody,
+  parseJsonResponse,
+  parseTrpcResponse,
+} from './student-policy-env';
+import type {
+  ExemptionResult,
+  RequestStatusResult,
+  RequestSubmissionResult,
+  RuleResult,
+  StudentScenario,
+} from './student-policy-types';
+
+export class StudentPolicyServerClient {
+  private readonly scenario: StudentScenario;
+
+  public constructor(scenario: StudentScenario) {
+    this.scenario = scenario;
+  }
+
+  private get apiUrl(): string {
+    return normalizeUrl(this.scenario.apiUrl);
+  }
+
+  private async trpcMutate<T>(procedure: string, input: unknown, accessToken: string): Promise<T> {
+    const response = await fetch(`${this.apiUrl}/trpc/${procedure}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(input),
+    });
+
+    return parseTrpcResponse<T>(response, procedure);
+  }
+
+  private async trpcQuery<T>(procedure: string, input: unknown, accessToken?: string): Promise<T> {
+    const response = await fetch(
+      `${this.apiUrl}/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify(input))}`,
+      {
+        headers: accessToken === undefined ? {} : { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    return parseTrpcResponse<T>(response, procedure);
+  }
+
+  private async postJson<T>(pathName: string, body: unknown, accessToken?: string): Promise<T> {
+    const response = await fetch(`${this.apiUrl}${pathName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken === undefined ? {} : { Authorization: `Bearer ${accessToken}` }),
+      },
+      body: JSON.stringify(body),
+    });
+
+    return parseJsonResponse<T>(response);
+  }
+
+  private async postJsonAllowingError<T>(
+    pathName: string,
+    body: unknown,
+    accessToken?: string
+  ): Promise<T> {
+    const response = await fetch(`${this.apiUrl}${pathName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken === undefined ? {} : { Authorization: `Bearer ${accessToken}` }),
+      },
+      body: JSON.stringify(body),
+    });
+
+    return parseJsonBody<T>(response);
+  }
+
+  public async submitManualRequest(
+    domain: string,
+    reason: string
+  ): Promise<RequestSubmissionResult> {
+    return this.postJsonAllowingError<RequestSubmissionResult>('/api/requests/submit', {
+      domain,
+      hostname: this.scenario.machine.reportedHostname,
+      token: this.scenario.machine.machineToken,
+      reason,
+      origin_page: buildFixtureUrl(this.scenario.fixtures.portal, '/ok'),
+    });
+  }
+
+  public async submitAutoRequest(domain: string, reason: string): Promise<RequestSubmissionResult> {
+    return this.postJsonAllowingError<RequestSubmissionResult>('/api/requests/auto', {
+      domain,
+      hostname: this.scenario.machine.reportedHostname,
+      token: this.scenario.machine.machineToken,
+      reason,
+      origin_page: buildFixtureUrl(this.scenario.fixtures.site, '/ok'),
+    });
+  }
+
+  public async getRequestStatus(requestId: string): Promise<RequestStatusResult> {
+    return this.trpcQuery<RequestStatusResult>('requests.getStatus', { id: requestId });
+  }
+
+  public async approveRequest(requestId: string, groupId: string): Promise<void> {
+    await this.trpcMutate(
+      'requests.approve',
+      { id: requestId, groupId },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async rejectRequest(requestId: string, reason: string): Promise<void> {
+    await this.trpcMutate(
+      'requests.reject',
+      { id: requestId, reason },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async createGroupRule(
+    groupId: string,
+    type: string,
+    value: string,
+    comment: string
+  ): Promise<RuleResult> {
+    return this.trpcMutate<RuleResult>(
+      'groups.createRule',
+      { groupId, type, value, comment },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async ensureWhitelistRule(groupId: string, value: string, comment: string): Promise<void> {
+    try {
+      await this.createGroupRule(groupId, 'whitelist', value, comment);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isRuleAlreadyPresent(message)) {
+        throw error;
+      }
+    }
+  }
+
+  public async deleteGroupRule(ruleId: string, groupId?: string): Promise<void> {
+    await this.trpcMutate(
+      'groups.deleteRule',
+      { id: ruleId, ...(groupId === undefined ? {} : { groupId }) },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async createTemporaryExemption(scheduleId: string): Promise<ExemptionResult> {
+    return this.trpcMutate<ExemptionResult>(
+      'classrooms.createExemption',
+      {
+        machineId: this.scenario.machine.id,
+        classroomId: this.scenario.classroom.id,
+        scheduleId,
+      },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async deleteTemporaryExemption(exemptionId: string): Promise<void> {
+    await this.trpcMutate(
+      'classrooms.deleteExemption',
+      { id: exemptionId },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async setActiveGroup(groupId: string | null): Promise<string | null> {
+    const result = await this.trpcMutate<{ currentGroupId: string | null }>(
+      'classrooms.setActiveGroup',
+      { id: this.scenario.classroom.id, groupId },
+      this.scenario.auth.teacher.accessToken
+    );
+    return result.currentGroupId;
+  }
+
+  public async setAutoApprove(enabled: boolean): Promise<void> {
+    await this.postJson(
+      '/api/test-support/auto-approve',
+      { enabled },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async tickBoundaries(at: string): Promise<void> {
+    await this.postJson(
+      '/api/test-support/tick-boundaries',
+      { at },
+      this.scenario.auth.teacher.accessToken
+    );
+  }
+
+  public async setTestClock(at: string | null): Promise<void> {
+    await this.postJson('/api/test-support/clock', { at }, this.scenario.auth.teacher.accessToken);
+  }
+
+  public async getMachineContext(): Promise<unknown> {
+    const response = await fetch(
+      `${this.apiUrl}/api/test-support/machine-context/${encodeURIComponent(this.scenario.machine.machineHostname)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.scenario.auth.teacher.accessToken}`,
+        },
+      }
+    );
+
+    return parseJsonResponse<unknown>(response);
+  }
+
+  public async fetchMachineWhitelist(): Promise<string> {
+    const response = await fetch(this.scenario.machine.whitelistUrl);
+    if (!response.ok) {
+      throw new Error(`Whitelist fetch failed with status ${response.status}`);
+    }
+    return response.text();
+  }
+}

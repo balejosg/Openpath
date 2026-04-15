@@ -917,22 +917,22 @@ describe('repository verification contract', () => {
   });
 
   test('student policy selenium driver supports overriding the Firefox binary path', () => {
-    const studentPolicyScript = readText('tests/selenium/student-policy-flow.e2e.ts');
+    const studentPolicyDriver = readText('tests/selenium/student-policy-driver.ts');
 
     assert.match(
-      studentPolicyScript,
+      studentPolicyDriver,
       /firefoxBinaryPath\?: string;/,
-      'StudentPolicyDriverOptions should expose a Firefox binary override'
+      'student-policy-driver.ts should expose a Firefox binary override'
     );
     assert.match(
-      studentPolicyScript,
+      studentPolicyDriver,
       /OPENPATH_FIREFOX_BINARY/,
-      'student-policy-flow.e2e.ts should read the Firefox binary override from OPENPATH_FIREFOX_BINARY'
+      'student-policy-driver.ts should read the Firefox binary override from OPENPATH_FIREFOX_BINARY'
     );
     assert.match(
-      studentPolicyScript,
+      studentPolicyDriver,
       /options\.setBinary\(this\.firefoxBinaryPath\)/,
-      'student-policy-flow.e2e.ts should pass the configured Firefox binary path into selenium-webdriver'
+      'student-policy-driver.ts should pass the configured Firefox binary path into selenium-webdriver'
     );
   });
 
