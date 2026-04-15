@@ -1,0 +1,433 @@
+Describe "DNS Module" {
+    BeforeAll {
+        $modulePath = Join-Path $PSScriptRoot ".." "lib"
+        Import-Module "$modulePath\DNS.psm1" -Force -ErrorAction SilentlyContinue
+    }
+
+    Context "Test-AcrylicInstalled" {
+        It "Returns a boolean value" -Skip:(-not (Test-FunctionExists 'Test-AcrylicInstalled')) {
+            $result = Test-AcrylicInstalled
+            $result | Should -BeOfType [bool]
+        }
+    }
+
+    Context "Get-AcrylicPath" {
+        It "Returns null or valid path" -Skip:(-not (Test-FunctionExists 'Get-AcrylicPath')) {
+            $path = Get-AcrylicPath
+            if ($path) {
+                Test-Path $path | Should -BeTrue
+            } else {
+                $path | Should -BeNullOrEmpty
+            }
+        }
+    }
+
+    Context "Test-DNSResolution" {
+        It "Uses the first allowed probe domain when no explicit domain is provided" {
+            Mock Get-OpenPathDnsProbeDomains { @('safe.example', 'fallback.example') } -ModuleName DNS
+            Mock Resolve-DnsName { @([PSCustomObject]@{ IPAddress = '203.0.113.10' }) } -ModuleName DNS -ParameterFilter { $Name -eq 'safe.example' -and $Server -eq '127.0.0.1' }
+            Mock Start-Sleep { } -ModuleName DNS
+
+            InModuleScope DNS {
+                (Test-DNSResolution -MaxAttempts 1) | Should -BeTrue
+                Assert-MockCalled Resolve-DnsName -ModuleName DNS -Times 1 -Exactly -ParameterFilter { $Name -eq 'safe.example' -and $Server -eq '127.0.0.1' }
+            }
+        }
+    }
+
+    Context "Get-OpenPathDnsSettings" {
+        It "Returns safe defaults when OpenPath config is unavailable" {
+            Mock Get-OpenPathConfig { throw 'config unavailable' } -ModuleName DNS
+
+            InModuleScope DNS {
+                $settings = Get-OpenPathDnsSettings
+
+                $settings.PrimaryDNS | Should -Be '8.8.8.8'
+                $settings.SecondaryDNS | Should -Be '8.8.4.4'
+                $settings.MaxDomains | Should -Be 500
+            }
+        }
+
+        It "Honors DNS-related overrides from OpenPath config" {
+            Mock Get-OpenPathConfig {
+                [PSCustomObject]@{
+                    primaryDNS = '1.1.1.1'
+                    secondaryDNS = '1.0.0.1'
+                    maxDomains = 42
+                }
+            } -ModuleName DNS
+
+            InModuleScope DNS {
+                $settings = Get-OpenPathDnsSettings
+
+                $settings.PrimaryDNS | Should -Be '1.1.1.1'
+                $settings.SecondaryDNS | Should -Be '1.0.0.1'
+                $settings.MaxDomains | Should -Be 42
+            }
+        }
+    }
+
+    Context "Update-AcrylicHost" {
+        It "Generates valid hosts content" -Skip:(-not ((Test-FunctionExists 'Test-AcrylicInstalled') -and (Test-FunctionExists 'Update-AcrylicHost') -and (Test-AcrylicInstalled))) {
+            $result = Update-AcrylicHost -WhitelistedDomains @("example.com", "test.com") -BlockedSubdomains @()
+            $result | Should -BeTrue
+        }
+
+        It "Builds Acrylic hosts content from a generated definition in official FW/NX order" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('example.com', 'test.com') `
+                    -BlockedSubdomains @('ads.other-example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+
+                $expectedNeedles = @(
+                    '# ESSENTIAL DOMAINS (always allowed)',
+                    'FW raw.githubusercontent.com',
+                    'FW >raw.githubusercontent.com',
+                    '# BLOCKED SUBDOMAINS (1)',
+                    'NX >ads.other-example.com',
+                    '# WHITELISTED DOMAINS (2)',
+                    'FW example.com',
+                    'FW >example.com',
+                    'FW test.com',
+                    'FW >test.com',
+                    '# DEFAULT BLOCK (NXDOMAIN for everything else)',
+                    '# This MUST come last after FW rules.',
+                    '# Upstream DNS: 1.1.1.1',
+                    'NX *'
+                )
+
+                foreach ($needle in $expectedNeedles) {
+                    $content.Contains($needle) | Should -BeTrue -Because "Expected generated hosts content to include '$needle'"
+                }
+
+                $content | Should -Not -Match 'FORWARD >'
+                $content | Should -Not -Match 'NX >\*'
+
+                $whitelistSectionIndex = $content.IndexOf('# WHITELISTED DOMAINS')
+                $nxRuleIndex = $content.IndexOf('NX *')
+                $whitelistSectionIndex | Should -BeGreaterThan -1
+                $nxRuleIndex | Should -BeGreaterThan $whitelistSectionIndex
+
+                @($definition.EffectiveWhitelistedDomains).Count | Should -Be 2
+                $definition.WasTruncated | Should -BeFalse
+            }
+        }
+
+        It "Keeps blocked descendants ahead of a whitelisted parent wildcard" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('example.com') `
+                    -BlockedSubdomains @('ads.example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+                $lines = @($content -split "`n")
+                $regexForwardRules = @(
+                    $lines | Where-Object {
+                        $_.StartsWith('FW /^') -and
+                        $_.Contains('ads\.example\.com') -and
+                        $_.Contains('example\.com$')
+                    }
+                )
+                $regexRule = $regexForwardRules[0]
+                $regexPattern = $regexRule.Substring(4).TrimStart('/').Replace('\\', '\')
+
+                $content.Contains('FW example.com') | Should -BeTrue
+                $content.Contains('NX >ads.example.com') | Should -BeTrue
+                $content.Contains('FW >example.com') | Should -BeFalse
+                $regexForwardRules.Count | Should -Be 1
+                'www.example.com' | Should -Match $regexPattern
+                'ads.example.com' | Should -Not -Match $regexPattern
+                'cdn.ads.example.com' | Should -Not -Match $regexPattern
+            }
+        }
+
+        It "Keeps Acrylic hosts modeling and rendering split into helpers" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
+            $configPath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Config.ps1"
+            $moduleContent = Get-Content $modulePath -Raw
+            $configContent = Get-Content $configPath -Raw
+
+            Assert-ContentContainsAll -Content $moduleContent -Needles @(
+                "DNS.Acrylic.Install.ps1",
+                "DNS.Acrylic.Config.ps1",
+                "DNS.Acrylic.Service.ps1",
+                "DNS.Diagnostics.ps1"
+            )
+
+            Assert-ContentContainsAll -Content $configContent -Needles @(
+                'function Get-OpenPathDnsSettings',
+                'NX *',
+                'function Get-AcrylicForwardRules',
+                'function New-AcrylicHostsDefinition',
+                'function ConvertTo-AcrylicHostsContent',
+                '$definition = New-AcrylicHostsDefinition',
+                '$content = ConvertTo-AcrylicHostsContent -Definition $definition',
+                '"FW $normalizedDomain"',
+                '"FW >$normalizedDomain"'
+            )
+
+            $configContent | Should -Not -Match '\$content = @"'
+        }
+
+        It "Retries Acrylic DNS resolution before reporting failure" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Diagnostics.ps1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Resolve-OpenPathDnsWithRetry',
+                '[int]$MaxAttempts = 12',
+                'Start-Sleep -Milliseconds $DelayMilliseconds',
+                'Resolve-OpenPathDnsWithRetry',
+                'Write-OpenPathLog "DNS resolution failed'
+            )
+        }
+
+        It "Configures Acrylic to ignore and avoid caching upstream negative responses" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Config.ps1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '"IgnoreNegativeResponsesFromPrimaryServer" = "No"',
+                '"IgnoreNegativeResponsesFromSecondaryServer" = "No"',
+                '"AddressCacheDisabled" = "Yes"',
+                '"AddressCacheNegativeTime" = "0"'
+            )
+        }
+
+        It "Writes allowlist affinity masks into AcrylicConfiguration.ini" {
+            $script:capturedAcrylicConfig = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS -ParameterFilter { $Path -like '*AcrylicConfiguration.ini' }
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Set-AcrylicConfiguration -WhitelistedDomains @('example.com', 'test.com')
+
+            $result | Should -BeTrue
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'SecondaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'example.com;*.example.com',
+                'test.com;*.test.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'IgnoreNegativeResponsesFromSecondaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+        }
+
+        It "Allows install-time Acrylic configuration before any classroom whitelist exists" {
+            $script:capturedAcrylicConfig = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS -ParameterFilter { $Path -like '*AcrylicConfiguration.ini' }
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Set-AcrylicConfiguration
+
+            $result | Should -BeTrue
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+            $script:capturedAcrylicConfig | Should -Not -Match 'example\.com;'
+        }
+
+        It "Allows updating Acrylic hosts before any classroom whitelist exists" {
+            $script:capturedAcrylicConfig = $null
+            $script:capturedHostsContent = $null
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Get-OpenPathDnsSettings {
+                [PSCustomObject]@{
+                    PrimaryDNS = '1.1.1.1'
+                    SecondaryDNS = '1.0.0.1'
+                    MaxDomains = 10
+                }
+            } -ModuleName DNS
+            Mock Test-Path { $false } -ModuleName DNS
+            Mock Set-Content {
+                param(
+                    [string]$Path,
+                    [string]$Value,
+                    [string]$Encoding,
+                    [switch]$Force
+                )
+
+                if ($Path -like '*AcrylicConfiguration.ini') {
+                    $script:capturedAcrylicConfig = $Value
+                }
+
+                if ($Path -like '*AcrylicHosts.txt') {
+                    $script:capturedHostsContent = $Value
+                }
+            } -ModuleName DNS
+
+            $result = Update-AcrylicHost -WhitelistedDomains @() -BlockedSubdomains @()
+
+            $result | Should -BeTrue
+            $script:capturedHostsContent | Should -Not -BeNullOrEmpty
+            $script:capturedHostsContent | Should -Match '# WHITELISTED DOMAINS \(0\)'
+            $script:capturedHostsContent | Should -Match 'NX \*'
+            $script:capturedHostsContent | Should -Not -Match 'FW example\.com'
+            $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
+            Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                'PrimaryServerDomainNameAffinityMask=',
+                'raw.githubusercontent.com;*.raw.githubusercontent.com',
+                'IgnoreNegativeResponsesFromPrimaryServer=No',
+                'AddressCacheDisabled=Yes'
+            )
+        }
+
+        It "Always includes configured control-plane domains in the essential Acrylic allowlist" {
+            InModuleScope DNS {
+                Mock Get-OpenPathProtectedDomains { @('control.example', 'downloads.example', 'raw.githubusercontent.com') }
+
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('safe.example') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+
+                $content | Should -Match 'FW control\.example'
+                $content | Should -Match 'FW downloads\.example'
+                $definition.DomainAffinityMask | Should -Match 'control\.example;\*\.control\.example'
+                $definition.DomainAffinityMask | Should -Match 'downloads\.example;\*\.downloads\.example'
+            }
+        }
+
+        It "Purges AcrylicCache.dat before restarting the service" {
+            $script:removedAcrylicPaths = @()
+
+            Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
+            Mock Test-Path {
+                param([string]$Path)
+
+                return ($Path -like '*AcrylicCache.dat')
+            } -ModuleName DNS
+            Mock Remove-Item {
+                param(
+                    [string]$Path,
+                    [switch]$Force,
+                    [object]$ErrorAction
+                )
+
+                $script:removedAcrylicPaths += $Path
+            } -ModuleName DNS
+            Mock Get-Service {
+                [PSCustomObject]@{
+                    Name = 'AcrylicDNSProxySvc'
+                    Status = 'Running'
+                }
+            } -ModuleName DNS
+            Mock Restart-Service { } -ModuleName DNS
+            Mock Start-Sleep { } -ModuleName DNS
+
+            $result = Restart-AcrylicService
+
+            $result | Should -BeTrue
+            $script:removedAcrylicPaths | Should -Contain 'C:\Program Files (x86)\Acrylic DNS Proxy\AcrylicCache.dat'
+        }
+    }
+
+    Context "Max domains limit" {
+        It "Truncates generated whitelist domains to the configured limit" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('one.example.com', 'two.example.com', 'three.example.com') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '8.8.8.8'
+                        SecondaryDNS = '8.8.4.4'
+                        MaxDomains = 2
+                    })
+
+                $definition.WasTruncated | Should -BeTrue
+                $definition.OriginalWhitelistedDomainCount | Should -Be 3
+                @($definition.EffectiveWhitelistedDomains).Count | Should -Be 2
+                @($definition.EffectiveWhitelistedDomains) | Should -Be @('one.example.com', 'two.example.com')
+            }
+        }
+    }
+
+    Context "Acrylic installation fallback" {
+        It "Pins the Acrylic portable installer to a release with modern hosts-cache fixes" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Install.ps1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$installerVersion = "2.2.1"',
+                'https://downloads.sourceforge.net/project/acrylic/Acrylic/$installerVersion/Acrylic-Portable.zip',
+                'https://sourceforge.net/projects/acrylic/files/Acrylic/$installerVersion/Acrylic-Portable.zip/download'
+            )
+        }
+
+        It "Falls back to Chocolatey when the direct Acrylic download fails" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Install.ps1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Direct Acrylic install failed',
+                'Get-Command choco',
+                'upgrade acrylic-dns-proxy -y --no-progress',
+                'Acrylic DNS Proxy installed successfully via Chocolatey'
+            )
+        }
+    }
+}
+

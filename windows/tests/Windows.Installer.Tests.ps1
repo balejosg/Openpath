@@ -1,0 +1,359 @@
+Describe "Installer" {
+    Context "ACL lockdown" {
+        It "Sets restrictive file permissions during installation" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'SetAccessRuleProtection',
+                'NT AUTHORITY\SYSTEM',
+                'BUILTIN\Administrators'
+            )
+        }
+
+        It "Grants local users read access to staged browser extension artifacts" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$browserExtensionAclPath = "$OpenPathRoot\browser-extension"',
+                'BUILTIN\Users',
+                '"ReadAndExecute"',
+                'Read access granted for browser extension artifacts'
+            )
+        }
+
+        It "Stages Firefox release assets beneath the user-readable browser-extension ACL root" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$browserExtensionAclPath = "$OpenPathRoot\browser-extension"',
+                '$firefoxReleaseTarget = "$OpenPathRoot\browser-extension\firefox-release"',
+                'Signed Firefox Release artifacts staged in $OpenPathRoot\browser-extension\firefox-release'
+            )
+        }
+
+        It "Stages Chromium managed rollout metadata beneath the user-readable browser-extension ACL root" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$browserExtensionAclPath = "$OpenPathRoot\browser-extension"',
+                '$chromiumManagedCandidates = @(',
+                "firefox-extension\build\chromium-managed",
+                '$chromiumManagedTarget = "$OpenPathRoot\browser-extension\chromium-managed"',
+                'Chromium managed rollout metadata staged in $OpenPathRoot\browser-extension\chromium-managed'
+            )
+        }
+
+        It "Stages Windows native host assets beneath the user-readable Firefox native directory" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$firefoxNativeHostTarget = "$OpenPathRoot\browser-extension\firefox\native"',
+                'OpenPath-NativeHost.ps1',
+                'OpenPath-NativeHost.cmd',
+                'Firefox native host assets staged in $OpenPathRoot\browser-extension\firefox\native'
+            )
+        }
+
+        It "Registers Firefox native messaging host in both 64-bit and WOW6432Node registry views" {
+            $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"
+            $content = Get-Content $nativeHostModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                "allowed_extensions = @('monitor-bloqueos@openpath')",
+                'name = Get-OpenPathFirefoxNativeHostName'
+            )
+        }
+
+        It "Uses braced interpolation for SourceRoot error messages before a colon" {
+            $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"
+            $content = Get-Content $nativeHostModulePath -Raw
+
+            $content.Contains('Firefox native host artifacts not found in ${SourceRoot}:') | Should -BeTrue
+            $content.Contains('Firefox native host artifacts not found in $SourceRoot:') | Should -BeFalse
+        }
+
+        It "Skips registry deletion when Firefox native host keys are already absent in the shared browser helpers" {
+            $browserCommonModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.Common.psm1"
+            $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"
+            $browserCommonContent = Get-Content $browserCommonModulePath -Raw
+            $nativeHostContent = Get-Content $nativeHostModulePath -Raw
+
+            Assert-ContentContainsAll -Content $browserCommonContent -Needles @(
+                'function ConvertTo-OpenPathRegistryProviderPath',
+                'return "Registry::HKEY_LOCAL_MACHINE\\$($RegistryPath.Substring(5))"',
+                'if ($RegistryPath -match ''^HKLM\\'')',
+                'if (Test-Path $providerPath)'
+            )
+            Assert-ContentContainsAll -Content $nativeHostContent -Needles @(
+                'Remove-OpenPathRegistryKeyIfPresent -RegistryPath $registryPath'
+            )
+            $browserCommonContent.Contains('& reg.exe DELETE $registryPath /f 2>$null | Out-Null') | Should -BeFalse
+        }
+
+        It "Falls back to the staged native host directory during re-registration after self-update" {
+            $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"
+            $content = Get-Content $nativeHostModulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$candidateRoots = @($SourceRoot, $nativeRoot) | Select-Object -Unique',
+                '$artifactSources[$artifactName] = $artifactSource',
+                '[string]::Equals($sourcePath, $destinationPath, [System.StringComparison]::OrdinalIgnoreCase)'
+            )
+        }
+    }
+
+    Context "Source path validation" {
+        It "Validates modules exist before copying" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Modules not found',
+                'Test-Path "$scriptDir\lib\*.psm1"'
+            )
+        }
+    }
+
+    Context "Checkpoint defaults" {
+        It "Configures checkpoint rollback defaults during install" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'enableCheckpointRollback',
+                'maxCheckpoints',
+                'enableDohIpBlocking',
+                'dohResolverIps',
+                'vpnBlockRules',
+                'torBlockPorts'
+            )
+            $content.Contains('Get-DefaultDohResolverIps') | Should -BeTrue
+            $content.Contains('Get-DefaultVpnBlockRules') | Should -BeTrue
+            $content.Contains('Get-DefaultTorBlockPorts') | Should -BeTrue
+        }
+    }
+
+    Context "Enrollment extraction" {
+        It "Uses Enroll-Machine script for classroom registration" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Enrollment.ps1"
+            $enrollScriptPath = Join-Path $PSScriptRoot ".." "scripts" "Enroll-Machine.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Test-Path $enrollScriptPath | Should -BeTrue
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Enroll-Machine.ps1',
+                'SkipTokenValidation',
+                'Machine registration completed'
+            )
+        }
+    }
+
+    Context "Enrollment argument forwarding" {
+        It "Uses named parameter splatting for classroom registration" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Enrollment.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$enrollParams = @{',
+                '& $enrollScript @enrollParams'
+            )
+            $content.Contains('$enrollArgs = @(') | Should -BeFalse
+            $content.Contains('& $enrollScript @enrollArgs') | Should -BeFalse
+        }
+    }
+
+    Context "Unattended enrollment support" {
+        It "Supports enrollment-token unattended parameters in installer" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '[string]$EnrollmentToken = ""',
+                '[string]$ClassroomId = ""',
+                '[switch]$Unattended',
+                '-EnrollmentToken',
+                '-ClassroomId',
+                '-Unattended'
+            )
+        }
+
+        It "Supports optional Chromium store URLs for unmanaged browser installs" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '[string]$ChromeExtensionStoreUrl = ""',
+                '[string]$EdgeExtensionStoreUrl = ""',
+                'chromeExtensionStoreUrl',
+                'edgeExtensionStoreUrl'
+            )
+        }
+    }
+
+    Context "Enrollment before first update" {
+        It "Skips first update when classroom registration fails" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Registro no completado; se omite primera actualizacion',
+                '$classroomModeRequested -and $machineRegistered -ne "REGISTERED"'
+            )
+        }
+    }
+
+    Context "Operational script installation" {
+        It "Copies OpenPath.ps1 and Rotate-Token.ps1 into install root" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            $content.Contains("'OpenPath.ps1', 'Rotate-Token.ps1'") | Should -BeTrue
+        }
+
+        It "Stages Chromium unmanaged browser install guidance when store URLs are configured" {
+            $guidanceHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.ChromiumGuidance.ps1"
+            $content = Get-Content $guidanceHelperPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$OpenPathRoot\browser-extension\chromium-unmanaged',
+                '[InternetShortcut]',
+                'Install OpenPath for Google Chrome.url',
+                'Install OpenPath for Microsoft Edge.url'
+            )
+        }
+
+        It "Opens unmanaged Chromium store guidance only during interactive installs" {
+            $guidanceHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.ChromiumGuidance.ps1"
+            $content = Get-Content $guidanceHelperPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'if (-not $Unattended)',
+                'Start-Process -FilePath $browserTarget.ExecutablePath -ArgumentList $browserTarget.StoreUrl',
+                'Chromium store guidance staged for unattended install'
+            )
+        }
+    }
+
+    Context "Pre-install validation integration" {
+        It "Runs pre-install validation by default and supports SkipPreflight" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'SkipPreflight',
+                'scripts\Pre-Install-Validation.ps1',
+                'powershell.exe -NoProfile -ExecutionPolicy Bypass -File'
+            )
+            $content.Contains('tests\Pre-Install-Validation.ps1') | Should -BeFalse
+        }
+    }
+
+    Context "Quiet progress output" {
+        It "Uses PowerShell verbose semantics and progress helpers for installer output" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+            $guidanceHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.ChromiumGuidance.ps1"
+            $guidanceHelper = Get-Content $guidanceHelperPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '[CmdletBinding()]',
+                'function Show-InstallerProgress',
+                'Write-Progress -Activity ''Installing OpenPath''',
+                'function Write-InstallerVerbose',
+                'Write-Verbose $Message',
+                'Show-InstallerProgress -Step 1 -Total 7 -Status ''Creando estructura de directorios''',
+                "Installer.ChromiumGuidance.ps1"
+            )
+
+            Assert-ContentContainsAll -Content $guidanceHelper -Needles @(
+                'function Get-OpenPathChromiumBrowserTargets',
+                'function Install-OpenPathChromiumUnmanagedGuidance'
+            )
+        }
+
+        It "Does not emit empty verbose installer messages during classroom enrollment" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            $content.Contains('Write-InstallerVerbose ""') | Should -BeFalse
+        }
+    }
+
+    Context "Primary DNS detection" {
+        It "Uses an installer helper instead of indexing directly into adapter DNS arrays" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+            $dnsHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Dns.ps1"
+            $dnsHelper = Get-Content $dnsHelperPath -Raw
+
+            $content.Contains('Installer.Dns.ps1') | Should -BeTrue
+            $content.Contains('$primaryDNS = Get-InstallerPrimaryDNS') | Should -BeTrue
+            $content.Contains('Select-Object -First 1).ServerAddresses[0]') | Should -BeFalse
+            $dnsHelper.Contains('function Get-InstallerPrimaryDNS') | Should -BeTrue
+        }
+    }
+
+    Context "DNS probe guidance" {
+        It "Derives the suggested nslookup domain from the shared probe list" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Get-OpenPathDnsProbeDomains',
+                'nslookup $dnsProbeDomain 127.0.0.1'
+            )
+            $content.Contains('Test-DNSResolution -Domain "google.com"') | Should -BeFalse
+            $content.Contains('nslookup google.com 127.0.0.1') | Should -BeFalse
+        }
+    }
+
+    Context "SSE bootstrap" {
+        It "Starts the SSE listener immediately after registering scheduled tasks" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Register-OpenPathTask -UpdateIntervalMinutes 15 -WatchdogIntervalMinutes 1',
+                'Start-OpenPathTask -TaskType SSE'
+            )
+        }
+    }
+}
+
+Describe "Uninstaller" {
+    Context "Firefox native host cleanup" {
+        It "Removes Firefox native messaging registry entries and staged host artifacts" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Uninstall-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'WOW6432Node\Mozilla\NativeMessagingHosts\whitelist_native_host',
+                'OpenPath-NativeHost.ps1',
+                'OpenPath-NativeHost.cmd'
+            )
+        }
+
+        It "Skips registry deletion when Firefox native host keys are already absent" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Uninstall-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Convert-ToRegistryProviderPath',
+                'return "Registry::HKEY_LOCAL_MACHINE\\$($RegistryPath.Substring(5))"',
+                'if ($RegistryPath -match ''^HKLM\\'')',
+                'if (Test-Path $providerPath)',
+                'Remove-Item -Path $providerPath -Recurse -Force -ErrorAction SilentlyContinue'
+            )
+            $content.Contains('& reg.exe DELETE $registryPath /f 2>$null | Out-Null') | Should -BeFalse
+        }
+    }
+}
+
