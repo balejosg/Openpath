@@ -257,8 +257,8 @@ teardown() {
     [ -n "$OPENPATH_LOCK_FILE" ]
     [ "$OPENPATH_LOCK_FILE" = "/var/run/openpath.lock" ]
 
-    # Verify both scripts reference OPENPATH_LOCK_FILE (not hardcoded paths)
-    grep -q 'OPENPATH_LOCK_FILE' "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
+    # Verify both scripts reuse the shared locking contract from common.sh
+    grep -q 'openpath_lock_acquire' "$PROJECT_DIR/linux/scripts/runtime/openpath-update.sh"
     grep -q 'OPENPATH_LOCK_FILE' "$PROJECT_DIR/linux/scripts/runtime/captive-portal-detector.sh"
 
     # Verify neither script has its own LOCK_FILE definition
