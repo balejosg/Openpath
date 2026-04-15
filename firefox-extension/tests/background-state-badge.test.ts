@@ -84,6 +84,7 @@ void describe('background blocked domain state and badge behavior', () => {
     assert.ok('example.com' in state.getBlockedDomainsForTab(-1));
     assert.ok(longHostname in state.getBlockedDomainsForTab(1));
     assert.ok('xn--mnchen-3ya.de' in state.getBlockedDomainsForTab(1));
+    assert.ok(exampleDomain);
     assert.strictEqual(exampleDomain.errors.length, 1);
     const timestamp = exampleDomain.timestamp;
     assert.ok(timestamp >= before);
