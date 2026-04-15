@@ -66,12 +66,18 @@ param(
 $ErrorActionPreference = 'Stop'
 $configPath = "$OpenPathRoot\data\config.json"
 $commonModulePath = "$OpenPathRoot\lib\Common.psm1"
+$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"
 
 if (-not (Test-Path $commonModulePath)) {
     throw "Common module not found at $commonModulePath"
 }
 
+if (-not (Test-Path $BrowserModulePath)) {
+    throw "Browser module not found at $BrowserModulePath"
+}
+
 Import-Module $commonModulePath -Force
+Import-Module $BrowserModulePath -Force
 
 if (-not (Test-Path $configPath)) {
     throw "Configuration file not found at $configPath"
@@ -180,6 +186,13 @@ Set-OpenPathConfigValue -Config $config -Name 'apiUrl' -Value $apiBaseUrl
 Set-OpenPathConfigValue -Config $config -Name 'whitelistUrl' -Value $registration.WhitelistUrl
 
 Set-OpenPathConfig -Config $config | Out-Null
+
+try {
+    Sync-OpenPathFirefoxNativeHostState -Config $config -ClearWhitelist | Out-Null
+}
+catch {
+    throw "Failed to sync Firefox native host state after enrollment: $_"
+}
 
 Write-Host "  Machine registered successfully" -ForegroundColor Green
 Write-Host "  Tokenized whitelist URL saved" -ForegroundColor Green

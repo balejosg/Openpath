@@ -1,3 +1,5 @@
+Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
+
 Describe "Operational Command Script" {
     Context "Script existence" {
         It "OpenPath.ps1 exists" {
@@ -48,5 +50,18 @@ Describe "Operational Command Script" {
             $content.Contains('Test-DNSResolution)') | Should -BeTrue
         }
     }
-}
 
+    Context "Rotate token sync" {
+        It "Syncs the Firefox native host state after saving a rotated whitelist URL" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Rotate-Token.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"',
+                'Import-Module $BrowserModulePath -Force',
+                'Sync-OpenPathFirefoxNativeHostState -Config $config -ClearWhitelist | Out-Null',
+                'Failed to sync Firefox native host state after token rotation'
+            )
+        }
+    }
+}

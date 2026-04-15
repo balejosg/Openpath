@@ -41,6 +41,7 @@ $ErrorActionPreference = "Stop"
 $OpenPathRoot = "C:\OpenPath"
 $ConfigPath = "$OpenPathRoot\data\config.json"
 $CommonModulePath = "$OpenPathRoot\lib\Common.psm1"
+$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"
 $RotateCompatPath = "$OpenPathRoot\lib\internal\RotateToken.Compat.ps1"
 
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -61,6 +62,12 @@ if (-not (Test-Path $CommonModulePath)) {
     exit 1
 }
 
+if (-not (Test-Path $BrowserModulePath)) {
+    Write-Host "ERROR: Browser module not found" -ForegroundColor Red
+    Write-Host "  Expected: $BrowserModulePath" -ForegroundColor Yellow
+    exit 1
+}
+
 if (-not (Test-Path $RotateCompatPath)) {
     Write-Host "ERROR: Rotation compatibility helper not found" -ForegroundColor Red
     Write-Host "  Expected: $RotateCompatPath" -ForegroundColor Yellow
@@ -68,6 +75,7 @@ if (-not (Test-Path $RotateCompatPath)) {
 }
 
 Import-Module $CommonModulePath -Force
+Import-Module $BrowserModulePath -Force
 . $RotateCompatPath
 
 $config = Get-OpenPathConfig
@@ -110,6 +118,13 @@ try {
         if ($response.whitelistUrl) {
             Set-OpenPathConfigValue -Config $config -Name 'whitelistUrl' -Value ([string]$response.whitelistUrl)
             Set-OpenPathConfig -Config $config | Out-Null
+
+            try {
+                Sync-OpenPathFirefoxNativeHostState -Config $config -ClearWhitelist | Out-Null
+            }
+            catch {
+                throw "Failed to sync Firefox native host state after token rotation: $_"
+            }
             
             Write-Host "Token rotated successfully" -ForegroundColor Green
             Write-Host "  New whitelist URL saved to config" -ForegroundColor Green
