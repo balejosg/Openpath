@@ -4,7 +4,9 @@
 # runtime-cli-compat.sh - Explicit compatibility helpers for legacy CLI flows
 ################################################################################
 
+# shellcheck disable=SC2034
 ROTATION_AUTH_TOKEN=""
+# shellcheck disable=SC2034
 ROTATION_AUTH_SOURCE=""
 
 load_rotation_legacy_secret() {
@@ -38,6 +40,7 @@ resolve_rotation_auth_with_compat() {
         return 0
     fi
 
+    # shellcheck disable=SC2034
     ROTATION_AUTH_SOURCE=""
     return 1
 }
