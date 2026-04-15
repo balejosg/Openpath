@@ -125,10 +125,16 @@ Describe "Watchdog Script" {
     Context "DNS probe selection" {
         It "Relies on the shared DNS probe instead of a hard-coded public domain" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
             $content = Get-Content $scriptPath -Raw
+            $helperContent = Get-Content $helperPath -Raw
 
             $content.Contains('Test-DNSResolution -Domain "google.com"') | Should -BeFalse
-            $content.Contains('(Test-DNSResolution)') | Should -BeTrue
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '. (Join-Path $OpenPathRoot ''lib\internal\Watchdog.Runtime.ps1'')',
+                'Invoke-OpenPathWatchdogChecks'
+            )
+            $helperContent.Contains('(Test-DNSResolution)') | Should -BeTrue
         }
     }
 

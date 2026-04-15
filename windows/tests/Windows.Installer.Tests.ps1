@@ -192,13 +192,20 @@ Describe "Installer" {
 
         It "Supports optional Chromium store URLs for unmanaged browser installs" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $configHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Config.ps1"
             $content = Get-Content $scriptPath -Raw
+            $configHelper = Get-Content $configHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '[string]$ChromeExtensionStoreUrl = ""',
                 '[string]$EdgeExtensionStoreUrl = ""',
-                'chromeExtensionStoreUrl',
-                'edgeExtensionStoreUrl'
+                '-ChromeExtensionStoreUrl $ChromeExtensionStoreUrl',
+                '-EdgeExtensionStoreUrl $EdgeExtensionStoreUrl'
+            )
+
+            Assert-ContentContainsAll -Content $configHelper -Needles @(
+                '$config.chromeExtensionStoreUrl = $ChromeExtensionStoreUrl',
+                '$config.edgeExtensionStoreUrl = $EdgeExtensionStoreUrl'
             )
         }
     }
@@ -206,11 +213,18 @@ Describe "Installer" {
     Context "Enrollment before first update" {
         It "Skips first update when classroom registration fails" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $runtimeHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Runtime.ps1"
             $content = Get-Content $scriptPath -Raw
+            $runtimeHelper = Get-Content $runtimeHelperPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
+                'Invoke-OpenPathInstallerFirstUpdate',
+                'Installer.Runtime.ps1'
+            )
+
+            Assert-ContentContainsAll -Content $runtimeHelper -Needles @(
                 'Registro no completado; se omite primera actualizacion',
-                '$classroomModeRequested -and $machineRegistered -ne "REGISTERED"'
+                '$ClassroomModeRequested -and $MachineRegistered -ne ''REGISTERED'''
             )
         }
     }

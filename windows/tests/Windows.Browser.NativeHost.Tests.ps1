@@ -46,7 +46,7 @@ Describe "Browser Module - Native Host" {
 
             Assert-ContentContainsAll -Content $taskHelperContent -Needles @(
                 'function New-OpenPathUpdateTaskDefinition',
-                'TaskName = "$TaskPrefix-Update"'
+                '-TaskName "$TaskPrefix-Update"'
             )
         }
     }
