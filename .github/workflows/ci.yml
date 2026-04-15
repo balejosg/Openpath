@@ -209,8 +209,24 @@ jobs:
           # Windows suite while keeping the CI lane free of extra wrappers.
           Set-StrictMode -Off
 
+          $aggregatorSuites = @(
+            'Windows.Tests.ps1',
+            'Windows.Common.Tests.ps1',
+            'Windows.DNS.Tests.ps1'
+          )
+          $suitePaths = @(
+            Get-ChildItem -Path 'windows/tests' -Filter '*.Tests.ps1' -File |
+              Where-Object { $_.Name -notin $aggregatorSuites } |
+              Sort-Object FullName |
+              ForEach-Object { $_.FullName }
+          )
+
+          if ($suitePaths.Count -eq 0) {
+            throw 'Windows Pester suite discovery returned no leaf test files.'
+          }
+
           $config = New-PesterConfiguration
-          $config.Run.Path = 'windows/tests'
+          $config.Run.Path = $suitePaths
           $config.Run.PassThru = $true
           $config.Output.Verbosity = 'Detailed'
           $config.TestResult.Enabled = $true

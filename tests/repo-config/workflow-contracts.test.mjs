@@ -337,8 +337,24 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
     'ci.yml should preserve the legacy non-strict Pester runtime used by the required Windows suite'
   );
   assert.ok(
-    windowsJobBlock.includes("$config.Run.Path = 'windows/tests'"),
-    'ci.yml should point the Windows lane at the real Pester suite directory'
+    windowsJobBlock.includes('$aggregatorSuites = @('),
+    'ci.yml should enumerate the Windows suite aggregators that must stay local-only'
+  );
+  assert.ok(
+    windowsJobBlock.includes("Get-ChildItem -Path 'windows/tests' -Filter '*.Tests.ps1' -File"),
+    'ci.yml should discover the real Windows leaf suites from the suite directory'
+  );
+  assert.ok(
+    windowsJobBlock.includes('Where-Object { $_.Name -notin $aggregatorSuites }'),
+    'ci.yml should exclude local-only Windows aggregator suites from the CI Pester path set'
+  );
+  assert.ok(
+    windowsJobBlock.includes('$config.Run.Path = $suitePaths'),
+    'ci.yml should point the Windows lane at the discovered leaf suite paths instead of the whole directory'
+  );
+  assert.ok(
+    windowsJobBlock.includes("throw 'Windows Pester suite discovery returned no leaf test files.'"),
+    'ci.yml should fail fast if Windows Pester suite discovery finds no executable leaf suites'
   );
   assert.ok(
     windowsJobBlock.includes('$config.Run.PassThru = $true'),
