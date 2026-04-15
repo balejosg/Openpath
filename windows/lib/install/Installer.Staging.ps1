@@ -6,6 +6,7 @@ function Initialize-OpenPathInstallDirectories {
 
     $dirs = @(
         "$OpenPathRoot\lib",
+        "$OpenPathRoot\lib\internal",
         "$OpenPathRoot\scripts",
         "$OpenPathRoot\data\logs",
         "$OpenPathRoot\browser-extension\firefox",
@@ -79,6 +80,8 @@ function Copy-OpenPathInstallerRuntime {
 
     Get-ChildItem "$ScriptDir\lib\*.psm1" -ErrorAction SilentlyContinue |
         Copy-Item -Destination "$OpenPathRoot\lib\" -Force
+    Get-ChildItem "$ScriptDir\lib\internal\*.ps1" -ErrorAction SilentlyContinue |
+        Copy-Item -Destination "$OpenPathRoot\lib\internal\" -Force
 
     $browserPolicySpecCandidates = @(
         (Join-Path $ScriptDir 'runtime\browser-policy-spec.json'),

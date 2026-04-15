@@ -41,5 +41,7 @@ read_prompt_secret() {
 }
 # shellcheck source=/usr/local/lib/openpath/lib/runtime-cli-system.sh
 source "$INSTALL_DIR/lib/runtime-cli-system.sh"
+# shellcheck source=/usr/local/lib/openpath/lib/runtime-cli-compat.sh
+source "$INSTALL_DIR/lib/runtime-cli-compat.sh"
 # shellcheck source=/usr/local/lib/openpath/lib/runtime-cli-commands.sh
 source "$INSTALL_DIR/lib/runtime-cli-commands.sh"

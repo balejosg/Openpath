@@ -14,7 +14,7 @@ import {
   initializeSchema as runSchemaMigrations,
   testConnection as testPoolConnection,
 } from './lifecycle.js';
-import { pool } from './pool.js';
+import { pool } from './legacy-pool.js';
 
 // =============================================================================
 // Drizzle Client
@@ -40,7 +40,7 @@ export * from './schema.js';
 // Legacy Compatibility Exports
 // =============================================================================
 
-// Export pool for legacy db.ts compatibility during migration
+// Export pool through the explicit legacy boundary for low-level callers.
 export { pool };
 
 /**

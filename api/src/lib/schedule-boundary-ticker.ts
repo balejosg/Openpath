@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import { getErrorMessage } from '@openpath/shared';
-import { pool } from '../db/index.js';
+import { pool } from '../db/legacy-pool.js';
 import { getClassroomIdsWithBoundaryAt } from './schedule-storage.js';
 import { logger } from './logger.js';
 

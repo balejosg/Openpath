@@ -304,20 +304,15 @@ cmd_rotate_token() {
     api_url=$(cat "$ETC_CONFIG_DIR/api-url.conf")
     local hostname
     hostname=$(get_registered_machine_name)
-    local auth_token=""
-    local auth_source="token de máquina"
-    auth_token=$(resolve_rotation_auth_token)
-    if [ -z "$auth_token" ]; then
-        auth_token=$(load_rotation_legacy_secret 2>/dev/null || true)
-        if [ -n "$auth_token" ]; then
-            auth_source="secreto legacy"
-        fi
-    fi
+    local auth_token="" auth_source=""
+    resolve_rotation_auth_with_compat || true
+    auth_token="$ROTATION_AUTH_TOKEN"
+    auth_source="$ROTATION_AUTH_SOURCE"
 
     if [ -z "$auth_token" ]; then
         echo -e "${RED}Error: No se encontró credencial para rotar el token${NC}"
         echo "  Se esperaba un token derivable desde $WHITELIST_URL_CONF"
-        echo "  Fallback legacy: $ETC_CONFIG_DIR/api-secret.conf"
+        echo "  Fallback legacy: $(rotation_legacy_secret_path)"
         exit 1
     fi
 
@@ -347,15 +342,6 @@ cmd_rotate_token() {
     fi
 }
 
-load_rotation_legacy_secret() {
-    if [ -f "$ETC_CONFIG_DIR/api-secret.conf" ]; then
-        cat "$ETC_CONFIG_DIR/api-secret.conf"
-        return 0
-    fi
-
-    return 1
-}
-
 resolve_rotation_auth_token() {
-    get_machine_token_from_whitelist_url_file 2>/dev/null || true
+    resolve_rotation_machine_token
 }

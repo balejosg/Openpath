@@ -223,6 +223,17 @@ Describe "Installer" {
             $content.Contains("'OpenPath.ps1', 'Rotate-Token.ps1'") | Should -BeTrue
         }
 
+        It "Stages internal PowerShell helpers alongside lib modules" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Staging.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$OpenPathRoot\lib\internal',
+                'Get-ChildItem "$ScriptDir\lib\internal\*.ps1"',
+                'Destination "$OpenPathRoot\lib\internal\"'
+            )
+        }
+
         It "Stages Chromium unmanaged browser install guidance when store URLs are configured" {
             $guidanceHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.ChromiumGuidance.ps1"
             $content = Get-Content $guidanceHelperPath -Raw

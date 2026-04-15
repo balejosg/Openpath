@@ -103,6 +103,7 @@ api/src/lib/groups-storage-rules-query.ts|api/tests/groups-storage-rules.test.ts
 api/src/lib/groups-storage-rules-grouping.ts|api/tests/groups-storage-rules.test.ts
 api/src/lib/groups-storage-rules-copy.ts|api/tests/groups-storage-rules.test.ts
 api/src/lib/groups-storage-rules-mutation.ts|api/tests/groups-storage-rules.test.ts
+api/src/db/legacy-pool.ts|api/tests/drizzle.test.ts,api/tests/group-fk-compat.test.ts
 api/src/lib/exemption-storage-command.ts|api/tests/lib/exemption-storage.test.ts,api/tests/classroom-policy-context.test.ts
 api/src/lib/exemption-storage-query.ts|api/tests/lib/exemption-storage.test.ts,api/tests/classroom-policy-context.test.ts
 api/src/lib/exemption-storage-shared.ts|api/tests/lib/exemption-storage.test.ts,api/tests/classroom-policy-context.test.ts
@@ -164,6 +165,7 @@ react-spa/src/components/weekly-calendar/WeeklyCalendarDayColumn.tsx|react-spa/s
 react-spa/src/hooks/useRuleEditor.ts|react-spa/src/components/__tests__/RulesTable.test.tsx,react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
 react-spa/src/hooks/useBulkImportModalState.ts|react-spa/src/components/__tests__/BulkImportModal.test.tsx
 react-spa/src/lib/rule-groups.ts|react-spa/src/components/__tests__/HierarchicalRulesTable.test.tsx
+react-spa/src/lib/auth-storage-header.ts|react-spa/src/lib/__tests__/auth-storage.test.ts
 react-spa/src/lib/auth-storage-core.ts|react-spa/src/lib/__tests__/auth-storage.test.ts
 react-spa/src/lib/auth-storage-legacy.ts|react-spa/src/lib/__tests__/auth-storage.test.ts
 react-spa/src/lib/auth-role-compat.ts|react-spa/src/lib/__tests__/auth.test.ts,react-spa/src/lib/__tests__/roles.test.ts
@@ -210,6 +212,7 @@ linux/lib/firewall-snapshot.sh|tests/firewall.bats,tests/linux-e2e.bats
 linux/lib/firewall-runtime.sh|tests/firewall.bats,tests/linux-e2e.bats
 linux/lib/install-helpers.sh|tests/install.bats,tests/linux-e2e.bats
 linux/lib/runtime-cli.sh|tests/install.bats
+linux/lib/runtime-cli-compat.sh|tests/install.bats
 linux/lib/runtime-cli-system.sh|tests/install.bats
 linux/lib/common-connectivity.sh|tests/install.bats,tests/captive-portal.bats
 linux/lib/common-registration.sh|tests/install.bats,tests/openpath-update.bats
@@ -232,6 +235,7 @@ windows/lib/internal/Update.Script.Rollback.ps1|windows/tests/Windows.Tests.ps1
 windows/lib/internal/Watchdog.FailCount.ps1|windows/tests/Windows.Tests.ps1
 windows/lib/internal/Watchdog.Runtime.ps1|windows/tests/Windows.Tests.ps1
 windows/lib/internal/Services.TaskBuilders.ps1|windows/tests/Windows.Tests.ps1
+windows/lib/internal/RotateToken.Compat.ps1|windows/tests/Windows.Tests.ps1
 windows/lib/Firewall.psm1|windows/tests/Windows.Tests.ps1,tests/windows-e2e.bats
 windows/lib/internal/Firewall.Catalog.ps1|windows/tests/Windows.Tests.ps1,tests/windows-e2e.bats
 windows/lib/internal/Firewall.Policy.ps1|windows/tests/Windows.Tests.ps1,tests/windows-e2e.bats

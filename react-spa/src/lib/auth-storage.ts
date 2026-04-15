@@ -9,13 +9,11 @@ import {
   safeRemoveStorageItem,
   safeSetStorageItem,
 } from './auth-storage-core';
-import {
-  LEGACY_TOKEN_KEY,
-  clearLegacyAuthStorage,
-  resolveAuthorizationHeaderToken,
-} from './auth-storage-legacy';
+import { LEGACY_TOKEN_KEY, clearLegacyAuthStorage } from './auth-storage-legacy';
+import { getAuthTokenForHeader } from './auth-storage-header';
 
 export { ACCESS_TOKEN_KEY, COOKIE_SESSION_MARKER, LEGACY_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY };
+export { getAuthTokenForHeader };
 
 export function getAccessToken(): string | null {
   return getCanonicalAccessToken();
@@ -49,14 +47,6 @@ export function setAuthSession(
   } catch {
     safeRemoveStorageItem(USER_KEY);
   }
-}
-
-/**
- * Token used for Authorization header.
- * Prefers access token, falls back to the legacy token if present.
- */
-export function getAuthTokenForHeader(): string | null {
-  return resolveAuthorizationHeaderToken();
 }
 
 export function clearAuthStorage(): void {

@@ -37,54 +37,11 @@ param(
     [string]$Secret = ""
 )
 
-function Get-LegacyRotationAuthToken {
-    param(
-        [Parameter(Mandatory = $true)][string]$SecretOverride
-    )
-
-    if ($SecretOverride) {
-        return $SecretOverride
-    }
-
-    return ''
-}
-
-function Resolve-OpenPathRotationAuth {
-    param(
-        [Parameter(Mandatory = $true)][psobject]$Config,
-        [Parameter(Mandatory = $true)][string]$SecretOverride
-    )
-
-    $machineToken = ''
-    if ($Config.PSObject.Properties['whitelistUrl'] -and $Config.whitelistUrl) {
-        $machineToken = Get-OpenPathMachineTokenFromWhitelistUrl -WhitelistUrl ([string]$Config.whitelistUrl)
-    }
-
-    if ($machineToken) {
-        return [pscustomobject]@{
-            Token = $machineToken
-            Source = 'machine token'
-        }
-    }
-
-    $legacyToken = Get-LegacyRotationAuthToken -SecretOverride $SecretOverride
-    if ($legacyToken) {
-        return [pscustomobject]@{
-            Token = $legacyToken
-            Source = 'legacy shared secret'
-        }
-    }
-
-    return [pscustomobject]@{
-        Token = ''
-        Source = ''
-    }
-}
-
 $ErrorActionPreference = "Stop"
 $OpenPathRoot = "C:\OpenPath"
 $ConfigPath = "$OpenPathRoot\data\config.json"
 $CommonModulePath = "$OpenPathRoot\lib\Common.psm1"
+$RotateCompatPath = "$OpenPathRoot\lib\internal\RotateToken.Compat.ps1"
 
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "  OpenPath - Token Rotation" -ForegroundColor Cyan
@@ -104,7 +61,14 @@ if (-not (Test-Path $CommonModulePath)) {
     exit 1
 }
 
+if (-not (Test-Path $RotateCompatPath)) {
+    Write-Host "ERROR: Rotation compatibility helper not found" -ForegroundColor Red
+    Write-Host "  Expected: $RotateCompatPath" -ForegroundColor Yellow
+    exit 1
+}
+
 Import-Module $CommonModulePath -Force
+. $RotateCompatPath
 
 $config = Get-OpenPathConfig
 
