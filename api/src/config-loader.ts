@@ -1,4 +1,5 @@
 import {
+  normalizeAptRepoUrl,
   parseBooleanEnv,
   parseDatabaseUrl,
   parseIntEnv,
@@ -73,7 +74,8 @@ export function loadConfig(
     isProduction: nodeEnv === 'production',
     isTest: nodeEnv === 'test',
     aptRepoUrl:
-      env.APT_REPO_URL ?? 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt',
+      normalizeAptRepoUrl(env.APT_REPO_URL) ??
+      'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt',
     enableRateLimitInTest: parseBooleanEnv(env.ENABLE_RATE_LIMIT_IN_TEST, false),
     bcryptRounds: parseIntEnv(env.BCRYPT_ROUNDS, 12),
     jwtSecret: resolveJwtSecret(env, nodeEnv),

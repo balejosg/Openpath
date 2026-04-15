@@ -63,5 +63,5 @@ jobs:
       suite: unstable
       version: ${{ needs.build-prerelease.outputs.version }}
       summary-title: Prerelease Deb Published
-      install-command: curl -fsSL https://balejosg.github.io/openpath/apt/apt-bootstrap.sh | sudo bash -s -- --unstable
+      install-command: curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash -s -- --unstable
     secrets: inherit

@@ -119,7 +119,7 @@ jobs:
       suite: ${{ needs.build.outputs.suite }}
       version: ${{ needs.build.outputs.version }}
       summary-title: Debian Package Published
-      install-command: curl -fsSL https://balejosg.github.io/openpath/apt/apt-bootstrap.sh | sudo bash
+      install-command: curl -fsSL https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh | sudo bash
       create-index: true
       validate-published-metadata: true
       remove-legacy-stable-package: true

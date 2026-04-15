@@ -45,6 +45,9 @@ export function parseTrustProxyEnv(
 
 const DEFAULT_DEV_JWT_SECRET = 'openpath-dev-secret-change-in-production';
 const TEST_JWT_SECRET = 'openpath-test-secret';
+const LEGACY_GITHUB_PAGES_APT_REPO_URL = 'https://balejosg.github.io/openpath/apt';
+const RAW_GITHUB_CONTENT_APT_REPO_URL =
+  'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt';
 
 export function resolveJwtSecret(
   env: Readonly<Record<string, string | undefined>>,
@@ -65,6 +68,17 @@ export function resolveJwtSecret(
   }
 
   return rawSecret;
+}
+
+export function normalizeAptRepoUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  return trimmed.replace(/\/+$/, '') === LEGACY_GITHUB_PAGES_APT_REPO_URL
+    ? RAW_GITHUB_CONTENT_APT_REPO_URL
+    : trimmed;
 }
 
 export function parseDatabaseUrl(url: string | undefined): {

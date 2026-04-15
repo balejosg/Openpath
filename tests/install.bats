@@ -242,6 +242,29 @@ load 'test_helper'
     [ "$status" -ne 0 ]
 }
 
+@test "published Debian install commands use raw GitHub instead of legacy GitHub Pages" {
+    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-bootstrap.sh' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt/apt-setup.sh' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'balejosg.github.io/openpath/apt' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -ne 0 ]
+
+    run grep -n 'balejosg.github.io/openpath/apt' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -ne 0 ]
+
+    run grep -n 'balejosg.github.io/openpath/apt' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -ne 0 ]
+}
+
 @test "protected control-plane domains no longer include legacy GitHub Pages" {
     run grep -n 'raw.githubusercontent.com' "$PROJECT_DIR/linux/lib/common-protected-domains.sh"
     [ "$status" -eq 0 ]
