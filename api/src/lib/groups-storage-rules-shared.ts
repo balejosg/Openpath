@@ -12,7 +12,7 @@ export async function listRuleRowsByGroup(
   groupId: string,
   type?: RuleType,
   executor: DbExecutor = db
-) {
+): Promise<(typeof whitelistRules.$inferSelect)[]> {
   if (type) {
     return executor
       .select()

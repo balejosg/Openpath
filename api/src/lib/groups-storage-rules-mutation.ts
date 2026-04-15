@@ -7,6 +7,7 @@ import { getRowCount } from './utils.js';
 import { logger } from './logger.js';
 import {
   type CreateRuleResult,
+  type Rule,
   type RuleSource,
   type RuleType,
   type UpdateRuleInput,
@@ -15,7 +16,10 @@ import { touchGroupUpdatedAt } from './groups-storage-groups.js';
 import { getRuleById } from './groups-storage-rules-query.js';
 import { normalizeRuleValue } from './groups-storage-rules-shared.js';
 
-export async function updateRule(input: UpdateRuleInput, executor: DbExecutor = db) {
+export async function updateRule(
+  input: UpdateRuleInput,
+  executor: DbExecutor = db
+): Promise<Rule | null> {
   const { id, value, comment } = input;
   const [existing] = await executor.select().from(whitelistRules).where(eq(whitelistRules.id, id));
   if (!existing) return null;
