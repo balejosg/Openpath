@@ -3,9 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import Sidebar from '../Sidebar';
 import { logout } from '../../lib/auth';
 
+const mockIsAdmin = vi.fn<() => boolean>();
+
 vi.mock('../../lib/auth', () => ({
   logout: vi.fn(),
-  isAdmin: () => true,
+  isAdmin: () => mockIsAdmin(),
 }));
 
 describe('Sidebar', () => {
@@ -13,6 +15,7 @@ describe('Sidebar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsAdmin.mockReturnValue(true);
   });
 
   it('marks selected navigation item as current page', () => {
@@ -54,5 +57,32 @@ describe('Sidebar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar Sesión' }));
     expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps domain requests hidden for non-admin users by default', () => {
+    mockIsAdmin.mockReturnValue(false);
+
+    render(<Sidebar activeTab="dashboard" setActiveTab={setActiveTab} isOpen />);
+
+    expect(screen.queryByRole('button', { name: 'Control de Dominios' })).not.toBeInTheDocument();
+  });
+
+  it('can expose domain requests to non-admin users through an explicit prop', () => {
+    mockIsAdmin.mockReturnValue(false);
+
+    render(
+      <Sidebar
+        activeTab="domains"
+        setActiveTab={setActiveTab}
+        isOpen
+        allowDomainRequestsForNonAdmins
+      />
+    );
+
+    const domainsButton = screen.getByRole('button', { name: 'Control de Dominios' });
+    expect(domainsButton).toHaveAttribute('aria-current', 'page');
+
+    fireEvent.click(domainsButton);
+    expect(setActiveTab).toHaveBeenCalledWith('domains');
   });
 });

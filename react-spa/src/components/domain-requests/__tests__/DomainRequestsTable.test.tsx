@@ -65,4 +65,36 @@ describe('DomainRequestsTable', () => {
     expect(onOpenReject).toHaveBeenCalledWith(pendingRequest);
     expect(onOpenDelete).toHaveBeenCalledWith(pendingRequest);
   });
+
+  it('can hide delete actions while keeping approve and reject available', () => {
+    render(
+      <DomainRequestsTable
+        paginatedRequests={[pendingRequest]}
+        filteredRequests={[pendingRequest]}
+        sortedRequests={[pendingRequest]}
+        hasActiveFilters={false}
+        selectedRequestIds={[]}
+        pendingIdsInPage={['req-1']}
+        canBulkSelectInPage
+        bulkSelectTitle="Seleccionar"
+        currentPage={1}
+        pageSize={20}
+        totalPages={1}
+        getGroupName={() => 'Grupo 1'}
+        formatDate={() => '01/04/2026'}
+        onToggleSelectAllInPage={vi.fn()}
+        onToggleRequestSelection={vi.fn()}
+        onOpenApprove={vi.fn()}
+        onOpenReject={vi.fn()}
+        onOpenDelete={vi.fn()}
+        onChangePage={vi.fn()}
+        onClearFilters={vi.fn()}
+        canDeleteRequests={false}
+      />
+    );
+
+    expect(screen.getByTitle('Aprobar')).toBeInTheDocument();
+    expect(screen.getByTitle('Rechazar')).toBeInTheDocument();
+    expect(screen.queryByTitle('Eliminar')).not.toBeInTheDocument();
+  });
 });

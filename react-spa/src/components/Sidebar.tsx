@@ -16,11 +16,18 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isOpen: boolean;
+  allowDomainRequestsForNonAdmins?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  setActiveTab,
+  isOpen,
+  allowDomainRequestsForNonAdmins = false,
+}) => {
   const normalizedActiveTab = activeTab === 'rules' ? 'groups' : activeTab;
   const admin = isAdmin();
+  const showDomainRequests = admin || allowDomainRequestsForNonAdmins;
 
   const navItems: NavItem[] = [
     {
@@ -34,11 +41,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen }) =>
       label: admin ? 'Políticas de Grupo' : 'Mis Políticas',
       icon: <FolderTree size={20} />,
     },
-    ...(admin
-      ? [
-          { id: 'users', label: 'Usuarios y Roles', icon: <Users size={20} /> },
-          { id: 'domains', label: 'Control de Dominios', icon: <ShieldAlert size={20} /> },
-        ]
+    ...(admin ? [{ id: 'users', label: 'Usuarios y Roles', icon: <Users size={20} /> }] : []),
+    ...(showDomainRequests
+      ? [{ id: 'domains', label: 'Control de Dominios', icon: <ShieldAlert size={20} /> }]
       : []),
   ];
 

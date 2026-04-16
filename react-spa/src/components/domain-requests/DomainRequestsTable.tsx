@@ -23,6 +23,7 @@ interface DomainRequestsTableProps {
   onOpenDelete: (request: DomainRequest) => void;
   onChangePage: (updater: number | ((page: number) => number)) => void;
   onClearFilters: () => void;
+  canDeleteRequests?: boolean;
 }
 
 export function DomainRequestsTable({
@@ -46,6 +47,7 @@ export function DomainRequestsTable({
   onOpenDelete,
   onChangePage,
   onClearFilters,
+  canDeleteRequests = true,
 }: DomainRequestsTableProps) {
   if (filteredRequests.length === 0 && !hasActiveFilters) {
     return (
@@ -196,13 +198,15 @@ export function DomainRequestsTable({
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => onOpenDelete(request)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {canDeleteRequests ? (
+                        <button
+                          onClick={() => onOpenDelete(request)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

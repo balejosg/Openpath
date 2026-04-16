@@ -10,7 +10,11 @@ import { useDomainRequestsData } from '../hooks/useDomainRequestsData';
 import { useDomainRequestsDialogs } from '../hooks/useDomainRequestsDialogs';
 import { useDomainRequestsState } from '../hooks/useDomainRequestsState';
 
-export default function DomainRequests() {
+interface DomainRequestsProps {
+  canDeleteRequests?: boolean;
+}
+
+export default function DomainRequests({ canDeleteRequests = true }: DomainRequestsProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all');
 
@@ -171,6 +175,7 @@ export default function DomainRequests() {
           onOpenApprove={(request) => dialogs.setApproveModal({ open: true, request })}
           onOpenReject={(request) => dialogs.setRejectModal({ open: true, request })}
           onOpenDelete={(request) => dialogs.setDeleteModal({ open: true, request })}
+          canDeleteRequests={canDeleteRequests}
           onChangePage={(updater) =>
             setCurrentPage((page) => (typeof updater === 'function' ? updater(page) : updater))
           }
