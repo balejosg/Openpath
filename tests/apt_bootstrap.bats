@@ -32,6 +32,25 @@ EOF
     chmod +x "$bin_dir/apt-get"
 }
 
+write_mock_apt_get_rejecting_legacy_source() {
+    local bin_dir="$1"
+    local log_file="$2"
+    local sources_path="$3"
+
+    cat > "$bin_dir/apt-get" <<EOF
+#!/bin/bash
+echo "apt-get:\$*" >> "$log_file"
+if [ "\${1:-}" = "update" ] \
+    && [ -f "$sources_path" ] \
+    && grep -q 'https://balejosg.github.io/openpath/apt' "$sources_path"; then
+    echo "legacy source still active" >> "$log_file"
+    exit 1
+fi
+exit 0
+EOF
+    chmod +x "$bin_dir/apt-get"
+}
+
 write_mock_apt_cache() {
     local bin_dir="$1"
     local log_file="$2"
@@ -103,6 +122,38 @@ echo "browser-setup:\$*" >> "$log_file"
 exit 0
 EOF
     chmod +x "$script_path"
+}
+
+@test "apt-bootstrap removes stale legacy OpenPath APT source before apt-get update" {
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local log_file="$TEST_TMP_DIR/apt-bootstrap.log"
+    local browser_setup_script="$TEST_TMP_DIR/openpath-browser-setup.sh"
+    local sources_path="$TEST_TMP_DIR/openpath.list"
+
+    mkdir -p "$bin_dir"
+    cat > "$sources_path" <<'EOF'
+# OpenPath System APT Repository
+deb [signed-by=/usr/share/keyrings/openpath.gpg] https://balejosg.github.io/openpath/apt stable main
+EOF
+
+    write_mock_id "$bin_dir"
+    write_mock_apt_get_rejecting_legacy_source "$bin_dir" "$log_file" "$sources_path"
+    write_mock_apt_cache "$bin_dir" "$log_file"
+    write_mock_curl "$bin_dir" "$log_file"
+    write_mock_openpath "$bin_dir" "$log_file" "0"
+    write_mock_browser_setup "$browser_setup_script" "$log_file"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        OPENPATH_APT_SOURCES_PATH="$sources_path" \
+        OPENPATH_APT_REPO_URL="http://repo.local/apt" \
+        OPENPATH_BROWSER_SETUP_SCRIPT="$browser_setup_script" \
+        bash "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh" --skip-setup
+
+    [ "$status" -eq 0 ]
+    [ ! -e "$sources_path" ]
+    run grep -n "legacy source still active" "$log_file"
+    [ "$status" -ne 0 ]
 }
 
 @test "apt-bootstrap runs browser setup helper even when classroom setup is skipped" {

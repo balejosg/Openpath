@@ -19,8 +19,14 @@
 
 set -euo pipefail
 
-APT_REPO_URL="${OPENPATH_APT_REPO_URL:-https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt}"
+LEGACY_GITHUB_PAGES_APT_REPO_URL="https://balejosg.github.io/openpath/apt"
+RAW_GITHUB_CONTENT_APT_REPO_URL="https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt"
+APT_REPO_URL="${OPENPATH_APT_REPO_URL:-$RAW_GITHUB_CONTENT_APT_REPO_URL}"
+if [ "${APT_REPO_URL%/}" = "$LEGACY_GITHUB_PAGES_APT_REPO_URL" ]; then
+    APT_REPO_URL="$RAW_GITHUB_CONTENT_APT_REPO_URL"
+fi
 APT_SETUP_URL="$APT_REPO_URL/apt-setup.sh"
+APT_SOURCES_PATH="${OPENPATH_APT_SOURCES_PATH:-/etc/apt/sources.list.d/openpath.list}"
 
 TRACK="stable"
 SKIP_SETUP=false
@@ -83,6 +89,14 @@ run_maybe_verbose() {
     cat "$output_file"
     rm -f "$output_file"
     return 1
+}
+
+remove_legacy_openpath_apt_source() {
+    if [ -f "$APT_SOURCES_PATH" ] \
+        && grep -Fq "$LEGACY_GITHUB_PAGES_APT_REPO_URL" "$APT_SOURCES_PATH"; then
+        rm -f "$APT_SOURCES_PATH"
+        log_verbose "  Removed legacy OpenPath APT source: $APT_SOURCES_PATH"
+    fi
 }
 
 usage() {
@@ -198,6 +212,7 @@ fi
 
 show_progress 1 5 "Installing bootstrap dependencies"
 export DEBIAN_FRONTEND=noninteractive
+remove_legacy_openpath_apt_source
 run_maybe_verbose apt-get update -qq
 run_maybe_verbose apt-get install -y -qq ca-certificates curl gnupg
 log_verbose "  OK Dependencies ready"

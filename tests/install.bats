@@ -222,7 +222,7 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
-@test "active apt clients use raw GitHub instead of legacy GitHub Pages" {
+@test "active apt clients use raw GitHub while retaining legacy cleanup compatibility" {
     run grep -n 'https://raw.githubusercontent.com/balejosg/openpath/gh-pages/apt' "$PROJECT_DIR/linux/scripts/build/apt-setup.sh"
     [ "$status" -eq 0 ]
 
@@ -235,7 +235,10 @@ load 'test_helper'
     run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/scripts/build/apt-setup.sh"
     [ "$status" -ne 0 ]
 
-    run grep -n 'balejosg.github.io' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
+    run grep -n 'LEGACY_GITHUB_PAGES_APT_REPO_URL="https://balejosg.github.io/openpath/apt"' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'OPENPATH_APT_REPO_URL:-https://balejosg.github.io/openpath/apt' "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -ne 0 ]
 
     run grep -n 'balejosg.github.io' "$PROJECT_DIR/api/src/config-loader.ts"
