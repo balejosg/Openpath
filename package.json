@@ -50,7 +50,7 @@
     "verify:full": "bash scripts/verify-full.sh",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
-    "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}' '!react-spa/e2e/test-results/**' '!react-spa/test-results/**' '!react-spa/playwright-report/**'",
+    "security:secrets": "secretlint '**/*.{js,ts,tsx,json,yml,yaml,env,env.*}' '!coverage/**' '!api/coverage/**' '!react-spa/e2e/test-results/**' '!react-spa/test-results/**' '!react-spa/playwright-report/**'",
     "security:audit": "npm audit --audit-level=high",
     "security:files": "bash scripts/check-sensitive-files.sh",
     "size:check": "test -d react-spa/dist && npm run size --workspace=@openpath/react-spa || echo 'SKIP: react-spa/dist not built, skipping size check'",
