@@ -35,4 +35,18 @@ void describe('Linux enrollment bootstrap script generation', () => {
       /bootstrap_cmd=\(bash "\$tmpfile" --api-url "\$API_URL" --classroom "\$CLASSROOM_NAME"/
     );
   });
+
+  void test('requires the final health check to pass before reporting success', () => {
+    const script = buildLinuxEnrollmentScript({
+      publicUrl: 'https://control.example',
+      classroomId: 'cls_123',
+      classroomName: 'Aula 1',
+      enrollmentToken: 'token-123',
+      aptRepoUrl: 'https://repo.example/apt',
+      linuxAgentVersion: '',
+    });
+
+    assert.match(script, /\nopenpath health\n/);
+    assert.doesNotMatch(script, /openpath health \|\| true/);
+  });
 });

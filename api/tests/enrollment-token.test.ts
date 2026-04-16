@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
+import jwt from 'jsonwebtoken';
 import { generateEnrollmentToken, verifyEnrollmentToken } from '../src/lib/enrollment-token.js';
 
 void describe('Enrollment Token Lib', () => {
@@ -23,5 +24,14 @@ void describe('Enrollment Token Lib', () => {
     // but we trust the jsonwebtoken lib for standard claim verification.
     const payload = verifyEnrollmentToken('');
     assert.strictEqual(payload, null);
+  });
+
+  void test('defaults to an installer-safe two hour lifetime', () => {
+    const token = generateEnrollmentToken('test-room-ttl');
+    const decoded = jwt.decode(token) as { exp?: number; iat?: number } | null;
+
+    assert.ok(decoded?.exp);
+    assert.ok(decoded.iat);
+    assert.strictEqual(decoded.exp - decoded.iat, 2 * 60 * 60);
   });
 });

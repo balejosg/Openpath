@@ -4,7 +4,7 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 
 const ENROLLMENT_TOKEN_ISSUER = 'openpath-api';
 const ENROLLMENT_TOKEN_AUDIENCE = 'openpath-enroll';
-const DEFAULT_EXPIRES_IN = '15m';
+const DEFAULT_EXPIRES_IN = '2h';
 
 export interface EnrollmentTokenPayload {
   typ: 'enroll';

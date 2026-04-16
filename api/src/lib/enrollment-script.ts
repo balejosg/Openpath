@@ -54,7 +54,7 @@ ${bootstrapVersionOverride}
 "\${bootstrap_cmd[@]}"
 
 echo "[2/2] Verificando..."
-openpath health || true
+openpath health
 
 echo ""
 echo "========================================="
