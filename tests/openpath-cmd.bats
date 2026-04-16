@@ -254,8 +254,8 @@ dig() {
         google.com)
             echo "142.250.184.14"
             ;;
-        blocked-test.invalid)
-            return 0
+        facebook.com)
+            echo "0.0.0.0"
             ;;
     esac
 }
@@ -286,6 +286,161 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"system disabled remotely"* ]]
     [[ "$output" != *"ISSUES DETECTED"* ]]
+}
+
+@test "health resolves a domain from the active whitelist instead of hard-coded google.com" {
+    local whitelist_file="$TEST_TMP_DIR/google-es-whitelist.txt"
+    local helper_script="$TEST_TMP_DIR/run-health-whitelist-domain.sh"
+
+    cat > "$whitelist_file" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -uo pipefail
+
+project_dir="$1"
+state_dir="$2"
+whitelist_file="$3"
+extracted_script="$state_dir/cmd-health.sh"
+
+export VERSION="test"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export WHITELIST_FILE="$whitelist_file"
+export FIREFOX_POLICIES="$state_dir/firefox-policies.json"
+touch "$FIREFOX_POLICIES"
+
+GREEN=""
+RED=""
+YELLOW=""
+BLUE=""
+NC=""
+
+timeout() {
+    shift
+    "$@"
+}
+
+dig() {
+    case "$2" in
+        google.es)
+            echo "216.58.204.163"
+            ;;
+        facebook.com)
+            echo "0.0.0.0"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+check_firewall_status() { return 0; }
+has_firewall_loopback_rule() { return 0; }
+verify_firewall_rules() { return 0; }
+
+systemctl() {
+    [ "$1" = "is-active" ] && return 0
+    return 1
+}
+
+find() {
+    return 1
+}
+
+awk '/^cmd_health\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
+source "$extracted_script"
+
+cmd_health
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$TEST_TMP_DIR" "$whitelist_file"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Whitelisted domain (google.es): ✓ resolves"* ]]
+    [[ "$output" != *"Whitelisted domain (google.com)"* ]]
+    [[ "$output" != *"ISSUES DETECTED"* ]]
+}
+
+@test "health fails when a real non-whitelisted domain resolves to a public address" {
+    local whitelist_file="$TEST_TMP_DIR/google-es-whitelist.txt"
+    local helper_script="$TEST_TMP_DIR/run-health-public-blocked-domain.sh"
+
+    cat > "$whitelist_file" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -uo pipefail
+
+project_dir="$1"
+state_dir="$2"
+whitelist_file="$3"
+extracted_script="$state_dir/cmd-health.sh"
+
+export VERSION="test"
+export SYSTEM_DISABLED_FLAG="$state_dir/system-disabled.flag"
+export WHITELIST_FILE="$whitelist_file"
+export FIREFOX_POLICIES="$state_dir/firefox-policies.json"
+touch "$FIREFOX_POLICIES"
+
+GREEN=""
+RED=""
+YELLOW=""
+BLUE=""
+NC=""
+
+timeout() {
+    shift
+    "$@"
+}
+
+dig() {
+    case "$2" in
+        google.es)
+            echo "216.58.204.163"
+            ;;
+        facebook.com)
+            echo "157.240.5.35"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+check_firewall_status() { return 0; }
+has_firewall_loopback_rule() { return 0; }
+verify_firewall_rules() { return 0; }
+
+systemctl() {
+    [ "$1" = "is-active" ] && return 0
+    return 1
+}
+
+find() {
+    return 1
+}
+
+awk '/^cmd_health\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
+source "$extracted_script"
+
+cmd_health
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$TEST_TMP_DIR" "$whitelist_file"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Blocked domain (facebook.com): ✗ NOT BLOCKED"* ]]
+    [[ "$output" == *"ISSUES DETECTED"* ]]
 }
 
 @test "health reports issues when firewall verification fails despite DNS rules being present" {
@@ -323,8 +478,8 @@ dig() {
         google.com)
             echo "142.250.184.14"
             ;;
-        blocked-test.invalid)
-            return 0
+        facebook.com)
+            echo "0.0.0.0"
             ;;
     esac
 }
@@ -411,8 +566,8 @@ dig() {
         google.com)
             echo "142.250.184.14"
             ;;
-        blocked-test.invalid)
-            return 0
+        facebook.com)
+            echo "0.0.0.0"
             ;;
     esac
 }
@@ -457,6 +612,14 @@ EOF
     [[ "$output" == *"DNS blocking rules: ✓ active"* ]]
     [[ "$output" == *"Loopback rule: ✓ present"* ]]
     [[ "$output" != *"ISSUES DETECTED"* ]]
+}
+
+@test "read-only commands that need protected config auto-elevate through sudoers" {
+    run grep -n 'READ_ONLY_ROOT_COMMANDS=.*status' "$PROJECT_DIR/linux/scripts/runtime/openpath-cmd.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'sudo -n' "$PROJECT_DIR/linux/scripts/runtime/openpath-cmd.sh"
+    [ "$status" -eq 0 ]
 }
 
 @test "reset_cached_whitelist_state clears cached whitelist and remote-disabled markers" {

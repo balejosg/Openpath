@@ -34,31 +34,36 @@ github.com"
     # Simulate config generation
     {
         echo "# Generated config"
-        echo "address=/#/"
+        echo "address=/#/0.0.0.0"
+        echo "address=/#/::"
         for domain in $domains; do
             echo "server=/$domain/$dns_server"
         done
     } > "$config_file"
     
     [ -f "$config_file" ]
-    grep -q "address=/#/" "$config_file"
+    grep -q "address=/#/0.0.0.0" "$config_file"
+    grep -q "address=/#/::" "$config_file"
     grep -q "server=/google.com/8.8.8.8" "$config_file"
     grep -q "server=/github.com/8.8.8.8" "$config_file"
 }
 
-@test "address=/#/ appears BEFORE server= directives" {
+@test "default sinkhole addresses appear BEFORE server= directives" {
     local config_file="$TEST_TMP_DIR/dnsmasq.conf"
     
     {
-        echo "address=/#/"
+        echo "address=/#/0.0.0.0"
+        echo "address=/#/::"
         echo "server=/google.com/8.8.8.8"
     } > "$config_file"
     
-    # Verify order: address must be before server
-    local address_line=$(grep -n "address=/#/" "$config_file" | cut -d: -f1)
+    # Verify order: sinkhole addresses must be before server allow rules
+    local address_line=$(grep -n "address=/#/0.0.0.0" "$config_file" | cut -d: -f1)
+    local ipv6_line=$(grep -n "address=/#/::" "$config_file" | cut -d: -f1)
     local server_line=$(grep -n "server=/google.com" "$config_file" | cut -d: -f1)
     
     [ "$address_line" -lt "$server_line" ]
+    [ "$ipv6_line" -lt "$server_line" ]
 }
 
 # ============== DNS detection tests ==============
@@ -112,7 +117,7 @@ github.com"
     [ -f "$DNSMASQ_CONF" ]
 }
 
-@test "generate_dnsmasq_config includes address=/#/ first" {
+@test "generate_dnsmasq_config includes explicit sinkhole addresses first" {
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
     export VERSION="3.5"
@@ -132,7 +137,18 @@ github.com"
     
     generate_dnsmasq_config
     
-    grep -q "address=/#/" "$DNSMASQ_CONF"
+    grep -q "address=/#/0.0.0.0" "$DNSMASQ_CONF"
+    grep -q "address=/#/::" "$DNSMASQ_CONF"
+
+    local address_line
+    local ipv6_line
+    local server_line
+    address_line=$(grep -n "address=/#/0.0.0.0" "$DNSMASQ_CONF" | cut -d: -f1)
+    ipv6_line=$(grep -n "address=/#/::" "$DNSMASQ_CONF" | cut -d: -f1)
+    server_line=$(grep -n "server=/google.com" "$DNSMASQ_CONF" | cut -d: -f1)
+
+    [ "$address_line" -lt "$server_line" ]
+    [ "$ipv6_line" -lt "$server_line" ]
 }
 
 @test "generate_dnsmasq_config includes domains from whitelist" {

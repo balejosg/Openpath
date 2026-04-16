@@ -143,14 +143,14 @@ apply_whitelist_download_plan() {
 
             cat > "$DNSMASQ_CONF" << EOF
 # FAIL-SAFE MODE — whitelist expired (${whitelist_age_hours}h old, max ${WHITELIST_MAX_AGE_HOURS:-24}h)
-# Blocks all domains by default
+# Blocks all domains by default with local sinkhole addresses.
 no-resolv
 resolv-file=/run/dnsmasq/resolv.conf
 listen-address=127.0.0.1
 bind-interfaces
 server=$PRIMARY_DNS
-# Block all domains by default (return NXDOMAIN)
-address=/#/
+address=/#/0.0.0.0
+address=/#/::
 EOF
 
             append_fail_safe_allow_domain "$whitelist_control_host"

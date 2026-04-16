@@ -217,19 +217,49 @@ cmd_health() {
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
 
+    local whitelisted_domain="google.com"
+    if [ -f "$WHITELIST_FILE" ]; then
+        whitelisted_domain=$(
+            awk '
+                BEGIN { section = "whitelist" }
+                /^[[:space:]]*##[[:space:]]*WHITELIST[[:space:]]*$/ { section = "whitelist"; next }
+                /^[[:space:]]*##[[:space:]]*BLOCKED-SUBDOMAINS[[:space:]]*$/ { section = "blocked"; next }
+                /^[[:space:]]*##[[:space:]]*BLOCKED-PATHS[[:space:]]*$/ { section = "blocked"; next }
+                /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+                section == "whitelist" { print; exit }
+            ' "$WHITELIST_FILE" 2>/dev/null
+        )
+        [ -z "$whitelisted_domain" ] && whitelisted_domain="google.com"
+    fi
+
+    local blocked_domain="facebook.com"
+    local candidate
+    for candidate in facebook.com wikipedia.org example.com; do
+        if ! grep -qi "^${candidate}$" "$WHITELIST_FILE" 2>/dev/null; then
+            blocked_domain="$candidate"
+            break
+        fi
+    done
+
     echo -e "${YELLOW}DNS Resolution:${NC}"
-    if timeout 3 dig @127.0.0.1 google.com +short >/dev/null 2>&1; then
-        echo -e "  Whitelisted domain (google.com): ${GREEN}✓ resolves${NC}"
+    if timeout 3 dig @127.0.0.1 "$whitelisted_domain" +short >/dev/null 2>&1; then
+        echo -e "  Whitelisted domain ($whitelisted_domain): ${GREEN}✓ resolves${NC}"
     else
-        echo -e "  Whitelisted domain (google.com): ${RED}✗ FAILED${NC}"
+        echo -e "  Whitelisted domain ($whitelisted_domain): ${RED}✗ FAILED${NC}"
         failed=1
     fi
 
-    if ! timeout 3 dig @127.0.0.1 blocked-test.invalid +short 2>/dev/null | grep -q .; then
-        echo -e "  Blocked domain (blocked-test.invalid): ${GREEN}✓ blocked${NC}"
+    if [ "$remote_disabled" = true ]; then
+        echo -e "  Blocked domain ($blocked_domain): ${YELLOW}⚠ bypassed (system disabled remotely)${NC}"
     else
-        echo -e "  Blocked domain (blocked-test.invalid): ${RED}✗ NOT BLOCKED${NC}"
-        failed=1
+        local blocked_result
+        blocked_result=$(timeout 3 dig @127.0.0.1 "$blocked_domain" +short 2>/dev/null || true)
+        if [ -z "$blocked_result" ] || ! printf '%s\n' "$blocked_result" | grep -Ev '^(0\.0\.0\.0|::)$' | grep -q .; then
+            echo -e "  Blocked domain ($blocked_domain): ${GREEN}✓ blocked${NC}"
+        else
+            echo -e "  Blocked domain ($blocked_domain): ${RED}✗ NOT BLOCKED${NC}"
+            failed=1
+        fi
     fi
     echo ""
 

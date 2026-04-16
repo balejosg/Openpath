@@ -115,10 +115,12 @@ check_integrity() {
         local current_hash
         current_hash=$(sha256sum "$f" | cut -d' ' -f1)
         local stored_hash
-        stored_hash=$(grep "$f" "$INTEGRITY_HASH_FILE" 2>/dev/null | cut -d' ' -f1)
+        stored_hash=$(
+            awk -v path="$f" '$2 == path { print $1; exit }' "$INTEGRITY_HASH_FILE" 2>/dev/null
+        )
 
         if [ -z "$stored_hash" ]; then
-            # File not in baseline (new file?) — skip
+            log_debug "[INTEGRITY] No baseline entry for $f"
             continue
         fi
 

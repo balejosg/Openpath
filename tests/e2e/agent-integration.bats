@@ -60,15 +60,18 @@ EOF
     local dnsmasq_conf="$TEST_TMP_DIR/dnsmasq.conf"
     cat > "$dnsmasq_conf" << 'EOF'
 # OpenPath DNS Whitelist
-address=/#/
+address=/#/0.0.0.0
+address=/#/::
 server=/google.com/8.8.8.8
 server=/github.com/8.8.8.8
 EOF
     
-    local address_line=$(grep -n "address=/#/" "$dnsmasq_conf" | head -1 | cut -d: -f1)
+    local address_line=$(grep -n "address=/#/0.0.0.0" "$dnsmasq_conf" | head -1 | cut -d: -f1)
+    local ipv6_line=$(grep -n "address=/#/::" "$dnsmasq_conf" | head -1 | cut -d: -f1)
     local first_server_line=$(grep -n "server=/" "$dnsmasq_conf" | head -1 | cut -d: -f1)
     
     [ "$address_line" -lt "$first_server_line" ]
+    [ "$ipv6_line" -lt "$first_server_line" ]
 }
 
 @test "whitelist file parsing extracts domains correctly" {

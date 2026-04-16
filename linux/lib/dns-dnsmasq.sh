@@ -49,9 +49,10 @@ neg-ttl=60
 
 # =============================================
 # DEFAULT BLOCK (MUST BE FIRST)
-# Everything not explicitly listed → NXDOMAIN
+# Everything not explicitly listed returns a local sinkhole address.
 # =============================================
-address=/#/
+address=/#/0.0.0.0
+address=/#/::
 
 # =============================================
 # ESSENTIAL DOMAINS (always allowed)
