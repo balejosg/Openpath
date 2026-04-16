@@ -19,15 +19,15 @@ Describe "Enrollment script" {
     }
 
     Context "Firefox native host sync" {
-        It "Syncs the Firefox native host state after persisting enrollment config" {
+        It "Registers the Firefox native host after persisting enrollment config" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Enroll-Machine.ps1"
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 '$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"',
                 'Import-Module $BrowserModulePath -Force',
-                'Sync-OpenPathFirefoxNativeHostState -Config $config -ClearWhitelist | Out-Null',
-                'Failed to sync Firefox native host state after enrollment'
+                'Register-OpenPathFirefoxNativeHost -Config $config -ClearWhitelist | Out-Null',
+                'Failed to register Firefox native host after enrollment'
             )
         }
     }

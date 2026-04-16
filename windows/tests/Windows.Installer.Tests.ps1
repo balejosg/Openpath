@@ -211,6 +211,17 @@ Describe "Installer" {
     }
 
     Context "Enrollment before first update" {
+        It "Registers Firefox native host after enrollment produces complete request setup" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$nativeHostConfig = Get-OpenPathConfig',
+                'Register-OpenPathFirefoxNativeHost -Config $nativeHostConfig -ClearWhitelist | Out-Null',
+                'No se pudo registrar el host nativo de Firefox tras enrollment'
+            )
+        }
+
         It "Skips first update when classroom registration fails" {
             $scriptPath = Join-Path $PSScriptRoot ".." "Install-OpenPath.ps1"
             $runtimeHelperPath = Join-Path $PSScriptRoot ".." "lib" "install" "Installer.Runtime.ps1"

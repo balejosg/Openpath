@@ -272,10 +272,10 @@ if ($classroomModeRequested) {
 
 try {
     $nativeHostConfig = Get-OpenPathConfig
-    Sync-OpenPathFirefoxNativeHostState -Config $nativeHostConfig -ClearWhitelist | Out-Null
+    Register-OpenPathFirefoxNativeHost -Config $nativeHostConfig -ClearWhitelist | Out-Null
 }
 catch {
-    Write-Host "  ADVERTENCIA: No se pudo sincronizar el estado del host nativo de Firefox: $_" -ForegroundColor Yellow
+    Write-Host "  ADVERTENCIA: No se pudo registrar el host nativo de Firefox tras enrollment: $_" -ForegroundColor Yellow
 }
 
 Show-InstallerProgress -Step 7 -Total 7 -Status 'Ejecutando primera actualizacion'

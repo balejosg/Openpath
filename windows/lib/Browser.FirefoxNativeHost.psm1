@@ -43,6 +43,36 @@ function Get-OpenPathFirefoxNativeHostRegistryPaths {
     )
 }
 
+function Test-OpenPathFirefoxNativeHostRequestSetupComplete {
+    param(
+        [AllowNull()]
+        [object]$Config = $null
+    )
+
+    if (-not $Config) {
+        try {
+            $Config = Get-OpenPathConfig
+        }
+        catch {
+            return $false
+        }
+    }
+
+    $apiUrl = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'apiUrl'
+    $whitelistUrl = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'whitelistUrl'
+    $classroom = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'classroom'
+    $classroomId = Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'classroomId'
+
+    if ($apiUrl -notmatch '^https?://\S+$') {
+        return $false
+    }
+    if ($whitelistUrl -notmatch '/w/[^/]+/whitelist\.txt($|[?#].*)') {
+        return $false
+    }
+
+    return [bool]($classroom -or $classroomId)
+}
+
 function Sync-OpenPathFirefoxNativeHostArtifacts {
     param(
         [string]$SourceRoot = "$script:OpenPathRoot\scripts"
@@ -108,6 +138,13 @@ function Sync-OpenPathFirefoxNativeHostState {
         catch {
             $Config = [PSCustomObject]@{}
         }
+    }
+
+    if (-not (Test-OpenPathFirefoxNativeHostRequestSetupComplete -Config $Config)) {
+        Write-OpenPathLog 'Firefox native host request setup is incomplete; skipping native host state sync' -Level WARN
+        Remove-Item (Get-OpenPathFirefoxNativeStatePath) -Force -ErrorAction SilentlyContinue
+        Remove-Item (Get-OpenPathFirefoxNativeWhitelistMirrorPath) -Force -ErrorAction SilentlyContinue
+        return $false
     }
 
     $machineName = if (
@@ -189,6 +226,12 @@ function Register-OpenPathFirefoxNativeHost {
         New-Item -ItemType Directory -Path $nativeRoot -Force | Out-Null
     }
 
+    if (-not (Test-OpenPathFirefoxNativeHostRequestSetupComplete -Config $Config)) {
+        Write-OpenPathLog 'Firefox native host request setup is incomplete; skipping native host registration' -Level WARN
+        Unregister-OpenPathFirefoxNativeHost | Out-Null
+        return $false
+    }
+
     Sync-OpenPathFirefoxNativeHostArtifacts | Out-Null
 
     $manifestPath = Get-OpenPathFirefoxNativeHostManifestPath
@@ -238,6 +281,7 @@ Export-ModuleMember -Function @(
     'Get-OpenPathFirefoxNativeWhitelistMirrorPath',
     'Get-OpenPathFirefoxNativeHostUpdateTaskName',
     'Get-OpenPathFirefoxNativeHostRegistryPaths',
+    'Test-OpenPathFirefoxNativeHostRequestSetupComplete',
     'Sync-OpenPathFirefoxNativeHostArtifacts',
     'Sync-OpenPathFirefoxNativeHostState',
     'Register-OpenPathFirefoxNativeHost',

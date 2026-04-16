@@ -11,6 +11,22 @@ Describe "Browser Module - Native Host" {
     }
 
     Context "Native host registration" {
+        It "Requires complete request setup before native host registration or state sync" {
+            $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"
+            $nativeHostContent = Get-Content $nativeHostModulePath -Raw
+
+            Assert-ContentContainsAll -Content $nativeHostContent -Needles @(
+                'function Test-OpenPathFirefoxNativeHostRequestSetupComplete',
+                "Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'apiUrl'",
+                "Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'whitelistUrl'",
+                "Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'classroom'",
+                "Get-OpenPathConfigTrimmedValue -Config $Config -PropertyName 'classroomId'",
+                "/w/[^/]+/whitelist\.txt($|[?#].*)",
+                'Unregister-OpenPathFirefoxNativeHost | Out-Null',
+                'Test-OpenPathFirefoxNativeHostRequestSetupComplete -Config $Config'
+            )
+        }
+
         It "Re-stages native host artifacts before writing the Firefox manifest" {
             $browserModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.psm1"
             $nativeHostModulePath = Join-Path $PSScriptRoot ".." "lib" "Browser.FirefoxNativeHost.psm1"

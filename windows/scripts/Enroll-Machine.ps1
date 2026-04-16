@@ -188,10 +188,10 @@ Set-OpenPathConfigValue -Config $config -Name 'whitelistUrl' -Value $registratio
 Set-OpenPathConfig -Config $config | Out-Null
 
 try {
-    Sync-OpenPathFirefoxNativeHostState -Config $config -ClearWhitelist | Out-Null
+    Register-OpenPathFirefoxNativeHost -Config $config -ClearWhitelist | Out-Null
 }
 catch {
-    throw "Failed to sync Firefox native host state after enrollment: $_"
+    throw "Failed to register Firefox native host after enrollment: $_"
 }
 
 Write-Host "  Machine registered successfully" -ForegroundColor Green
