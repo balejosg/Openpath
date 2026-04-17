@@ -63,6 +63,26 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "windows enrollment script uses standalone bootstrap before reconfiguration" {
+    run grep -nF 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force' "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Initialize-OpenPathScriptSession' "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF -- "-DependentModules @('Browser')" "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'Get-OpenPathConfig'" "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'Set-OpenPathConfigValue'" "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "'Register-OpenPathFirefoxNativeHost'" "$PROJECT_DIR/windows/scripts/Enroll-Machine.ps1"
+    [ "$status" -eq 0 ]
+}
+
 @test "windows cli re-imports Common globally before self-update commands" {
     run grep -nF 'Import-Module "$openPathRoot\lib\Common.psm1" -Force -Global' "$PROJECT_DIR/windows/OpenPath.ps1"
     [ "$status" -eq 0 ]

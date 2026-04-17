@@ -1,6 +1,25 @@
 Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 
 Describe "Enrollment script" {
+    Context "Standalone bootstrap" {
+        It "Uses the shared standalone bootstrap helper for enrollment reconfiguration" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Enroll-Machine.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force',
+                'Initialize-OpenPathScriptSession `',
+                '-OpenPathRoot $OpenPathRoot',
+                '-DependentModules @(''Browser'')',
+                '-RequiredCommands @(',
+                '''Get-OpenPathConfig''',
+                '''Set-OpenPathConfigValue''',
+                '''Register-OpenPathFirefoxNativeHost''',
+                '-ScriptName ''Enroll-Machine.ps1'''
+            )
+        }
+    }
+
     Context "Token modes" {
         It "Supports registration and enrollment token parameters" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Enroll-Machine.ps1"
@@ -24,8 +43,7 @@ Describe "Enrollment script" {
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                '$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"',
-                'Import-Module $BrowserModulePath -Force',
+                '-DependentModules @(''Browser'')',
                 'Register-OpenPathFirefoxNativeHost -Config $config -ClearWhitelist | Out-Null',
                 'Failed to register Firefox native host after enrollment'
             )

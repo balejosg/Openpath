@@ -65,19 +65,24 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $configPath = "$OpenPathRoot\data\config.json"
-$commonModulePath = "$OpenPathRoot\lib\Common.psm1"
-$BrowserModulePath = "$OpenPathRoot\lib\Browser.psm1"
 
-if (-not (Test-Path $commonModulePath)) {
-    throw "Common module not found at $commonModulePath"
-}
-
-if (-not (Test-Path $BrowserModulePath)) {
-    throw "Browser module not found at $BrowserModulePath"
-}
-
-Import-Module $commonModulePath -Force
-Import-Module $BrowserModulePath -Force
+# Initialize standalone script session via the shared bootstrap helper.
+Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force
+Initialize-OpenPathScriptSession `
+    -OpenPathRoot $OpenPathRoot `
+    -DependentModules @('Browser') `
+    -RequiredCommands @(
+    'Get-OpenPathConfig',
+    'Set-OpenPathConfig',
+    'Set-OpenPathConfigValue',
+    'Get-OpenPathMachineName',
+    'New-OpenPathScopedMachineName',
+    'New-OpenPathMachineRegistrationBody',
+    'Resolve-OpenPathMachineRegistration',
+    'Set-OpenPathMachineName',
+    'Register-OpenPathFirefoxNativeHost'
+) `
+    -ScriptName 'Enroll-Machine.ps1' | Out-Null
 
 if (-not (Test-Path $configPath)) {
     throw "Configuration file not found at $configPath"
