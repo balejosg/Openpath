@@ -81,10 +81,26 @@ function Invoke-OpenPathWatchdogChecks {
 
     $issues = @()
     $recoveryEligibleIssues = @()
+    $localWhitelistPath = Join-Path $OpenPathRoot 'data\whitelist.txt'
+    $localWhitelistSections = $null
+    $failOpenActive = $false
 
     try {
-        $acrylicService = Get-Service -DisplayName "*Acrylic*" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $acrylicService -or $acrylicService.Status -ne 'Running') {
+        $localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path $localWhitelistPath
+        $failOpenActive = [bool]$localWhitelistSections.IsDisabled
+        if ($failOpenActive) {
+            Write-OpenPathLog "Watchdog: local fail-open whitelist marker active; skipping protected-mode DNS/firewall recovery" -Level WARN
+        }
+    }
+    catch {
+        Write-OpenPathLog "Watchdog: Error reading local whitelist state: $_" -Level WARN
+    }
+
+    $shouldRunProtectedModeChecks = -not $PortalModeActive -and -not $failOpenActive
+
+    try {
+        $acrylicService = if ($shouldRunProtectedModeChecks) { Get-Service -DisplayName "*Acrylic*" -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
+        if ($shouldRunProtectedModeChecks -and (-not $acrylicService -or $acrylicService.Status -ne 'Running')) {
             $issues += "Acrylic service not running"
             $recoveryEligibleIssues += "Acrylic service not running"
             Write-OpenPathLog "Watchdog: Acrylic service not running, attempting restart..." -Level WARN
@@ -96,7 +112,7 @@ function Invoke-OpenPathWatchdogChecks {
     }
 
     try {
-        if (-not $PortalModeActive -and -not (Test-DNSResolution)) {
+        if ($shouldRunProtectedModeChecks -and -not (Test-DNSResolution)) {
             $issues += "DNS resolution failed for allowed domain"
             $recoveryEligibleIssues += "DNS resolution failed for allowed domain"
             Write-OpenPathLog "Watchdog: DNS resolution failed, restarting Acrylic..." -Level WARN
@@ -109,7 +125,7 @@ function Invoke-OpenPathWatchdogChecks {
     }
 
     try {
-        if (-not $PortalModeActive -and -not (Test-DNSSinkhole -Domain "this-should-be-blocked-test-12345.com")) {
+        if ($shouldRunProtectedModeChecks -and -not (Test-DNSSinkhole -Domain "this-should-be-blocked-test-12345.com")) {
             $issues += "DNS sinkhole not working"
             $recoveryEligibleIssues += "DNS sinkhole not working"
             Write-OpenPathLog "Watchdog: Sinkhole not working properly" -Level WARN
@@ -120,7 +136,7 @@ function Invoke-OpenPathWatchdogChecks {
     }
 
     try {
-        if (-not $PortalModeActive -and -not (Test-FirewallActive)) {
+        if ($shouldRunProtectedModeChecks -and -not (Test-FirewallActive)) {
             $issues += "Firewall rules not active"
             $recoveryEligibleIssues += "Firewall rules not active"
             Write-OpenPathLog "Watchdog: Firewall rules missing, reconfiguring..." -Level WARN
@@ -139,7 +155,7 @@ function Invoke-OpenPathWatchdogChecks {
         $dnsServers = Get-DnsClientServerAddress -AddressFamily IPv4 |
             Where-Object { $_.ServerAddresses -contains "127.0.0.1" }
 
-        if (-not $PortalModeActive -and -not $dnsServers) {
+        if ($shouldRunProtectedModeChecks -and -not $dnsServers) {
             $issues += "Local DNS not configured"
             $recoveryEligibleIssues += "Local DNS not configured"
             Write-OpenPathLog "Watchdog: Local DNS not configured, fixing..." -Level WARN
@@ -203,7 +219,9 @@ function Invoke-OpenPathWatchdogChecks {
     }
 
     try {
-        $localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path "$OpenPathRoot\data\whitelist.txt"
+        if (-not $localWhitelistSections) {
+            $localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path $localWhitelistPath
+        }
         if ($localWhitelistSections.IsDisabled) {
             Write-OpenPathLog "Watchdog: skipped Firefox policy refresh because local whitelist is disabled" -Level WARN
         }
@@ -220,6 +238,7 @@ function Invoke-OpenPathWatchdogChecks {
         RecoveryEligibleIssues = @($recoveryEligibleIssues)
         StaleFailsafeActive = $staleFailsafeActive
         IntegrityTampered = $integrityTampered
+        FailOpenActive = $failOpenActive
     }
 }
 
@@ -241,6 +260,9 @@ function Get-OpenPathWatchdogOutcome {
         [bool]$IntegrityTampered,
 
         [Parameter(Mandatory = $true)]
+        [bool]$FailOpenActive,
+
+        [Parameter(Mandatory = $true)]
         [bool]$PortalModeActive,
 
         [Parameter(Mandatory = $true)]
@@ -251,7 +273,10 @@ function Get-OpenPathWatchdogOutcome {
     )
 
     $status = 'HEALTHY'
-    if ($IntegrityTampered) {
+    if ($FailOpenActive) {
+        $status = 'FAIL_OPEN'
+    }
+    elseif ($IntegrityTampered) {
         $status = 'TAMPERED'
     }
     elseif ($StaleFailsafeActive) {
@@ -265,6 +290,7 @@ function Get-OpenPathWatchdogOutcome {
     $shouldIncrementFailCount = $status -eq 'DEGRADED' -and $RecoveryEligibleIssues.Count -gt 0
     if (
         $status -eq 'HEALTHY' -or
+        $status -eq 'FAIL_OPEN' -or
         $status -eq 'STALE_FAILSAFE' -or
         ($PortalModeActive -and $status -eq 'DEGRADED') -or
         (-not $shouldIncrementFailCount)
@@ -314,6 +340,10 @@ function Get-OpenPathWatchdogOutcome {
 
     if ($IntegrityTampered) {
         $actions = if ($actions -eq 'watchdog_ok') { 'integrity_tampered' } else { "$actions; integrity_tampered" }
+    }
+
+    if ($FailOpenActive) {
+        $actions = if ($actions -eq 'watchdog_ok') { 'fail_open_active' } else { "$actions; fail_open_active" }
     }
 
     if ($checkpointRecovered) {

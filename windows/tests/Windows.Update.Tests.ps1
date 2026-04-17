@@ -122,6 +122,8 @@ Describe "Update Script" {
 
             $content | Should -Match '(?s)elseif \(\$downloadResult\.Whitelist\.IsDisabled\).*?Handle-OpenPathDisabledWhitelist'
             $applyContent | Should -Match '(?s)Handle-OpenPathDisabledWhitelist.*?Restore-OriginalDNS'
+            $applyContent | Should -Match '(?s)Handle-OpenPathDisabledWhitelist.*?# DESACTIVADO.*?Set-Content \$WhitelistPath'
+            $applyContent | Should -Match '(?s)Handle-OpenPathNotModified.*?IsDisabled.*?FAIL_OPEN.*?remote_disable_marker_not_modified'
             $applyContent | Should -Match '(?s)Handle-OpenPathWhitelistApply.*?Update-AcrylicHost.*?Restore-OpenPathProtectedMode -Config \$Config'
             $rollbackContent | Should -Match '(?s)Falling back to backup whitelist rollback.*?Restore-OpenPathProtectedMode -Config \$Config -ErrorAction SilentlyContinue'
         }

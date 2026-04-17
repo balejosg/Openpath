@@ -93,6 +93,7 @@ $outcome = Get-OpenPathWatchdogOutcome `
     -RecoveryEligibleIssues @($recoveryEligibleIssues) `
     -StaleFailsafeActive $checkResult.StaleFailsafeActive `
     -IntegrityTampered $checkResult.IntegrityTampered `
+    -FailOpenActive $checkResult.FailOpenActive `
     -PortalModeActive $portalModeActive `
     -WatchdogFailCountPath $watchdogFailCountPath `
     -OpenPathRoot $OpenPathRoot

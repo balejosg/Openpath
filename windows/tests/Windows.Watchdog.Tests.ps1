@@ -104,7 +104,7 @@ Describe "Watchdog Script" {
     }
 
     Context "Watchdog health states" {
-        It "Reports STALE_FAILSAFE and CRITICAL states" {
+        It "Reports FAIL_OPEN, STALE_FAILSAFE and CRITICAL states" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
             $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
             $content = Get-Content $scriptPath -Raw
@@ -116,8 +116,29 @@ Describe "Watchdog Script" {
             )
 
             Assert-ContentContainsAll -Content $helperContent -Needles @(
+                'FAIL_OPEN',
                 'STALE_FAILSAFE',
                 'CRITICAL'
+            )
+        }
+
+        It "Does not repair protected DNS or firewall while the local fail-open marker is active" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Test-DNSHealth.ps1"
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Watchdog.Runtime.ps1"
+            $content = Get-Content $scriptPath -Raw
+            $helperContent = Get-Content $helperPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '-FailOpenActive $checkResult.FailOpenActive'
+            )
+
+            Assert-ContentContainsAll -Content $helperContent -Needles @(
+                '$failOpenActive = [bool]$localWhitelistSections.IsDisabled',
+                '$shouldRunProtectedModeChecks = -not $PortalModeActive -and -not $failOpenActive',
+                'Watchdog: local fail-open whitelist marker active; skipping protected-mode DNS/firewall recovery',
+                'FailOpenActive = $failOpenActive',
+                '$status = ''FAIL_OPEN''',
+                'fail_open_active'
             )
         }
     }

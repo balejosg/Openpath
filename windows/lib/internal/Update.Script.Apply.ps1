@@ -75,6 +75,27 @@ function Handle-OpenPathNotModified {
         [string]$WhitelistPath
     )
 
+    $localWhitelistSections = Get-OpenPathWhitelistSectionsFromFile -Path $WhitelistPath
+    if ($localWhitelistSections.IsDisabled) {
+        Sync-FirefoxNativeHostMirror -Config $Config -WhitelistPath $WhitelistPath -ClearWhitelist
+        Write-OpenPathLog "Whitelist not modified and local fail-open marker remains active"
+
+        try {
+            $runtimeHealth = Get-OpenPathRuntimeHealth
+            Send-OpenPathHealthReport -Status 'FAIL_OPEN' `
+                -DnsServiceRunning $runtimeHealth.DnsServiceRunning `
+                -DnsResolving $runtimeHealth.DnsResolving `
+                -FailCount 0 `
+                -Actions 'remote_disable_marker_not_modified' | Out-Null
+        }
+        catch {
+            # Ignore health reporting errors
+        }
+
+        Write-OpenPathLog "=== OpenPath update completed (fail-open unchanged) ==="
+        return
+    }
+
     Sync-FirefoxNativeHostMirror -Config $Config -WhitelistPath $WhitelistPath
     Write-OpenPathLog "Whitelist not modified (ETag) - skipping apply"
 
@@ -107,6 +128,7 @@ function Handle-OpenPathDisabledWhitelist {
 
     Write-OpenPathLog "DEACTIVATION FLAG detected - entering fail-open mode" -Level WARN
 
+    "# DESACTIVADO" | Set-Content $WhitelistPath -Encoding UTF8
     Restore-OriginalDNS
     Remove-OpenPathFirewall
     Remove-BrowserPolicy
