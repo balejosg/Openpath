@@ -24,13 +24,16 @@ describe('repository verification contract', () => {
           'github/codeql-action/init@v4',
           'github/codeql-action/analyze@v4',
           'github/codeql-action/upload-sarif@v4',
-          'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true',
+          "GITLEAKS_VERSION: '8.30.1'",
+          'gitleaks detect --source . --redact --verbose',
         ],
         forbidden: [
           'actions/setup-node@v4',
           'github/codeql-action/init@v3',
           'github/codeql-action/analyze@v3',
           'github/codeql-action/upload-sarif@v3',
+          'gitleaks/gitleaks-action@',
+          'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24',
         ],
       },
       {
