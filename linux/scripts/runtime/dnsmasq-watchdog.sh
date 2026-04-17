@@ -68,7 +68,13 @@ check_dnsmasq_running() {
 }
 
 check_dns_resolving() {
-    timeout 5 dig @127.0.0.1 google.com +short +time=3 >/dev/null 2>&1
+    local probe_domain
+    local probe_result
+
+    probe_domain=$(select_allowed_dns_probe_domain)
+    probe_result=$(resolve_local_dns_probe "$probe_domain")
+
+    dns_probe_result_is_public "$probe_result"
 }
 
 check_upstream_dns() {
@@ -93,6 +99,13 @@ generate_integrity_hashes() {
     log "[INTEGRITY] Baseline hashes generated for ${#CRITICAL_FILES[@]} files"
 }
 
+get_stored_integrity_hash() {
+    local path="$1"
+    [ -n "$path" ] && [ -f "$INTEGRITY_HASH_FILE" ] || return 1
+
+    awk -v path="$path" '$2 == path { print $1; exit }' "$INTEGRITY_HASH_FILE" 2>/dev/null
+}
+
 # Verify file integrity against stored hashes
 # Returns 0 if all OK, 1 if tampering detected
 check_integrity() {
@@ -115,9 +128,7 @@ check_integrity() {
         local current_hash
         current_hash=$(sha256sum "$f" | cut -d' ' -f1)
         local stored_hash
-        stored_hash=$(
-            awk -v path="$f" '$2 == path { print $1; exit }' "$INTEGRITY_HASH_FILE" 2>/dev/null
-        )
+        stored_hash=$(get_stored_integrity_hash "$f")
 
         if [ -z "$stored_hash" ]; then
             log_debug "[INTEGRITY] No baseline entry for $f"
@@ -125,7 +136,7 @@ check_integrity() {
         fi
 
         if [ "$current_hash" != "$stored_hash" ]; then
-            log_warn "[INTEGRITY] TAMPERED: $f"
+            log_warn "[INTEGRITY] TAMPERED: $f (expected=$stored_hash actual=$current_hash)"
             tampered=$((tampered + 1))
         fi
     done

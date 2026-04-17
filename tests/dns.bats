@@ -151,6 +151,22 @@ github.com"
     [ "$ipv6_line" -lt "$server_line" ]
 }
 
+@test "write_dnsmasq_default_sinkhole_rules emits explicit IPv4 and IPv6 sinkholes only" {
+    local config_file="$TEST_TMP_DIR/dnsmasq.conf"
+
+    log_warn() { echo "$1"; }
+    export -f log_warn
+
+    source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    run write_dnsmasq_default_sinkhole_rules "$config_file"
+
+    [ "$status" -eq 0 ]
+    grep -qx "address=/#/0.0.0.0" "$config_file"
+    grep -qx "address=/#/::" "$config_file"
+    ! grep -qx "address=/#/" "$config_file"
+}
+
 @test "generate_dnsmasq_config includes domains from whitelist" {
     export DNSMASQ_CONF="$TEST_TMP_DIR/dnsmasq.d/url-whitelist.conf"
     export PRIMARY_DNS="8.8.8.8"
@@ -288,6 +304,63 @@ github.com"
     
     run verify_dns
     [ "$status" -eq 0 ]
+}
+
+@test "verify_dns resolves a domain from the active whitelist" {
+    export WHITELIST_FILE="$TEST_TMP_DIR/whitelist.txt"
+    cat > "$WHITELIST_FILE" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    dig() {
+        case "$2" in
+            google.es)
+                echo "216.58.204.163"
+                return 0
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+    export -f dig
+
+    timeout() {
+        shift
+        "$@"
+    }
+    export -f timeout
+
+    source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    run verify_dns
+    [ "$status" -eq 0 ]
+}
+
+@test "verify_dns rejects sinkhole-only DNS answers" {
+    export WHITELIST_FILE="$TEST_TMP_DIR/whitelist.txt"
+    cat > "$WHITELIST_FILE" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    dig() {
+        echo "0.0.0.0"
+        return 0
+    }
+    export -f dig
+
+    timeout() {
+        shift
+        "$@"
+    }
+    export -f timeout
+
+    source "$PROJECT_DIR/linux/lib/dns.sh"
+
+    run verify_dns
+    [ "$status" -eq 1 ]
 }
 
 @test "verify_dns returns error with failing DNS" {

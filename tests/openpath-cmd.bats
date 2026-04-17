@@ -101,6 +101,12 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
+@test "cmd_status reports request setup once" {
+    run sh -c "awk '/^cmd_status\\(\\) \\{/ { capture = 1 } /^cmd_update\\(\\)/ { capture = 0 } capture { print }' '$PROJECT_DIR/linux/lib/runtime-cli-system.sh' | grep -c 'Solicitudes:'"
+    [ "$status" -eq 0 ]
+    [ "$output" -eq 2 ]
+}
+
 @test "cmd_disable reuses shared disabled-mode transition helper" {
     run grep -n "enter_disabled_mode" "$PROJECT_DIR/linux/lib/runtime-cli-system.sh"
     [ "$status" -eq 0 ]
@@ -273,6 +279,7 @@ find() {
     return 1
 }
 
+source "$project_dir/linux/lib/dns.sh"
 awk '/^cmd_health\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
@@ -350,6 +357,7 @@ find() {
     return 1
 }
 
+source "$project_dir/linux/lib/dns.sh"
 awk '/^cmd_health\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
@@ -428,6 +436,7 @@ find() {
     return 1
 }
 
+source "$project_dir/linux/lib/dns.sh"
 awk '/^cmd_health\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
@@ -517,6 +526,7 @@ find() {
     return 1
 }
 
+source "$project_dir/linux/lib/dns.sh"
 awk '/^cmd_health\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
@@ -598,6 +608,7 @@ find() {
     return 1
 }
 
+source "$project_dir/linux/lib/dns.sh"
 awk '/^cmd_health\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
 source "$extracted_script"
@@ -612,6 +623,134 @@ EOF
     [[ "$output" == *"DNS blocking rules: ✓ active"* ]]
     [[ "$output" == *"Loopback rule: ✓ present"* ]]
     [[ "$output" != *"ISSUES DETECTED"* ]]
+}
+
+@test "cmd_status probes active whitelist domain and treats sinkhole as blocked" {
+    local whitelist_file="$TEST_TMP_DIR/google-es-whitelist.txt"
+    local helper_script="$TEST_TMP_DIR/run-cmd-status-dns-probe.sh"
+    local probe_log="$TEST_TMP_DIR/probes.log"
+
+    cat > "$whitelist_file" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+whitelist_file="$3"
+probe_log="$4"
+extracted_script="$state_dir/cmd-status.sh"
+
+export VERSION="test"
+export WHITELIST_FILE="$whitelist_file"
+export VAR_STATE_DIR="$state_dir"
+export ETC_CONFIG_DIR="$state_dir/etc/openpath"
+export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+export RED=""
+export GREEN=""
+export YELLOW=""
+export BLUE=""
+export NC=""
+mkdir -p "$ETC_CONFIG_DIR"
+
+timeout() {
+    shift
+    "$@"
+}
+
+dig() {
+    printf '%s\n' "$2" >> "$probe_log"
+    case "$2" in
+        google.es)
+            echo "216.58.204.163"
+            return 0
+            ;;
+        google.com)
+            echo "0.0.0.0"
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+systemctl() {
+    [ "$1" = "is-active" ] && return 0
+    return 1
+}
+
+source "$project_dir/linux/lib/common.sh"
+source "$project_dir/linux/lib/dns.sh"
+awk '/^cmd_status\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
+source "$extracted_script"
+
+cmd_status
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$TEST_TMP_DIR" "$whitelist_file" "$probe_log"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Resolución: ● funcional"* ]]
+    grep -qx "google.es" "$probe_log"
+    ! grep -qx "google.com" "$probe_log"
+}
+
+@test "cmd_check reports sinkhole-only answers as not resolving" {
+    local whitelist_file="$TEST_TMP_DIR/google-es-whitelist.txt"
+    local helper_script="$TEST_TMP_DIR/run-cmd-check-sinkhole.sh"
+
+    cat > "$whitelist_file" <<'EOF'
+## WHITELIST
+google.es
+EOF
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+whitelist_file="$3"
+extracted_script="$state_dir/cmd-check.sh"
+
+export WHITELIST_FILE="$whitelist_file"
+export RED=""
+export GREEN=""
+export YELLOW=""
+export BLUE=""
+export NC=""
+
+timeout() {
+    shift
+    "$@"
+}
+
+dig() {
+    echo "0.0.0.0"
+    return 0
+}
+
+source "$project_dir/linux/lib/dns.sh"
+awk '/^cmd_check\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-system.sh" > "$extracted_script"
+source "$extracted_script"
+
+cmd_check facebook.com
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$TEST_TMP_DIR" "$whitelist_file"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Resuelve: ✗"* ]]
+    [[ "$output" != *"→ 0.0.0.0"* ]]
 }
 
 @test "read-only commands that need protected config auto-elevate through sudoers" {

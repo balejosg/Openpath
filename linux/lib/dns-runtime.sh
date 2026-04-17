@@ -1,5 +1,121 @@
 #!/bin/bash
 
+get_first_whitelisted_domain() {
+    local whitelist_file="${1:-${WHITELIST_FILE:-}}"
+    [ -n "$whitelist_file" ] && [ -f "$whitelist_file" ] || return 1
+
+    local candidate
+    while IFS= read -r candidate; do
+        candidate=$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
+        [ -n "$candidate" ] || continue
+        if ! declare -F validate_domain >/dev/null 2>&1 || validate_domain "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(
+        awk '
+            BEGIN { section = "whitelist" }
+            /^[[:space:]]*##[[:space:]]*WHITELIST[[:space:]]*$/ { section = "whitelist"; next }
+            /^[[:space:]]*##[[:space:]]*BLOCKED-SUBDOMAINS[[:space:]]*$/ { section = "blocked"; next }
+            /^[[:space:]]*##[[:space:]]*BLOCKED-PATHS[[:space:]]*$/ { section = "blocked"; next }
+            /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+            section == "whitelist" { print }
+        ' "$whitelist_file" 2>/dev/null
+    )
+
+    return 1
+}
+
+dns_probe_file_contains_domain() {
+    local domain="$1"
+    local whitelist_file="${2:-${WHITELIST_FILE:-}}"
+    [ -n "$domain" ] && [ -n "$whitelist_file" ] && [ -f "$whitelist_file" ] || return 1
+
+    local normalized
+    normalized=$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n' | sed 's/[[:space:]]//g; s/^\.*//; s/\.*$//')
+    [ -n "$normalized" ] || return 1
+
+    awk -v domain="$normalized" '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+        {
+            line = tolower($0)
+            gsub(/[[:space:]\r\n]/, "", line)
+            sub(/^\.+/, "", line)
+            sub(/\.+$/, "", line)
+            if (line == domain) {
+                found = 1
+                exit
+            }
+        }
+        END { exit found ? 0 : 1 }
+    ' "$whitelist_file" 2>/dev/null
+}
+
+select_allowed_dns_probe_domain() {
+    local whitelist_file="${1:-${WHITELIST_FILE:-}}"
+    local domain
+
+    if domain=$(get_first_whitelisted_domain "$whitelist_file"); then
+        printf '%s\n' "$domain"
+        return 0
+    fi
+
+    if declare -F get_openpath_protected_domains >/dev/null 2>&1; then
+        while IFS= read -r domain; do
+            [ -n "$domain" ] || continue
+            printf '%s\n' "$domain"
+            return 0
+        done < <(get_openpath_protected_domains)
+    fi
+
+    printf '%s\n' "github.com"
+}
+
+select_blocked_dns_probe_domain() {
+    local whitelist_file="${1:-${WHITELIST_FILE:-}}"
+    local candidate
+
+    for candidate in facebook.com wikipedia.org example.com reddit.com duckduckgo.com youtube.com instagram.com tiktok.com; do
+        if declare -F is_openpath_protected_domain >/dev/null 2>&1 && is_openpath_protected_domain "$candidate"; then
+            continue
+        fi
+        if dns_probe_file_contains_domain "$candidate" "$whitelist_file"; then
+            continue
+        fi
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    printf '%s\n' "blocked-test.invalid"
+}
+
+resolve_local_dns_probe() {
+    local domain="$1"
+    [ -n "$domain" ] || return 1
+
+    timeout 3 dig @127.0.0.1 "$domain" +short +time=2 +tries=1 2>/dev/null || true
+}
+
+dns_probe_result_is_public() {
+    local result="${1:-}"
+
+    printf '%s\n' "$result" | awk '
+        /^[[:space:]]*$/ { next }
+        $0 == "0.0.0.0" || $0 == "::" { next }
+        { found = 1; exit }
+        END { exit found ? 0 : 1 }
+    '
+}
+
+dns_probe_result_is_blocked() {
+    local result="${1:-}"
+
+    if dns_probe_result_is_public "$result"; then
+        return 1
+    fi
+    return 0
+}
+
 # Free port 53 (stop systemd-resolved)
 free_port_53() {
     log "Freeing port 53..."

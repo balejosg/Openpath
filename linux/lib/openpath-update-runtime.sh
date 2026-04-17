@@ -149,9 +149,9 @@ resolv-file=/run/dnsmasq/resolv.conf
 listen-address=127.0.0.1
 bind-interfaces
 server=$PRIMARY_DNS
-address=/#/0.0.0.0
-address=/#/::
 EOF
+
+            write_dnsmasq_default_sinkhole_rules "$DNSMASQ_CONF" || return 1
 
             append_fail_safe_allow_domain "$whitelist_control_host"
 

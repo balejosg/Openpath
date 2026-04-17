@@ -27,6 +27,20 @@ EOF
     return 0
 }
 
+write_dnsmasq_default_sinkhole_rules() {
+    local conf_path="$1"
+
+    if [ -z "${conf_path:-}" ]; then
+        log_warn "write_dnsmasq_default_sinkhole_rules: output path is empty"
+        return 1
+    fi
+
+    cat >> "$conf_path" <<'EOF'
+address=/#/0.0.0.0
+address=/#/::
+EOF
+}
+
 # Generate dnsmasq configuration
 generate_dnsmasq_config() {
     log "Generating dnsmasq configuration..."
@@ -51,9 +65,11 @@ neg-ttl=60
 # DEFAULT BLOCK (MUST BE FIRST)
 # Everything not explicitly listed returns a local sinkhole address.
 # =============================================
-address=/#/0.0.0.0
-address=/#/::
+EOF
 
+    write_dnsmasq_default_sinkhole_rules "$temp_conf" || return 1
+
+    cat >> "$temp_conf" << EOF
 # =============================================
 # ESSENTIAL DOMAINS (always allowed)
 # Required for system operation
@@ -162,7 +178,13 @@ restart_dnsmasq() {
 
 # Verify DNS is working
 verify_dns() {
-    if timeout 5 dig @127.0.0.1 google.com +short +time=3 >/dev/null 2>&1; then
+    local probe_domain
+    local probe_result
+
+    probe_domain=$(select_allowed_dns_probe_domain)
+    probe_result=$(resolve_local_dns_probe "$probe_domain")
+
+    if dns_probe_result_is_public "$probe_result"; then
         return 0
     fi
     return 1
