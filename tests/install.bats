@@ -212,6 +212,12 @@ load 'test_helper'
 
     run grep -n 'node scripts/openpath-promotion-contract.mjs write' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]
+
+    run grep -n 'dpkg-deb -f "\${package_files\[0\]}" Version' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n -- '--linux-agent-version "\${{ steps.deb_version.outputs.package_version }}"' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
 }
 
 @test "apt bootstrap fails clearly when the selected track does not advertise openpath-dnsmasq" {

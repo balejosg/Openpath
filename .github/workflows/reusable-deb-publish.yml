@@ -80,6 +80,27 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: packages/
 
+      - name: Resolve package version from downloaded deb
+        id: deb_version
+        run: |
+          mapfile -t package_files < <(find packages -maxdepth 1 -type f -name 'openpath-dnsmasq_*.deb' | sort)
+          if [ "${#package_files[@]}" -ne 1 ]; then
+            echo "::error title=Unexpected Debian package count::Expected exactly one openpath-dnsmasq deb artifact, found ${#package_files[@]}."
+            printf '%s\n' "${package_files[@]}"
+            exit 1
+          fi
+
+          deb_version="$(dpkg-deb -f "${package_files[0]}" Version)"
+          package_version="${deb_version%-*}"
+          if [ -z "$package_version" ] || [ "$package_version" = "$deb_version" ]; then
+            echo "::error title=Invalid Debian package version::Expected a Debian revision suffix in $deb_version."
+            exit 1
+          fi
+
+          echo "deb_version=$deb_version" >> "$GITHUB_OUTPUT"
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "Publishing Debian package version: $deb_version"
+
       - name: Install reprepro and GPG
         run: |
           sudo env DEBIAN_FRONTEND=noninteractive bash -c '. ./linux/lib/apt.sh && apt_install_with_retry "reprepro and gnupg" apt-get install -y reprepro gnupg'
@@ -209,7 +230,8 @@ jobs:
           node scripts/openpath-promotion-contract.mjs write \
             --output "gh-pages/promotion-contracts/${OPENPATH_SHA}.json" \
             --openpath-sha "$OPENPATH_SHA" \
-            --package-version "${{ inputs.version }}" \
+            --package-version "${{ steps.deb_version.outputs.package_version }}" \
+            --linux-agent-version "${{ steps.deb_version.outputs.package_version }}" \
             --apt-suite "$SUITE"
 
       - name: Create index.html for apt directory
