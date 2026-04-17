@@ -374,6 +374,10 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
     'ci.yml should preserve the legacy non-strict Pester runtime used by the required Windows suite'
   );
   assert.ok(
+    (windowsJobBlock.match(/\$env:RUNNER_TRACKING_ID = ''/g) ?? []).length >= 3,
+    'ci.yml should keep Windows management helper processes out of Actions orphan tracking during capture, Pester, and diagnostics'
+  );
+  assert.ok(
     windowsJobBlock.includes('$aggregatorSuites = @('),
     'ci.yml should enumerate the Windows suite aggregators that must stay local-only'
   );
