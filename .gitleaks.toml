@@ -1,0 +1,26 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "JWT parser tests use a deliberately invalid token fixture."
+condition = "AND"
+targetRules = ["jwt"]
+paths = ['''^api/tests/security-auth\.test\.ts$''']
+regexTarget = "line"
+regexes = ['''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIiwidHlwZSI6ImFjY2VzcyJ9\.invalid_signature''']
+
+[[allowlists]]
+description = "Push subscription DTO tests use browser-generated auth key fixtures."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^shared/tests/schemas-dto\.test\.ts$''']
+regexTarget = "line"
+regexes = ['''auth: 'tBHItJI5svbpez7KI4CCXg'''']
+
+[[allowlists]]
+description = "Linux agent tests validate the expected token length with a synthetic token."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/e2e/agent-integration\.bats$''']
+regexTarget = "line"
+regexes = ['''local valid_token="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"''']

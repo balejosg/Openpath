@@ -30,7 +30,7 @@ env:
 # This workflow only runs checks that REQUIRE GitHub integration:
 # - CodeQL (uploads to GitHub Security tab)
 # - Trivy container scan (uploads SARIF to GitHub)
-# - Gitleaks (requires GitHub token)
+# - Gitleaks (runs the official binary in GitHub Actions)
 # ============================================
 
 jobs:
@@ -222,7 +222,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install Gitleaks
         run: |
@@ -232,7 +232,7 @@ jobs:
           gitleaks version
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . --redact --verbose
+        run: gitleaks dir . --redact --no-banner --no-color --verbose
 
   # ============================================
   # Summary Job
