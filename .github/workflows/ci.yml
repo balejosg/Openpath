@@ -164,16 +164,6 @@ jobs:
   # ============================================
   test-windows:
     name: Windows Agent Tests (Pester)
-    # Keep the required Windows lane on the last hosted image where the
-    # direct Pester job closed cleanly. The 2022 image has been turning
-    # successful visible steps into teardown-time failures.
-    #
-    # Known hosted-runner limitation: on windows-2025 this job can hang after
-    # every visible step succeeds, during runner cleanup outside our scripts.
-    # We therefore keep successful runs inside an explicit sentinel step and
-    # let the job timeout cancel that active step before the runner reaches the
-    # stuck teardown path. As a result, this job is expected to conclude as
-    # cancelled after a successful Windows test pass.
     runs-on: windows-2025
     timeout-minutes: 15
     needs: detect-relevant-changes
@@ -265,13 +255,6 @@ jobs:
         run: |
           "tests_passed=$env:TESTS_PASSED" >> $env:GITHUB_OUTPUT
 
-      - name: Write Windows success marker
-        if: steps.job-status.outputs.tests_passed == 'true'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path ci | Out-Null
-          Set-Content -Path ci/windows-tests-passed.txt -Value success
-
       - name: Report Windows process diagnostics
         if: always()
         shell: pwsh
@@ -279,16 +262,6 @@ jobs:
           & .\tests\e2e\ci\report-windows-processes.ps1 `
             -Mode report `
             -SnapshotPath "$env:RUNNER_TEMP\openpath-windows-process-snapshot.json"
-
-      - name: Hold successful Windows lane until timeout cancellation
-        if: steps.job-status.outputs.tests_passed == 'true'
-        shell: pwsh
-        run: |
-          # The hosted Windows runner hangs after all visible steps succeed while
-          # it cleans up orphan processes. Keep the job inside an active step so
-          # the job timeout interrupts execution before the runner reaches that
-          # stuck teardown phase.
-          Start-Sleep -Seconds 3600
 
   # ============================================
   # Job 3: Firefox Delivery Contracts
@@ -407,10 +380,9 @@ jobs:
   # ============================================
   # Summary Job
   # ============================================
-  # CI Success is the canonical required signal for this workflow. The hosted
-  # Windows runner workaround above intentionally times out a successful Windows
-  # lane, so the workflow run may finish with a global cancelled conclusion
-  # even when all required checks have passed.
+  # CI Success is the canonical required signal for this workflow. Each lane
+  # records explicit pass/fail outputs so the summary can distinguish skipped
+  # paths from actual test failures.
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -418,27 +390,8 @@ jobs:
     if: always()
 
     steps:
-      - name: Inspect Windows success marker
-        id: inspect-windows-success-marker
-        if: needs.test-windows.result == 'cancelled'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          marker_step_conclusion="$(
-            gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs \
-              --paginate \
-              --jq '.jobs[] | select(.name == "Windows Agent Tests (Pester)") | .steps[] | select(.name == "Write Windows success marker") | .conclusion' \
-              | tail -n 1
-          )"
-          echo "marker_step_conclusion=$marker_step_conclusion" >> "$GITHUB_OUTPUT"
-
       - name: Check all jobs
         run: |
-          windows_success_marker_restored=false
-          if [[ "${{ steps.inspect-windows-success-marker.outputs.marker_step_conclusion }}" == "success" ]]; then
-            windows_success_marker_restored=true
-          fi
-
           if [[ "${{ needs.test-linux-dnsmasq.result }}" != "skipped" ]] && \
              [[ "${{ needs.test-linux-dnsmasq.outputs.tests_passed }}" != "true" ]]; then
             echo "Linux Agent Tests (BATS) failed"
@@ -449,10 +402,6 @@ jobs:
             if [[ "${{ needs.test-windows.result }}" == "success" ]] && \
                [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
               echo "Windows Agent Tests (Pester) passed"
-            elif [[ "${{ needs.test-windows.result }}" == "cancelled" ]] && \
-                 { [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]] || \
-                   [[ "$windows_success_marker_restored" == "true" ]]; }; then
-              echo "Windows Agent Tests (Pester) timed out after reporting success"
             else
               echo "Windows Agent Tests (Pester) failed"
               exit 1

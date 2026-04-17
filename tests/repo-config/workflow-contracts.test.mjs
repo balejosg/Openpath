@@ -78,7 +78,7 @@ test('prerelease deb publish keys off the CI Success summary job instead of the 
   );
   assert.ok(
     !prereleaseWorkflow.includes("github.event.workflow_run.conclusion == 'success'"),
-    'prerelease-deb.yml should not depend on the overall CI workflow conclusion because the Windows workaround can end the workflow as cancelled after a successful CI Success summary'
+    'prerelease-deb.yml should depend on the canonical CI Success summary rather than a broad workflow conclusion'
   );
 });
 
@@ -252,17 +252,7 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
   );
   assert.ok(
     windowsJobBlock.includes('timeout-minutes: 15'),
-    'ci.yml should cap the required Windows Pester lane with a 15 minute timeout so stuck runner teardown does not block the workflow for hours'
-  );
-  assert.ok(
-    ciWorkflow.includes('Known hosted-runner limitation: on windows-2025 this job can hang after'),
-    'ci.yml should document the hosted Windows runner limitation directly in the workflow'
-  );
-  assert.ok(
-    ciWorkflow.includes(
-      'this job is expected to conclude as\n    # cancelled after a successful Windows test pass'
-    ),
-    'ci.yml should document that the Windows lane is expected to end cancelled after a successful pass'
+    'ci.yml should cap the required Windows Pester lane so a genuine stuck runner does not block the workflow for hours'
   );
   assert.ok(
     !ciWorkflow.includes('runs-on: windows-2022'),
@@ -454,28 +444,20 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
     'ci.yml should emit the Windows lane outcome through a single redirected line to GITHUB_OUTPUT'
   );
   assert.ok(
-    windowsJobBlock.includes('name: Hold successful Windows lane until timeout cancellation'),
-    'ci.yml should keep a successful Windows lane inside an explicit sentinel step so job timeout can interrupt it before the runner reaches the stuck orphan-cleanup phase'
+    !windowsJobBlock.includes('name: Hold successful Windows lane until timeout cancellation'),
+    'ci.yml should not use a timeout-cancellation sentinel as the expected Windows success path'
   );
   assert.ok(
-    windowsJobBlock.includes("if: steps.job-status.outputs.tests_passed == 'true'"),
-    'ci.yml should only hold the Windows lane open when the suite outcome has already been recorded as successful'
+    !windowsJobBlock.includes('Start-Sleep -Seconds 3600'),
+    'ci.yml should not intentionally sleep the Windows lane until timeout'
   );
   assert.ok(
-    windowsJobBlock.includes('Start-Sleep -Seconds 3600'),
-    'ci.yml should use a long-running Windows sentinel sleep so the job timeout cancels the lane during an active step'
+    !windowsJobBlock.includes('name: Write Windows success marker'),
+    'ci.yml should not require a Windows success-marker workaround for normal green CI'
   );
   assert.ok(
-    windowsJobBlock.includes('name: Write Windows success marker'),
-    'ci.yml should write a persisted Windows success marker before entering the sentinel timeout step'
-  );
-  assert.ok(
-    !windowsJobBlock.includes('name: Save Windows success marker'),
-    'ci.yml should stop trying to persist the Windows success marker through a second GitHub action inside the flaky Windows lane'
-  );
-  assert.ok(
-    windowsJobBlock.includes('Set-Content -Path ci/windows-tests-passed.txt -Value success'),
-    'ci.yml should materialize the Windows success marker as a file in the workspace before saving it'
+    !windowsJobBlock.includes('Set-Content -Path ci/windows-tests-passed.txt -Value success'),
+    'ci.yml should not materialize a Windows success marker file in the workspace'
   );
   assert.ok(
     !windowsJobBlock.includes('Out-File -FilePath $env:GITHUB_OUTPUT'),
@@ -486,26 +468,20 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
     'ci.yml should drive the CI summary gate from the recorded Windows lane output'
   );
   assert.ok(
-    ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "cancelled" ]] && \\'),
-    'ci.yml should let the CI summary gate distinguish a cancelled Windows lane from an actual failure'
+    ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "success" ]] && \\'),
+    'ci.yml should require a normal successful Windows job result before accepting the Windows lane output'
   );
   assert.ok(
-    ciWorkflow.includes('actions: read'),
-    'ci.yml should grant the summary job permission to read workflow job metadata through the Actions API'
+    !ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "cancelled" ]]'),
+    'ci.yml should not treat a cancelled Windows lane as a successful CI outcome'
   );
   assert.ok(
-    ciWorkflow.includes('name: Inspect Windows success marker'),
-    'ci.yml should inspect the Windows lane marker step through the Actions API in the summary job when the lane times out'
-  );
-  assert.ok(
-    ciWorkflow.includes(
-      'CI Success is the canonical required signal for this workflow. The hosted'
-    ),
+    ciWorkflow.includes('CI Success is the canonical required signal for this workflow. Each lane'),
     'ci.yml should document in the summary job why CI Success is the canonical required signal'
   );
   assert.ok(
-    ciWorkflow.includes('workflow run may finish with a global cancelled conclusion'),
-    'ci.yml should document that the overall workflow can conclude cancelled even when required checks pass'
+    !ciWorkflow.includes('workflow run may finish with a global cancelled conclusion'),
+    'ci.yml should not document cancellation as an expected green path'
   );
   assert.ok(
     ciWorkflow.includes("- '.release-please-manifest.json'"),
@@ -516,40 +492,20 @@ test('required Windows CI keeps the direct Pester lane and emits bounded lineage
     'ci.yml should trigger the canonical CI workflow when release-please configuration changes'
   );
   assert.ok(
-    ciWorkflow.includes(
-      'gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs'
-    ),
-    'ci.yml should query the current workflow jobs through gh api when the Windows lane times out'
-  );
-  assert.ok(
-    ciWorkflow.includes('select(.name == "Write Windows success marker")'),
-    'ci.yml should read the conclusion of the Windows success marker step from the workflow jobs payload'
-  );
-  assert.ok(
-    ciWorkflow.includes('windows_success_marker_restored=true'),
-    'ci.yml should record when the Windows success marker step has been confirmed through the workflow jobs API'
-  );
-  assert.ok(
-    ciWorkflow.includes('steps.inspect-windows-success-marker.outputs.marker_step_conclusion'),
-    'ci.yml should pass the inspected Windows marker-step conclusion into the summary gate logic'
-  );
-  assert.ok(
-    ciWorkflow.includes(
-      '[[ "${{ steps.inspect-windows-success-marker.outputs.marker_step_conclusion }}" == "success" ]]'
-    ),
-    'ci.yml should only trust the inspected Windows marker-step conclusion when it is explicitly success'
+    !ciWorkflow.includes('name: Inspect Windows success marker'),
+    'ci.yml should not query Windows marker-step metadata to recover a cancelled lane'
   );
   assert.ok(
     !ciWorkflow.includes('actions/upload-artifact@v7'),
-    'ci.yml should avoid artifact uploads inside the flaky Windows lane once the summary job reads the marker step directly from the workflow API'
+    'ci.yml should avoid artifact uploads inside the Windows lane'
   );
   assert.ok(
     !ciWorkflow.includes('actions/download-artifact@v4'),
-    'ci.yml should avoid artifact downloads in the summary job once the workflow API provides the marker-step conclusion'
+    'ci.yml should avoid artifact downloads in the summary job'
   );
   assert.ok(
-    ciWorkflow.includes('[[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]] || \\'),
-    'ci.yml should accept a timed-out Windows lane when either the normal output or the persisted success marker proves the suite passed'
+    !ciWorkflow.includes('windows_success_marker_restored'),
+    'ci.yml should not keep marker-restoration state for cancelled Windows lanes'
   );
   assert.ok(
     windowsProcessReporter.includes("ValidateSet('capture', 'report')"),
