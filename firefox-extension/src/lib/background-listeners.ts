@@ -1,5 +1,5 @@
 import type { Browser, WebNavigation, WebRequest } from 'webextension-polyfill';
-import { logger } from './logger.js';
+import { getErrorMessage, logger } from './logger.js';
 import { shouldClearBlockedMonitorStateOnNavigate } from './blocked-screen-contract.js';
 import {
   BLOCKED_SCREEN_PATH,
@@ -17,9 +17,13 @@ const BLOCKING_ERRORS = [
   'NS_ERROR_PROXY_CONNECTION_REFUSED',
 ];
 const IGNORED_ERRORS = ['NS_BINDING_ABORTED', 'NS_ERROR_ABORT'];
-const BLOCKED_SCREEN_ERRORS = new Set([
+const IMMEDIATE_BLOCKED_SCREEN_ERRORS = new Set([
   'NS_ERROR_UNKNOWN_HOST',
   'NS_ERROR_PROXY_CONNECTION_REFUSED',
+]);
+const NATIVE_CONFIRMED_BLOCKED_SCREEN_ERRORS = new Set([
+  'NS_ERROR_CONNECTION_REFUSED',
+  'NS_ERROR_NET_TIMEOUT',
 ]);
 
 interface BlockedScreenContext {
@@ -27,6 +31,10 @@ interface BlockedScreenContext {
   hostname: string;
   error: string;
   origin: string | null;
+}
+
+interface ConfirmBlockedScreenContext extends BlockedScreenContext {
+  url: string;
 }
 
 interface BackgroundListenersOptions {
@@ -48,27 +56,153 @@ interface BackgroundListenersOptions {
   evaluateBlockedPath: (
     details: WebRequest.OnBeforeRequestDetailsType
   ) => { cancel?: boolean; redirectUrl?: string; reason?: string } | null;
+  confirmBlockedScreenNavigation?: (context: ConfirmBlockedScreenContext) => Promise<boolean>;
   handleRuntimeMessage: Parameters<Browser['runtime']['onMessage']['addListener']>[0];
   redirectToBlockedScreen: (context: BlockedScreenContext) => Promise<void>;
 }
 
-function shouldDisplayBlockedScreen(details: WebRequest.OnErrorOccurredDetailsType): boolean {
-  if (details.type !== 'main_frame') {
-    return false;
+function isTopFrameNavigation(details: { frameId?: number; type?: string }): boolean {
+  if (details.type !== undefined) {
+    return details.type === 'main_frame';
   }
 
-  if (!BLOCKED_SCREEN_ERRORS.has(details.error)) {
-    return false;
+  return details.frameId === 0;
+}
+
+function shouldDisplayBlockedScreenImmediately(details: {
+  error: string;
+  frameId?: number;
+  type?: string;
+  url: string;
+}): boolean {
+  return (
+    isTopFrameNavigation(details) &&
+    IMMEDIATE_BLOCKED_SCREEN_ERRORS.has(details.error) &&
+    !isExtensionUrl(details.url)
+  );
+}
+
+function shouldConfirmBlockedScreenNavigation(details: {
+  error: string;
+  frameId?: number;
+  type?: string;
+  url: string;
+}): boolean {
+  return (
+    isTopFrameNavigation(details) &&
+    NATIVE_CONFIRMED_BLOCKED_SCREEN_ERRORS.has(details.error) &&
+    !isExtensionUrl(details.url)
+  );
+}
+
+function buildBlockedScreenContext(details: {
+  error: string;
+  originUrl?: string;
+  documentUrl?: string;
+  tabId: number;
+  url: string;
+}): ConfirmBlockedScreenContext | null {
+  const hostname = extractHostname(details.url);
+  if (!hostname || details.tabId < 0) {
+    return null;
   }
 
-  if (isExtensionUrl(details.url)) {
-    return false;
-  }
+  return {
+    tabId: details.tabId,
+    hostname,
+    error: details.error,
+    origin: extractHostname(details.originUrl ?? details.documentUrl ?? ''),
+    url: details.url,
+  };
+}
 
-  return true;
+function buildRedirectKey(context: ConfirmBlockedScreenContext): string {
+  return [context.tabId.toString(), context.hostname, context.error, context.url].join(':');
 }
 
 export function registerBackgroundListeners(options: BackgroundListenersOptions): void {
+  const pendingBlockedScreenRedirects = new Set<string>();
+
+  async function redirectToBlockedScreenOnce(
+    context: ConfirmBlockedScreenContext,
+    optionsForRedirect: { requireNativeConfirmation: boolean }
+  ): Promise<void> {
+    const redirectKey = buildRedirectKey(context);
+    if (pendingBlockedScreenRedirects.has(redirectKey)) {
+      return;
+    }
+
+    pendingBlockedScreenRedirects.add(redirectKey);
+    try {
+      if (optionsForRedirect.requireNativeConfirmation) {
+        const confirmed = await options.confirmBlockedScreenNavigation?.(context);
+        if (confirmed !== true) {
+          return;
+        }
+      }
+
+      await options.redirectToBlockedScreen({
+        tabId: context.tabId,
+        hostname: context.hostname,
+        error: context.error,
+        origin: context.origin,
+      });
+    } catch (error) {
+      logger.warn('[Monitor] No se pudo confirmar pantalla de bloqueo', {
+        tabId: context.tabId,
+        hostname: context.hostname,
+        error: getErrorMessage(error),
+      });
+    } finally {
+      pendingBlockedScreenRedirects.delete(redirectKey);
+    }
+  }
+
+  function handleBlockedScreenNavigationError(
+    details: {
+      documentUrl?: string;
+      error: string;
+      frameId?: number;
+      originUrl?: string;
+      tabId: number;
+      type?: string;
+      url: string;
+    },
+    optionsForError: { recordBlockedDomain: boolean; requestType?: WebRequest.ResourceType }
+  ): void {
+    if (IGNORED_ERRORS.includes(details.error)) {
+      return;
+    }
+
+    if (!BLOCKING_ERRORS.includes(details.error)) {
+      return;
+    }
+
+    const context = buildBlockedScreenContext(details);
+    if (!context) {
+      return;
+    }
+
+    if (optionsForError.recordBlockedDomain) {
+      logger.info(`[Monitor] Bloqueado: ${context.hostname}`, {
+        error: details.error,
+        requestType: optionsForError.requestType,
+      });
+      options.addBlockedDomain(
+        details.tabId,
+        context.hostname,
+        details.error,
+        details.originUrl ?? details.documentUrl
+      );
+    }
+
+    if (shouldDisplayBlockedScreenImmediately(details)) {
+      void redirectToBlockedScreenOnce(context, { requireNativeConfirmation: false });
+    } else if (shouldConfirmBlockedScreenNavigation(details)) {
+      void redirectToBlockedScreenOnce(context, { requireNativeConfirmation: true });
+    }
+  }
+
   options.browser.webRequest.onBeforeRequest.addListener(
     (details: WebRequest.OnBeforeRequestDetailsType) => {
       const result = options.evaluateBlockedPath(details);
@@ -99,14 +233,6 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
 
   options.browser.webRequest.onErrorOccurred.addListener(
     (details: WebRequest.OnErrorOccurredDetailsType) => {
-      if (IGNORED_ERRORS.includes(details.error)) {
-        return;
-      }
-
-      if (!BLOCKING_ERRORS.includes(details.error)) {
-        return;
-      }
-
       const hostname = extractHostname(details.url);
       if (!hostname || details.tabId < 0) {
         return;
@@ -114,25 +240,10 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
 
       const origin = extractHostname(details.originUrl ?? details.documentUrl ?? '');
 
-      logger.info(`[Monitor] Bloqueado: ${hostname}`, {
-        error: details.error,
+      handleBlockedScreenNavigationError(details, {
+        recordBlockedDomain: true,
         requestType: details.type,
       });
-      options.addBlockedDomain(
-        details.tabId,
-        hostname,
-        details.error,
-        details.originUrl ?? details.documentUrl
-      );
-
-      if (shouldDisplayBlockedScreen(details)) {
-        void options.redirectToBlockedScreen({
-          tabId: details.tabId,
-          hostname,
-          error: details.error,
-          origin,
-        });
-      }
 
       if (isAutoAllowRequestType(details.type)) {
         void options.autoAllowBlockedDomain(details.tabId, hostname, origin, details.type);
@@ -152,6 +263,27 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
         logger.debug(`[Monitor] Limpiando bloqueos para tab ${details.tabId.toString()}`);
         options.clearTabRuntimeState(details.tabId);
       }
+    }
+  );
+
+  options.browser.webNavigation.onErrorOccurred.addListener(
+    (details: WebNavigation.OnErrorOccurredDetailsType) => {
+      const maybeError = (details as { error?: unknown }).error;
+      if (typeof maybeError !== 'string' || maybeError.length === 0) {
+        return;
+      }
+
+      handleBlockedScreenNavigationError(
+        {
+          error: maybeError,
+          frameId: details.frameId,
+          tabId: details.tabId,
+          url: details.url,
+        },
+        {
+          recordBlockedDomain: true,
+        }
+      );
     }
   );
 

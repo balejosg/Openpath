@@ -30,6 +30,10 @@ interface BlockedScreenContext {
   origin: string | null;
 }
 
+interface ConfirmBlockedScreenContext extends BlockedScreenContext {
+  url: string;
+}
+
 const NATIVE_HOST_NAME = 'whitelist_native_host';
 interface BackgroundRuntimeOptions {
   hostName?: string;
@@ -99,6 +103,18 @@ export function createBackgroundRuntime(
 
   async function checkDomainsWithNative(domains: string[]): Promise<VerifyResponse> {
     return await nativeMessagingClient.checkDomains(domains);
+  }
+
+  async function confirmBlockedScreenNavigation(
+    context: ConfirmBlockedScreenContext
+  ): Promise<boolean> {
+    const response = await checkDomainsWithNative([context.hostname]);
+    if (!response.success) {
+      return false;
+    }
+
+    const result = response.results.find((item) => item.domain === context.hostname);
+    return result?.inWhitelist === false;
   }
 
   async function isNativeHostAvailable(): Promise<boolean> {
@@ -180,6 +196,7 @@ export function createBackgroundRuntime(
       clearTabRuntimeState,
       disposeTab,
       evaluateBlockedPath: blockedPathRulesController.evaluateRequest,
+      confirmBlockedScreenNavigation,
       handleRuntimeMessage,
       redirectToBlockedScreen,
     });
