@@ -44,6 +44,8 @@ jobs:
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+        with:
+          cache-playwright: true
 
       - name: Build Firefox Extension
         uses: ./.github/actions/build-workspaces
@@ -92,6 +94,8 @@ jobs:
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
+        with:
+          cache-playwright: true
 
       - name: Run Linux student-policy flow
         shell: bash

@@ -31,24 +31,24 @@ describe('repository verification contract', () => {
     );
   });
 
-  test('verify:full overlaps coverage with unit tests and overlaps e2e with security', () => {
+  test('verify:full starts independent static, policy, and security phases together', () => {
     const packageJson = readPackageJson();
     const verifyFull = packageJson.scripts['verify:full'];
     const verifyFullScript = readText('scripts/verify-full.sh');
 
     assert.equal(verifyFull, 'bash scripts/verify-full.sh');
-    assert.ok(verifyFullScript.includes('npm run verify:static'));
-    assert.ok(verifyFullScript.includes('npm run verify:checks'));
+    assert.ok(
+      verifyFullScript.includes(
+        "concurrently --group --names 'static,checks,security' 'npm:verify:static' 'npm:verify:checks' 'npm:verify:security'"
+      ),
+      'verify:full should start independent static, repository policy, and security checks together'
+    );
     assert.ok(
       verifyFullScript.includes(
         "concurrently --group --names 'coverage,unit' 'npm:verify:coverage' 'npm:verify:unit'"
       )
     );
-    assert.ok(
-      verifyFullScript.includes(
-        "concurrently --group --names 'e2e,security' 'npm:e2e:full' 'npm:verify:security'"
-      )
-    );
+    assert.ok(verifyFullScript.includes('npm run e2e:full'));
   });
 
   test('e2e helper suite runs serially because shared fixture servers use fixed ports', () => {

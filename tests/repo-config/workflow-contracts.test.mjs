@@ -274,12 +274,14 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should initialize linux_bound and windows_bound independently'
   );
   assert.ok(
-    ciWorkflow.includes("grep -Eq '^(linux/|tests/|\\.github/workflows/ci\\.yml$)'"),
-    'ci.yml should route generic tests/ and linux/ changes to the Linux lane'
+    ciWorkflow.includes(
+      "grep -Eq '^(linux/|tests/[^/]+\\.bats$|tests/e2e/agent-integration\\.bats$|tests/e2e/ci/run-linux-[^/]+\\.sh|tests/e2e/Dockerfile|\\.github/workflows/ci\\.yml$)'"
+    ),
+    'ci.yml should route Linux code and Linux-specific tests to the Linux lane without treating every tests/ change as Linux-bound'
   );
   assert.ok(
     ciWorkflow.includes(
-      "grep -Eq '^(windows/|tests/e2e/Windows-E2E\\.Tests\\.ps1|tests/e2e/ci/run-windows-[^/]+\\.ps1|\\.github/workflows/ci\\.yml$)'"
+      "grep -Eq '^(windows/|tests/e2e/Windows-E2E\\.Tests\\.ps1|tests/e2e/ci/run-windows-pester-isolated\\.ps1|tests/e2e/ci/run-windows-[^/]+\\.ps1|\\.github/workflows/ci\\.yml$)'"
     ),
     'ci.yml should route Windows code and Windows CI helpers to the Windows lane'
   );
@@ -528,6 +530,10 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should drive the CI summary gate from the recorded Windows lane output'
   );
   assert.ok(
+    ciWorkflow.includes('tests passed, but the hosted Windows job ended as'),
+    'ci.yml should report hosted-runner teardown or timeout separately when Pester passed but the job result failed'
+  );
+  assert.ok(
     ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "success" ]] && \\'),
     'ci.yml should require a normal successful Windows job result before accepting the Windows lane output'
   );
@@ -622,4 +628,28 @@ test('documents that hosted Windows Pester teardown cancellation is not repo-fix
       `the isolated Windows Pester runner should not reintroduce repo-side descendant cleanup: ${forbiddenPattern}`
     );
   }
+});
+
+test('Linux E2E lanes restore the shared Playwright browser cache', () => {
+  const setupNodeAction = readText('.github/actions/setup-node/action.yml');
+  const e2eWorkflow = readText('.github/workflows/e2e-tests.yml');
+
+  assert.ok(
+    setupNodeAction.includes('cache-playwright:'),
+    'setup-node should expose an opt-in Playwright browser cache'
+  );
+  assert.ok(
+    setupNodeAction.includes('path: ~/.cache/ms-playwright'),
+    'setup-node should cache the standard Linux Playwright browser directory'
+  );
+  assert.ok(
+    setupNodeAction.includes(
+      "key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json', 'react-spa/package.json') }}"
+    ),
+    'setup-node should key the Playwright cache from the lockfile and browser-owning workspace manifest'
+  );
+  assert.ok(
+    e2eWorkflow.includes('cache-playwright: true'),
+    'Linux E2E jobs should opt into the shared Playwright browser cache'
+  );
 });
