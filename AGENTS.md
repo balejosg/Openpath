@@ -20,8 +20,22 @@ These rules have no exceptions for agent work:
 - Do not use `HUSKY=0 git commit`.
 - Do not skip failing tests or disable checks just to get a commit through.
 - Do not use `@ts-ignore` or broad lint disables as a shortcut around a real problem.
+- Do not attempt to "fix" the hosted Windows Pester teardown cancellation from repo code.
 
 If a hook fails, fix the issue and retry. Do not bypass the workflow.
+
+## Hosted Windows Pester Teardown Defect
+
+The required Windows Pester lane can be cancelled by the GitHub-hosted runner after
+`Run Windows Unit Tests`, `Record Windows lane outcome`, and `Complete job` have
+all succeeded. That cancellation is documented as a hosted-runner teardown defect,
+not an OpenPath Windows client regression.
+
+Do not add descendant process cleanup, WMI process killing, success marker recovery,
+or timeout-sentinel logic to the required Windows Pester lane as a repo-side fix.
+Use the successful Pester step plus the separate Windows E2E and Windows Student
+Policy workflows as release evidence until upstream runner behavior changes.
+Changing this stance requires new upstream runner evidence and maintainer approval.
 
 ## Branch And Git Policy
 

@@ -593,3 +593,33 @@ test('required Windows CI runs Pester in an untracked child host without success
     );
   }
 });
+
+test('documents that hosted Windows Pester teardown cancellation is not repo-fixable', () => {
+  const agentInstructions = readText('AGENTS.md');
+  const e2eReadme = readText('tests/e2e/README.md');
+  const windowsPesterRunner = readText('tests/e2e/ci/run-windows-pester-isolated.ps1');
+
+  assert.ok(
+    agentInstructions.includes(
+      'Do not attempt to "fix" the hosted Windows Pester teardown cancellation from repo code.'
+    ),
+    'AGENTS.md should explicitly forbid repo-side fixes for the documented hosted Windows Pester teardown defect'
+  );
+  assert.ok(
+    e2eReadme.includes(
+      'Do not add descendant process cleanup, WMI process killing, success marker recovery, or timeout-sentinel logic to this lane without new upstream runner evidence and maintainer approval.'
+    ),
+    'tests/e2e/README.md should tell future agents not to reattempt repo-side hosted-runner cleanup fixes'
+  );
+  for (const forbiddenPattern of [
+    'function Stop-DescendantProcesses',
+    'Get-CimInstance Win32_Process',
+    'Stop-Process -Id $candidate.ProcessId',
+    'ParentProcessId -eq $ParentProcessId',
+  ]) {
+    assert.ok(
+      !windowsPesterRunner.includes(forbiddenPattern),
+      `the isolated Windows Pester runner should not reintroduce repo-side descendant cleanup: ${forbiddenPattern}`
+    );
+  }
+});
