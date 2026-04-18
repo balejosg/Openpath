@@ -226,3 +226,75 @@ test('submitBlockedScreenRequest fills the blocked page request form and waits f
   assert.deepEqual(events, ['clear', 'reason:Necesario para una actividad de clase', 'click']);
   assert.match(statusText, /Solicitud enviada/);
 });
+
+test('StudentPolicyDriver submits requests after blocked-page navigation timeout with the requested timeout', async () => {
+  const timeoutError = new Error('Navigation timed out after 8000 ms');
+  timeoutError.name = 'TimeoutError';
+  const waits: number[] = [];
+  const events: string[] = [];
+  const elements = new Map([
+    [
+      '#request-reason',
+      {
+        async clear() {
+          events.push('clear');
+        },
+        async sendKeys(value: string) {
+          events.push(`reason:${value}`);
+        },
+      },
+    ],
+    [
+      '#submit-unblock-request',
+      {
+        async click() {
+          events.push('click');
+        },
+      },
+    ],
+    [
+      '#request-status',
+      {
+        async getText() {
+          return 'Solicitud enviada. Quedara pendiente hasta que la revisen.';
+        },
+      },
+    ],
+  ]);
+  const fakeWebDriver = {
+    async get() {
+      throw timeoutError;
+    },
+    async getCurrentUrl() {
+      return 'moz-extension://extension-id/blocked/blocked.html?url=http%3A%2F%2Fblocked.test';
+    },
+    async getTitle() {
+      return 'Blocked Page';
+    },
+    async findElement(locator: { value: string }) {
+      const element = elements.get(locator.value);
+      assert.ok(element, `Missing fake element for ${locator.value}`);
+      return element;
+    },
+    async wait(condition: (driver: unknown) => Promise<boolean>, timeoutMs: number) {
+      waits.push(timeoutMs);
+      const result = await condition(this);
+      assert.equal(result, true);
+      return result;
+    },
+  };
+  const driver = new StudentPolicyDriver(createScenario(), {
+    diagnosticsDir: os.tmpdir(),
+    headless: true,
+  });
+  (driver as unknown as { driver: unknown }).driver = fakeWebDriver;
+
+  const statusText = await driver.openBlockedScreenAndSubmitRequest('http://blocked.test/', {
+    reason: 'Needed for class',
+    timeoutMs: 30_000,
+  });
+
+  assert.match(statusText, /Solicitud enviada/);
+  assert.deepEqual(events, ['clear', 'reason:Needed for class', 'click']);
+  assert.deepEqual(waits, [30_000, 30_000]);
+});

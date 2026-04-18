@@ -18,3 +18,16 @@ await test('classroom-storage shared helpers normalize machine and policy values
   assert.equal(serializePolicyGroupId({ mode: 'grouped', groupId: 'group-1' }), 'group-1');
   assert.ok(serializePolicyGroupId({ mode: 'unrestricted', groupId: null }) !== null);
 });
+
+await test('machineHostnameMatches accepts Windows-normalized scoped machine keys', () => {
+  const machineKey = buildMachineKey('classroom-1', 'windows-student-e2e');
+  const windowsNormalizedHostname = machineKey.replaceAll('--', '-');
+
+  assert.equal(
+    machineHostnameMatches(
+      { hostname: machineKey, reportedHostname: 'windows-student-e2e' },
+      windowsNormalizedHostname
+    ),
+    true
+  );
+});

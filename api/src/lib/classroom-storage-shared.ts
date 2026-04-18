@@ -79,6 +79,15 @@ export function buildMachineKey(classroomId: string, reportedHostname: string): 
   return `${safeHostname}--${classroomHash}`;
 }
 
+function normalizeWindowsMachineHostname(hostname: string): string {
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export function machineHostnameMatches(
   machine: Pick<DBMachine, 'hostname' | 'reportedHostname'>,
   hostname: string
@@ -90,7 +99,14 @@ export function machineHostnameMatches(
 
   const normalizedPersisted = machine.hostname.trim().toLowerCase();
   const normalizedReported = machine.reportedHostname?.trim().toLowerCase();
-  return candidate === normalizedPersisted || candidate === normalizedReported;
+  if (candidate === normalizedPersisted || candidate === normalizedReported) {
+    return true;
+  }
+
+  return (
+    normalizedPersisted.includes('--') &&
+    candidate === normalizeWindowsMachineHostname(normalizedPersisted)
+  );
 }
 
 export function buildClassroomPolicyScope(

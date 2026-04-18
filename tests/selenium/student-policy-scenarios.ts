@@ -201,6 +201,7 @@ async function runRequestLifecycleScenarios(
     targets.requestDomainUrl,
     {
       reason: 'Request host needed for lesson flow',
+      timeoutMs: 30_000,
     }
   );
   assert.match(requestStatusText, /Solicitud enviada/);

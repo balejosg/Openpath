@@ -206,7 +206,11 @@ export class StudentPolicyDriver implements StudentPolicyDriverState {
         await driver.get(url);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes('blockedByPolicy') && !message.includes('Reached error page')) {
+        if (
+          !message.includes('blockedByPolicy') &&
+          !message.includes('Reached error page') &&
+          !message.includes('Navigation timed out')
+        ) {
           throw error;
         }
       }
@@ -221,7 +225,7 @@ export class StudentPolicyDriver implements StudentPolicyDriverState {
   ): Promise<string> {
     let statusText = '';
     await this.withSessionRetry(async () => {
-      await this.openAndExpectBlockedScreen(url);
+      await this.openAndExpectBlockedScreen(url, { timeoutMs: options.timeoutMs });
       statusText = await submitBlockedScreenRequest(this, options);
     });
     return statusText;
