@@ -197,25 +197,23 @@ async function runRequestLifecycleScenarios(
   logScenarioStep('SP-001 to SP-005 request lifecycle');
 
   await driver.assertDnsBlocked(targets.hosts.request);
-  await driver.openAndExpectBlocked({
-    url: targets.requestDomainUrl,
-    forbiddenText: 'Site Fixture',
-  });
-
-  const pending = await client.submitManualRequest(
-    targets.hosts.request,
-    'Request host needed for lesson flow'
+  const requestStatusText = await driver.openBlockedScreenAndSubmitRequest(
+    targets.requestDomainUrl,
+    {
+      reason: 'Request host needed for lesson flow',
+    }
   );
-  assert.strictEqual(pending.success, true);
-  assert.ok(pending.id !== undefined);
-  const pendingStatus = await client.getRequestStatus(pending.id ?? '');
+  assert.match(requestStatusText, /Solicitud enviada/);
+
+  const pending = await client.findPendingRequestByDomain(targets.hosts.request);
+  const pendingStatus = await client.getRequestStatus(pending.id);
   assert.strictEqual(pendingStatus.status, 'pending');
   await driver.openAndExpectBlocked({
     url: targets.requestDomainUrl,
     forbiddenText: 'Site Fixture',
   });
 
-  await client.approveRequest(pending.id ?? '', driver.scenario.groups.restricted.id);
+  await client.approveRequest(pending.id, driver.scenario.groups.restricted.id);
   await settlePolicyChange(driver, mode, async () => {
     await driver.assertDnsAllowed(targets.hosts.request);
     await driver.assertWhitelistContains(targets.hosts.request);

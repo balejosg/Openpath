@@ -80,6 +80,11 @@ export interface BlockedScreenExpectation {
   timeoutMs?: number;
 }
 
+export interface BlockedScreenRequestOptions {
+  reason: string;
+  timeoutMs?: number;
+}
+
 export interface ConvergenceOptions {
   timeoutMs?: number;
   pollMs?: number;
@@ -113,6 +118,10 @@ export interface RequestStatusResult {
   id: string;
   domain: string;
   status: string;
+}
+
+export interface DomainRequestSummary extends RequestStatusResult {
+  reason?: string;
 }
 
 export interface RuleResult {

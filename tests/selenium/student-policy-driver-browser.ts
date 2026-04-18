@@ -11,6 +11,7 @@ import {
 } from './student-policy-env';
 import type {
   BlockedScreenExpectation,
+  BlockedScreenRequestOptions,
   ConvergenceOptions,
   OpenAndExpectBlockedOptions,
   OpenAndExpectLoadedOptions,
@@ -109,6 +110,29 @@ export async function waitForBlockedScreen(
       `Expected blocked-screen error to start with ${expectation.reasonPrefix}, received ${errorValue}`
     );
   }
+}
+
+export async function submitBlockedScreenRequest(
+  state: StudentPolicyDriverState,
+  options: BlockedScreenRequestOptions
+): Promise<string> {
+  const driver = state.getDriver();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const reasonInput = await driver.findElement(By.css('#request-reason'));
+  const submitButton = await driver.findElement(By.css('#submit-unblock-request'));
+
+  await reasonInput.clear();
+  await reasonInput.sendKeys(options.reason);
+  await submitButton.click();
+
+  let latestStatus = '';
+  await driver.wait(async () => {
+    const statusElement = await driver.findElement(By.css('#request-status'));
+    latestStatus = (await statusElement.getText()).trim();
+    return /Solicitud enviada|Request submitted/i.test(latestStatus);
+  }, timeoutMs);
+
+  return latestStatus;
 }
 
 export async function waitForDomStatus(

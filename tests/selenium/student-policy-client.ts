@@ -7,6 +7,7 @@ import {
   parseTrpcResponse,
 } from './student-policy-env';
 import type {
+  DomainRequestSummary,
   ExemptionResult,
   RequestStatusResult,
   RequestSubmissionResult,
@@ -104,6 +105,23 @@ export class StudentPolicyServerClient {
 
   public async getRequestStatus(requestId: string): Promise<RequestStatusResult> {
     return this.trpcQuery<RequestStatusResult>('requests.getStatus', { id: requestId });
+  }
+
+  public async findPendingRequestByDomain(domain: string): Promise<DomainRequestSummary> {
+    const pendingRequests = await this.trpcQuery<DomainRequestSummary[]>(
+      'requests.list',
+      { status: 'pending' },
+      this.scenario.auth.teacher.accessToken
+    );
+    const request = pendingRequests.find(
+      (candidate) => candidate.domain === domain && candidate.status === 'pending'
+    );
+
+    if (!request) {
+      throw new Error(`No pending request found for domain ${domain}`);
+    }
+
+    return request;
   }
 
   public async approveRequest(requestId: string, groupId: string): Promise<void> {

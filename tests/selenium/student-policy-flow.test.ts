@@ -10,7 +10,7 @@ import {
   StudentPolicyDriver,
   type StudentScenario,
 } from './student-policy-flow.e2e';
-import { openAndExpectBlocked } from './student-policy-driver-browser';
+import { openAndExpectBlocked, submitBlockedScreenRequest } from './student-policy-driver-browser';
 
 function createScenario(): StudentScenario {
   return {
@@ -168,4 +168,61 @@ test('openAndExpectBlocked treats navigation timeout as blocked navigation', asy
       url: 'http://blocked.example.test/',
     })
   );
+});
+
+test('submitBlockedScreenRequest fills the blocked page request form and waits for success status', async () => {
+  const events: string[] = [];
+  const elements = new Map([
+    [
+      '#request-reason',
+      {
+        async clear() {
+          events.push('clear');
+        },
+        async sendKeys(value: string) {
+          events.push(`reason:${value}`);
+        },
+      },
+    ],
+    [
+      '#submit-unblock-request',
+      {
+        async click() {
+          events.push('click');
+        },
+      },
+    ],
+    [
+      '#request-status',
+      {
+        async getText() {
+          return 'Solicitud enviada. Quedara pendiente hasta que la revisen.';
+        },
+      },
+    ],
+  ]);
+
+  const state = {
+    getDriver() {
+      return {
+        async findElement(locator: { value: string }) {
+          const element = elements.get(locator.value);
+          assert.ok(element, `Missing fake element for ${locator.value}`);
+          return element;
+        },
+        async wait(condition: (driver: unknown) => Promise<boolean>) {
+          const result = await condition(this);
+          assert.equal(result, true);
+          return result;
+        },
+      };
+    },
+  };
+
+  const statusText = await submitBlockedScreenRequest(state as never, {
+    reason: 'Necesario para una actividad de clase',
+  });
+
+  assert.deepEqual(events, ['clear', 'reason:Necesario para una actividad de clase', 'click']);
+  assert.match(statusText, /Solicitud enviada/);
 });

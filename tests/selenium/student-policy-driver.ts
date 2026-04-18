@@ -24,6 +24,7 @@ import {
   openAndExpectBlocked,
   openAndExpectLoaded,
   saveDiagnostics,
+  submitBlockedScreenRequest,
   waitForBlockedScreen,
   waitForDomStatus,
 } from './student-policy-driver-browser';
@@ -55,6 +56,7 @@ import {
 import type { StudentPolicyDriverState } from './student-policy-driver-state';
 import type {
   BlockedScreenExpectation,
+  BlockedScreenRequestOptions,
   ConvergenceOptions,
   DomainStatusPayload,
   OpenAndExpectBlockedOptions,
@@ -211,6 +213,18 @@ export class StudentPolicyDriver implements StudentPolicyDriverState {
 
       await this.waitForBlockedScreen(expectation);
     });
+  }
+
+  public async openBlockedScreenAndSubmitRequest(
+    url: string,
+    options: BlockedScreenRequestOptions
+  ): Promise<string> {
+    let statusText = '';
+    await this.withSessionRetry(async () => {
+      await this.openAndExpectBlockedScreen(url);
+      statusText = await submitBlockedScreenRequest(this, options);
+    });
+    return statusText;
   }
 
   public async waitForDomStatus(

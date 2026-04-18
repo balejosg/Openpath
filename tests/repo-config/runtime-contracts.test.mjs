@@ -51,6 +51,17 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('e2e helper suite runs serially because shared fixture servers use fixed ports', () => {
+    const packageJson = readPackageJson();
+    const helperScript = packageJson.scripts['test:e2e:helpers'];
+
+    assert.equal(typeof helperScript, 'string');
+    assert.ok(
+      helperScript.includes('--test-concurrency=1'),
+      'test:e2e:helpers should run serially to avoid fixed-port fixture collisions'
+    );
+  });
+
   test('api workspace keeps versioned migrations as the default path and reserves db:push for forced syncs', () => {
     const apiPackageJson = readJson('api/package.json');
     const dbMigrate = apiPackageJson.scripts['db:migrate'];
