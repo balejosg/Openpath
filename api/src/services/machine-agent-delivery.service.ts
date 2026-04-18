@@ -2,8 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import * as classroomStorage from '../lib/classroom-storage.js';
+import { config } from '../config.js';
 import {
   buildLinuxAgentPackageManifest,
+  buildLinuxAgentPackageManifestFromApt,
+  downloadLinuxAgentPackageFromApt,
   buildWindowsAgentFileManifest,
   readServerVersion,
   resolveLinuxAgentPackagePath,
@@ -178,7 +181,11 @@ export async function getWindowsAgentFile(
 export async function getLinuxAgentManifest(
   machineHostname: string
 ): Promise<MachineAgentDeliveryResult<LinuxAgentManifestOutput>> {
-  const packageEntry = buildLinuxAgentPackageManifest();
+  let packageEntry = buildLinuxAgentPackageManifest();
+  if (!packageEntry && config.aptRepoUrl) {
+    packageEntry = await buildLinuxAgentPackageManifestFromApt(config.aptRepoUrl);
+  }
+
   if (!packageEntry) {
     return {
       ok: false,
@@ -216,14 +223,27 @@ export async function getLinuxAgentPackage(
   }
 
   const absolutePath = resolveLinuxAgentPackagePath(requestedVersion);
+  await touchMachine(machineHostname);
+
   if (!absolutePath) {
+    if (config.aptRepoUrl) {
+      const packageEntry = await downloadLinuxAgentPackageFromApt(
+        config.aptRepoUrl,
+        requestedVersion
+      );
+      if (packageEntry) {
+        return {
+          ok: true,
+          data: packageEntry,
+        };
+      }
+    }
+
     return {
       ok: false,
       error: { code: 'UNAVAILABLE', message: 'Linux agent package unavailable' },
     };
   }
-
-  await touchMachine(machineHostname);
 
   return {
     ok: true,

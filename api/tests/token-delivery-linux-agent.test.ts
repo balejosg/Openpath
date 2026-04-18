@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { rmSync } from 'node:fs';
 
 import { createFixtureClassroom } from './fixtures.js';
+import { clearLinuxAgentAptMetadataCache } from '../src/lib/server-assets.js';
 import {
   extractMachineToken,
   linuxAgentPackageFileName,
@@ -157,6 +158,92 @@ void describe('Linux agent delivery', { timeout: 30000 }, async () => {
 
       assert.strictEqual(response.status, 200);
       assert.strictEqual(await response.text(), 'fake-linux-agent-package');
+    });
+
+    await test('should serve linux manifest and package from APT metadata when no local package is bundled', async () => {
+      const pinnedVersion = '8.8.8';
+      const packagePayload = 'fake-linux-agent-package-from-apt';
+      const packageSize = packagePayload.length;
+      const packagePath = `pool/main/o/openpath-dnsmasq/openpath-dnsmasq_${pinnedVersion}-1_amd64.deb`;
+      const originalFetch = globalThis.fetch;
+      const originalPinnedVersion = process.env.OPENPATH_LINUX_AGENT_VERSION;
+      const originalAptSuite = process.env.OPENPATH_LINUX_AGENT_APT_SUITE;
+
+      process.env.OPENPATH_LINUX_AGENT_VERSION = pinnedVersion;
+      process.env.OPENPATH_LINUX_AGENT_APT_SUITE = 'stable';
+      clearLinuxAgentAptMetadataCache();
+
+      globalThis.fetch = (async (
+        input: string | URL | Request,
+        init?: RequestInit
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+
+        if (url.endsWith('/dists/stable/main/binary-amd64/Packages')) {
+          return new Response(
+            `
+Package: openpath-dnsmasq
+Version: ${pinnedVersion}-1
+Filename: ${packagePath}
+Size: ${String(packageSize)}
+SHA256: ${'a'.repeat(64)}
+`,
+            { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+          );
+        }
+
+        if (url.endsWith(`/${packagePath}`)) {
+          return new Response(packagePayload, {
+            status: 200,
+            headers: { 'Content-Type': 'application/vnd.debian.binary-package' },
+          });
+        }
+
+        return originalFetch(input, init);
+      }) as typeof fetch;
+
+      try {
+        const manifestResponse = await fetch(`${harness.apiUrl}/api/agent/linux/manifest`, {
+          headers: { Authorization: `Bearer ${machineToken}` },
+        });
+
+        assert.strictEqual(manifestResponse.status, 200);
+        const manifest = (await manifestResponse.json()) as {
+          downloadPath: string;
+          packageFileName: string;
+          sha256: string;
+          size: number;
+          version: string;
+        };
+
+        assert.strictEqual(manifest.version, pinnedVersion);
+        assert.strictEqual(
+          manifest.packageFileName,
+          `openpath-dnsmasq_${pinnedVersion}-1_amd64.deb`
+        );
+        assert.strictEqual(manifest.sha256, 'a'.repeat(64));
+        assert.strictEqual(manifest.size, packageSize);
+
+        const packageResponse = await fetch(`${harness.apiUrl}${manifest.downloadPath}`, {
+          headers: { Authorization: `Bearer ${machineToken}` },
+        });
+
+        assert.strictEqual(packageResponse.status, 200);
+        assert.strictEqual(await packageResponse.text(), packagePayload);
+      } finally {
+        globalThis.fetch = originalFetch;
+        clearLinuxAgentAptMetadataCache();
+        if (originalPinnedVersion === undefined) {
+          delete process.env.OPENPATH_LINUX_AGENT_VERSION;
+        } else {
+          process.env.OPENPATH_LINUX_AGENT_VERSION = originalPinnedVersion;
+        }
+        if (originalAptSuite === undefined) {
+          delete process.env.OPENPATH_LINUX_AGENT_APT_SUITE;
+        } else {
+          process.env.OPENPATH_LINUX_AGENT_APT_SUITE = originalAptSuite;
+        }
+      }
     });
 
     await test('should download a specific bridge package version when it is available', async () => {

@@ -21,7 +21,8 @@ export interface WindowsAgentFileEntry {
 export interface LinuxAgentPackageEntry {
   version: string;
   packageFileName: string;
-  absolutePath: string;
+  absolutePath?: string;
+  downloadUrl?: string;
   sha256: string;
   size: number;
   minSupportedVersion: string;

@@ -13,6 +13,14 @@ const LINUX_AGENT_APT_METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
 const linuxAgentAptMetadataCache = new Map<string, { fetchedAt: number; content: string }>();
 export type LinuxAgentAptSuite = 'stable' | 'unstable';
 
+export interface LinuxAgentAptPackageMetadata {
+  fileName: string;
+  filename: string;
+  sha256: string;
+  size: number;
+  version: string;
+}
+
 export function readLinuxAgentVersion(): string {
   const envVersion = process.env.OPENPATH_LINUX_AGENT_VERSION?.trim();
   if (envVersion) {
@@ -34,6 +42,33 @@ function buildAptPackagesUrl(aptRepoUrl: string, suite: LinuxAgentAptSuite): str
   return `${aptRepoUrl.replace(/\/+$/, '')}/dists/${suite}/main/binary-amd64/Packages`;
 }
 
+function buildAptPackageUrl(aptRepoUrl: string, filename: string): string {
+  return `${aptRepoUrl.replace(/\/+$/, '')}/${filename.replace(/^\/+/, '')}`;
+}
+
+function parseAptPackageBlock(block: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+
+  for (const rawLine of block.split(/\r?\n/)) {
+    const separatorIndex = rawLine.indexOf(':');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = rawLine.slice(0, separatorIndex).trim();
+    const value = rawLine.slice(separatorIndex + 1).trim();
+    if (key) {
+      fields[key] = value;
+    }
+  }
+
+  return fields;
+}
+
+function normalizeDebianPackageVersion(version: string): string {
+  return version.trim().replace(/-[^-]+$/, '');
+}
+
 export function aptMetadataAdvertisesLinuxAgentVersion(content: string, version: string): boolean {
   const targetVersion = version.trim();
   if (!targetVersion) {
@@ -41,24 +76,9 @@ export function aptMetadataAdvertisesLinuxAgentVersion(content: string, version:
   }
 
   for (const block of content.split(/\r?\n\r?\n+/)) {
-    let packageName = '';
-    let packageVersion = '';
-
-    for (const rawLine of block.split(/\r?\n/)) {
-      const separatorIndex = rawLine.indexOf(':');
-      if (separatorIndex === -1) {
-        continue;
-      }
-
-      const key = rawLine.slice(0, separatorIndex).trim();
-      const value = rawLine.slice(separatorIndex + 1).trim();
-
-      if (key === 'Package') {
-        packageName = value;
-      } else if (key === 'Version') {
-        packageVersion = value.replace(/-[^-]+$/, '');
-      }
-    }
+    const fields = parseAptPackageBlock(block);
+    const packageName = fields.Package ?? '';
+    const packageVersion = normalizeDebianPackageVersion(fields.Version ?? '');
 
     if (packageName === 'openpath-dnsmasq' && packageVersion === targetVersion) {
       return true;
@@ -73,6 +93,45 @@ export function stableAptMetadataAdvertisesLinuxAgentVersion(
   version: string
 ): boolean {
   return aptMetadataAdvertisesLinuxAgentVersion(content, version);
+}
+
+export function findLinuxAgentAptPackage(
+  content: string,
+  version: string
+): LinuxAgentAptPackageMetadata | null {
+  const targetVersion = version.trim();
+  if (!targetVersion) {
+    return null;
+  }
+
+  for (const block of content.split(/\r?\n\r?\n+/)) {
+    const fields = parseAptPackageBlock(block);
+    if (fields.Package !== 'openpath-dnsmasq') {
+      continue;
+    }
+
+    const packageVersion = normalizeDebianPackageVersion(fields.Version ?? '');
+    if (packageVersion !== targetVersion) {
+      continue;
+    }
+
+    const filename = fields.Filename?.trim() ?? '';
+    const sha256 = fields.SHA256?.trim() ?? '';
+    const size = Number.parseInt(fields.Size ?? '', 10);
+    if (!filename || !sha256 || !Number.isFinite(size) || size < 1) {
+      return null;
+    }
+
+    return {
+      fileName: path.basename(filename),
+      filename,
+      sha256,
+      size,
+      version: targetVersion,
+    };
+  }
+
+  return null;
 }
 
 async function downloadAptPackagesManifest(
@@ -205,5 +264,64 @@ export function buildLinuxAgentPackageManifest(): LinuxAgentPackageEntry | null 
         : '0.0.0',
     bridgeVersions: parseLinuxBridgeVersions(),
     downloadPath: `/api/agent/linux/packages/${encodeURIComponent(version)}`,
+  };
+}
+
+export async function buildLinuxAgentPackageManifestFromApt(
+  aptRepoUrl: string,
+  configuredSuite = process.env.OPENPATH_LINUX_AGENT_APT_SUITE
+): Promise<LinuxAgentPackageEntry | null> {
+  const version = readLinuxAgentVersion();
+  const suite = normalizeLinuxAgentAptSuite(configuredSuite);
+  const manifest = await downloadAptPackagesManifest(aptRepoUrl, suite);
+  const packageEntry = findLinuxAgentAptPackage(manifest, version);
+  if (!packageEntry) {
+    return null;
+  }
+
+  const minSupportedVersion = process.env.OPENPATH_LINUX_AGENT_MIN_SUPPORTED_VERSION?.trim();
+  const minDirectUpgradeVersion =
+    process.env.OPENPATH_LINUX_AGENT_MIN_DIRECT_UPGRADE_VERSION?.trim();
+
+  return {
+    version,
+    packageFileName: packageEntry.fileName,
+    downloadUrl: buildAptPackageUrl(aptRepoUrl, packageEntry.filename),
+    sha256: packageEntry.sha256,
+    size: packageEntry.size,
+    minSupportedVersion:
+      minSupportedVersion && minSupportedVersion.length > 0 ? minSupportedVersion : '0.0.0',
+    minDirectUpgradeVersion:
+      minDirectUpgradeVersion && minDirectUpgradeVersion.length > 0
+        ? minDirectUpgradeVersion
+        : '0.0.0',
+    bridgeVersions: parseLinuxBridgeVersions(),
+    downloadPath: `/api/agent/linux/packages/${encodeURIComponent(version)}`,
+  };
+}
+
+export async function downloadLinuxAgentPackageFromApt(
+  aptRepoUrl: string,
+  version: string,
+  configuredSuite = process.env.OPENPATH_LINUX_AGENT_APT_SUITE
+): Promise<{ body: Buffer; fileName: string } | null> {
+  const suite = normalizeLinuxAgentAptSuite(configuredSuite);
+  const manifest = await downloadAptPackagesManifest(aptRepoUrl, suite);
+  const packageEntry = findLinuxAgentAptPackage(manifest, version);
+  if (!packageEntry) {
+    return null;
+  }
+
+  const downloadUrl = buildAptPackageUrl(aptRepoUrl, packageEntry.filename);
+  const response = await fetch(downloadUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Linux agent package ${version} (${String(response.status)} ${response.statusText})`
+    );
+  }
+
+  return {
+    body: Buffer.from(await response.arrayBuffer()),
+    fileName: packageEntry.fileName,
   };
 }
