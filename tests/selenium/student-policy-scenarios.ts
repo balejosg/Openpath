@@ -83,8 +83,13 @@ async function settlePolicyChange(
   };
 
   if (mode === 'fallback') {
-    await forceConvergence();
-    await runAssertion();
+    await driver.waitForConvergence(
+      async () => {
+        await forceConvergence();
+        await assertion();
+      },
+      { timeoutMs: options.timeoutMs ?? 45_000, pollMs: 1_000 }
+    );
     return;
   }
 
