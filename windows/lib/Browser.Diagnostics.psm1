@@ -5,6 +5,110 @@ Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction Stop
 
+function Get-OpenPathBrowserDoctorScheduledTaskDiagnostic {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName,
+
+        [int]$TimeoutMilliseconds = 5000
+    )
+
+    $fallback = [PSCustomObject]@{
+        Present = $false
+        UserAccess = 'missing'
+        Status = 'missing'
+    }
+
+    $taskNameLiteral = $TaskName.Replace("'", "''")
+    $command = @"
+`$ErrorActionPreference = 'Stop'
+`$taskName = '$taskNameLiteral'
+
+try {
+    `$null = Get-ScheduledTask -TaskName `$taskName -ErrorAction Stop
+    `$securityDescriptor = `$null
+
+    try {
+        `$schedule = New-Object -ComObject 'Schedule.Service'
+        `$schedule.Connect()
+        `$task = `$schedule.GetFolder('\').GetTask(`$taskName)
+        `$securityDescriptor = [string]`$task.GetSecurityDescriptor(0xF)
+    }
+    catch {
+        `$securityDescriptor = `$null
+    }
+
+    `$userAccess = 'unknown'
+    if (`$securityDescriptor -and `$securityDescriptor -match '\(A;;[^)]*(?:GX|GA)[^)]*;;;BU\)') {
+        `$userAccess = 'granted'
+    }
+    elseif (`$securityDescriptor) {
+        `$userAccess = 'missing'
+    }
+
+    [PSCustomObject]@{
+        present = `$true
+        userAccess = `$userAccess
+        status = 'ok'
+    } | ConvertTo-Json -Compress
+}
+catch {
+    [PSCustomObject]@{
+        present = `$false
+        userAccess = 'missing'
+        status = 'missing'
+    } | ConvertTo-Json -Compress
+}
+"@
+
+    try {
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = 'powershell.exe'
+        $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.CreateNoWindow = $true
+
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            try {
+                $process.Kill()
+                $process.WaitForExit(1000) | Out-Null
+            }
+            catch {
+                # Best-effort cleanup; the diagnostic should still return promptly.
+            }
+
+            return [PSCustomObject]@{
+                Present = $false
+                UserAccess = 'unknown'
+                Status = 'Native host update task check timed out'
+            }
+        }
+
+        $stdout = $process.StandardOutput.ReadToEnd().Trim()
+        if (-not $stdout) {
+            return $fallback
+        }
+
+        $result = $stdout | ConvertFrom-Json -ErrorAction Stop
+        return [PSCustomObject]@{
+            Present = [bool]$result.present
+            UserAccess = if ($result.userAccess) { [string]$result.userAccess } else { 'missing' }
+            Status = if ($result.status) { [string]$result.status } else { 'unknown' }
+        }
+    }
+    catch {
+        return [PSCustomObject]@{
+            Present = $false
+            UserAccess = 'unknown'
+            Status = "error: $($_.Exception.Message)"
+        }
+    }
+}
+
 function Get-OpenPathBrowserDoctorReport {
     $metadataPath = Get-OpenPathFirefoxReleaseMetadataPath
     $xpiPath = Get-OpenPathFirefoxReleaseXpiPath
@@ -35,6 +139,7 @@ function Get-OpenPathBrowserDoctorReport {
     $nativeHostRequestSetupComplete = $false
     $nativeHostUpdateTaskPresent = $false
     $nativeHostUpdateTaskUserAccess = 'missing'
+    $nativeHostUpdateTaskCheck = 'missing'
     $policyCandidates = @(
         "$env:ProgramFiles\Mozilla Firefox\distribution\policies.json",
         "${env:ProgramFiles(x86)}\Mozilla Firefox\distribution\policies.json"
@@ -221,26 +326,10 @@ function Get-OpenPathBrowserDoctorReport {
         $nativeHostWhitelistReadable = $false
     }
 
-    try {
-        $task = Get-ScheduledTask -TaskName $nativeHostUpdateTaskName -ErrorAction Stop
-        if ($task) {
-            $nativeHostUpdateTaskPresent = $true
-            $securityDescriptor = Get-OpenPathScheduledTaskSecurityDescriptor -TaskName $nativeHostUpdateTaskName
-            if ($securityDescriptor -and $securityDescriptor -match '\(A;;[^)]*(?:GX|GA)[^)]*;;;BU\)') {
-                $nativeHostUpdateTaskUserAccess = 'granted'
-            }
-            elseif ($securityDescriptor) {
-                $nativeHostUpdateTaskUserAccess = 'missing'
-            }
-            else {
-                $nativeHostUpdateTaskUserAccess = 'unknown'
-            }
-        }
-    }
-    catch {
-        $nativeHostUpdateTaskPresent = $false
-        $nativeHostUpdateTaskUserAccess = 'missing'
-    }
+    $nativeHostUpdateTaskDiagnostic = Get-OpenPathBrowserDoctorScheduledTaskDiagnostic -TaskName $nativeHostUpdateTaskName
+    $nativeHostUpdateTaskPresent = $nativeHostUpdateTaskDiagnostic.Present
+    $nativeHostUpdateTaskUserAccess = $nativeHostUpdateTaskDiagnostic.UserAccess
+    $nativeHostUpdateTaskCheck = $nativeHostUpdateTaskDiagnostic.Status
 
     $managedExtensionPolicy = Get-OpenPathFirefoxManagedExtensionPolicy
     $resolvedInstallUrl = if ($managedExtensionPolicy) {
@@ -311,6 +400,7 @@ function Get-OpenPathBrowserDoctorReport {
         "Native host whitelist token configured: $nativeHostWhitelistTokenConfigured"
         "Native host request setup complete: $nativeHostRequestSetupComplete"
         "Native host update task: $nativeHostUpdateTaskName"
+        "Native host update task check: $nativeHostUpdateTaskCheck"
         "Native host update task present: $nativeHostUpdateTaskPresent"
         "Native host update task user access: $nativeHostUpdateTaskUserAccess"
         "Resolved install_url: $resolvedInstallUrl"
@@ -324,5 +414,6 @@ function Get-OpenPathBrowserDoctorReport {
 }
 
 Export-ModuleMember -Function @(
-    'Get-OpenPathBrowserDoctorReport'
+    'Get-OpenPathBrowserDoctorReport',
+    'Get-OpenPathBrowserDoctorScheduledTaskDiagnostic'
 )

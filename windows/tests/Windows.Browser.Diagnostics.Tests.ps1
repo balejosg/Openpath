@@ -55,6 +55,7 @@ Describe "Browser Module - Diagnostics" {
                 'Native host request API configured:',
                 'Native host whitelist token configured:',
                 'Native host request setup complete:',
+                'Native host update task check:',
                 'Native host update task present:',
                 'Native host update task user access:'
             )
@@ -68,6 +69,19 @@ Describe "Browser Module - Diagnostics" {
                 'function Get-OpenPathFirefoxNativeHostRoot',
                 "'Get-OpenPathFirefoxNativeHostRoot'"
             )
+        }
+
+        It "Bounds scheduled task diagnostics so browser doctor cannot hang indefinitely" {
+            $browserDiagnosticsPath = Join-Path $PSScriptRoot ".." "lib" "Browser.Diagnostics.psm1"
+            $content = Get-Content $browserDiagnosticsPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Get-OpenPathBrowserDoctorScheduledTaskDiagnostic',
+                'WaitForExit($TimeoutMilliseconds)',
+                'Native host update task check timed out'
+            )
+
+            $content.Contains('Get-ScheduledTask -TaskName $nativeHostUpdateTaskName') | Should -BeFalse
         }
     }
 }
