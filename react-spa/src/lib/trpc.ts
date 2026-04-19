@@ -3,6 +3,14 @@ import type { TRPCClient, TRPCLink } from '@trpc/client';
 import type { AppRouter } from '@openpath/api';
 import { clearAuthAndReload, getAuthTokenForHeader } from './auth-storage';
 
+export type UnauthorizedResponseHandler = () => Promise<'retry' | 'handled' | false | undefined>;
+
+let unauthorizedResponseHandler: UnauthorizedResponseHandler | null = null;
+
+export function setUnauthorizedResponseHandler(handler: UnauthorizedResponseHandler | null): void {
+  unauthorizedResponseHandler = handler;
+}
+
 /**
  * Obtiene la URL base de la API.
  * En desarrollo: usa el proxy de Vite (vacío = mismo origen)
@@ -68,10 +76,12 @@ function createDynamicHttpBatchLink(): TRPCLink<AppRouter> {
           },
           // Interceptar respuestas 401 (UNAUTHORIZED) para limpiar auth y redirigir
           fetch(requestUrl, options) {
-            return fetch(requestUrl, {
+            const requestOptions = {
               ...options,
-              credentials: 'include',
-            }).then((res) => {
+              credentials: 'include' as const,
+            };
+
+            return fetch(requestUrl, requestOptions).then(async (res) => {
               if (res.status === 401) {
                 // No redirigir si el error ocurre durante el login o registro
                 let urlString = res.url;
@@ -87,6 +97,17 @@ function createDynamicHttpBatchLink(): TRPCLink<AppRouter> {
                 const isAuthRoute =
                   urlString.includes('auth.login') || urlString.includes('auth.register');
                 if (!isAuthRoute) {
+                  if (unauthorizedResponseHandler) {
+                    const action = await unauthorizedResponseHandler();
+                    if (action === 'retry') {
+                      const retryResponse = await fetch(requestUrl, requestOptions);
+                      if (retryResponse.status !== 401) {
+                        return retryResponse;
+                      }
+                    } else if (action === 'handled') {
+                      return res;
+                    }
+                  }
                   clearAuthAndReload();
                 }
               }

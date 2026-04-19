@@ -89,7 +89,27 @@ function assertTokenLifetime(
   );
 }
 
-await describe('token expiry configuration', async () => {
+await describe('token expiry configuration', { concurrency: false }, async () => {
+  await it('defaults access tokens to the 24-hour web session policy', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'task5-openpath-default-secret';
+    delete process.env.JWT_ACCESS_EXPIRY;
+    delete process.env.JWT_EXPIRES_IN;
+
+    const tag = [
+      'task5-openpath-default',
+      String(Date.now()),
+      Math.random().toString(16).slice(2),
+    ].join('-');
+
+    const configModule = (await import(
+      `../src/config.ts?${tag}`
+    )) as typeof import('../src/config.js');
+    const config = configModule.reloadConfig();
+
+    assert.strictEqual(config.jwtAccessExpiry, '24h');
+  });
+
   await it('uses JWT_ACCESS_EXPIRY and JWT_REFRESH_EXPIRY for signed token lifetimes', async () => {
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = 'task5-openpath-secret';
@@ -102,9 +122,10 @@ await describe('token expiry configuration', async () => {
       '-'
     );
 
-    const { config } = (await import(
+    const configModule = (await import(
       `../src/config.ts?${tag}`
     )) as typeof import('../src/config.js');
+    const config = configModule.reloadConfig();
     const { generateTokens } = (await import(
       `../src/lib/auth.ts?${tag}`
     )) as typeof import('../src/lib/auth.js');

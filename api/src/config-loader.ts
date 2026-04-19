@@ -79,7 +79,7 @@ export function loadConfig(
     enableRateLimitInTest: parseBooleanEnv(env.ENABLE_RATE_LIMIT_IN_TEST, false),
     bcryptRounds: parseIntEnv(env.BCRYPT_ROUNDS, 12),
     jwtSecret: resolveJwtSecret(env, nodeEnv),
-    jwtAccessExpiry: env.JWT_ACCESS_EXPIRY ?? env.JWT_EXPIRES_IN ?? '15m',
+    jwtAccessExpiry: env.JWT_ACCESS_EXPIRY ?? env.JWT_EXPIRES_IN ?? '24h',
     jwtRefreshExpiry: env.JWT_REFRESH_EXPIRY ?? env.JWT_REFRESH_EXPIRES_IN ?? '7d',
     autoApproveMachineRequests: parseBooleanEnv(env.AUTO_APPROVE_MACHINE_REQUESTS, false),
     googleClientId: env.GOOGLE_CLIENT_ID ?? '',

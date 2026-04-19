@@ -9,5 +9,6 @@ describe('public auth surface', () => {
     expect(typeof publicAuth.isStudent).toBe('function');
     expect(typeof publicAuth.isTeacher).toBe('function');
     expect(typeof publicAuth.logout).toBe('function');
+    expect(typeof publicAuth.setUnauthorizedResponseHandler).toBe('function');
   });
 });
