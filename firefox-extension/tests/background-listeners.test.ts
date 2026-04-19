@@ -16,12 +16,20 @@ interface ConfirmBlockedScreenContext extends BlockedScreenContext {
 }
 
 type WebRequestErrorListener = (details: WebRequest.OnErrorOccurredDetailsType) => void;
+type WebRequestBeforeListener = (details: WebRequest.OnBeforeRequestDetailsType) => unknown;
 type WebNavigationErrorListener = (details: {
   error: string;
   frameId: number;
   tabId: number;
   url: string;
 }) => void;
+
+interface AutoAllowCall {
+  tabId: number;
+  hostname: string;
+  origin: string | null;
+  requestType: WebRequest.ResourceType;
+}
 
 function waitForAsyncListeners(): Promise<void> {
   return new Promise((resolve) => {
@@ -35,21 +43,30 @@ function createListenerHarness(
   } = {}
 ): {
   addedBlocks: BlockedScreenContext[];
+  autoAllowCalls: AutoAllowCall[];
+  beforeRequestFilters: unknown[];
   confirmCalls: ConfirmBlockedScreenContext[];
   redirects: BlockedScreenContext[];
+  webRequestBefore: WebRequestBeforeListener | null;
   webNavigationError: WebNavigationErrorListener | null;
   webRequestError: WebRequestErrorListener | null;
 } {
   const addedBlocks: BlockedScreenContext[] = [];
+  const autoAllowCalls: AutoAllowCall[] = [];
+  const beforeRequestFilters: unknown[] = [];
   const confirmCalls: ConfirmBlockedScreenContext[] = [];
   const redirects: BlockedScreenContext[] = [];
+  let webRequestBefore: WebRequestBeforeListener | null = null;
   let webRequestError: WebRequestErrorListener | null = null;
   let webNavigationError: WebNavigationErrorListener | null = null;
 
   const browser = {
     webRequest: {
       onBeforeRequest: {
-        addListener: () => undefined,
+        addListener: (listener: WebRequestBeforeListener, filter: unknown) => {
+          webRequestBefore = listener;
+          beforeRequestFilters.push(filter);
+        },
       },
       onErrorOccurred: {
         addListener: (listener: WebRequestErrorListener) => {
@@ -89,7 +106,15 @@ function createListenerHarness(
         origin: origin ?? null,
       });
     },
-    autoAllowBlockedDomain: () => Promise.resolve(),
+    autoAllowBlockedDomain: (
+      tabId: number,
+      hostname: string,
+      origin: string | null,
+      requestType: WebRequest.ResourceType
+    ) => {
+      autoAllowCalls.push({ tabId, hostname, origin, requestType });
+      return Promise.resolve();
+    },
     browser,
     clearTabRuntimeState: () => undefined,
     disposeTab: () => undefined,
@@ -113,8 +138,13 @@ function createListenerHarness(
 
   return {
     addedBlocks,
+    autoAllowCalls,
+    beforeRequestFilters,
     confirmCalls,
     redirects,
+    get webRequestBefore(): WebRequestBeforeListener | null {
+      return webRequestBefore;
+    },
     get webNavigationError(): WebNavigationErrorListener | null {
       return webNavigationError;
     },
@@ -125,6 +155,18 @@ function createListenerHarness(
 }
 
 void describe('background listeners blocked-screen routing', () => {
+  void test('registers path blocking only for frame navigation request types', () => {
+    const harness = createListenerHarness();
+
+    assert.ok(harness.webRequestBefore);
+    assert.deepEqual(harness.beforeRequestFilters, [
+      {
+        urls: ['<all_urls>'],
+        types: ['main_frame', 'sub_frame'],
+      },
+    ]);
+  });
+
   void test('redirects a main-frame timeout when native policy confirms the hostname is blocked', async () => {
     const harness = createListenerHarness({
       confirmBlockedScreenNavigation: () => Promise.resolve(true),
@@ -290,5 +332,33 @@ void describe('background listeners blocked-screen routing', () => {
     assert.deepEqual(harness.confirmCalls, []);
     assert.deepEqual(harness.redirects, []);
     assert.equal(harness.addedBlocks.length, 1);
+  });
+
+  void test('auto-allows ajax errors from an allowed origin without redirecting', async () => {
+    const harness = createListenerHarness({
+      confirmBlockedScreenNavigation: () => Promise.resolve(true),
+    });
+    assert.ok(harness.webRequestError);
+
+    harness.webRequestError({
+      error: 'NS_ERROR_NET_TIMEOUT',
+      originUrl: 'https://allowed.example/app',
+      tabId: 13,
+      type: 'xmlhttprequest',
+      url: 'https://api.blocked.example/data.json',
+    } as WebRequest.OnErrorOccurredDetailsType);
+
+    await waitForAsyncListeners();
+
+    assert.deepEqual(harness.confirmCalls, []);
+    assert.deepEqual(harness.redirects, []);
+    assert.deepEqual(harness.autoAllowCalls, [
+      {
+        tabId: 13,
+        hostname: 'api.blocked.example',
+        origin: 'allowed.example',
+        requestType: 'xmlhttprequest',
+      },
+    ]);
   });
 });

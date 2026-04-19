@@ -141,6 +141,7 @@ void describe('background message contract compatibility', () => {
       {
         type: 'xmlhttprequest',
         url: 'https://example.com/private/data.json',
+        originUrl: 'https://allowed.example/app',
       },
       rules,
       { extensionOrigin: 'moz-extension://unit-test-id/' }
@@ -153,10 +154,7 @@ void describe('background message contract compatibility', () => {
       },
       {
         success: true,
-        outcome: {
-          cancel: true,
-          reason: 'BLOCKED_PATH_POLICY:example.com/private',
-        },
+        outcome: null,
       }
     );
   });
