@@ -13,6 +13,14 @@ void test('native policy confirmation ignores fail-open or inactive policy resul
     }),
     false
   );
+  assert.equal(
+    isNativePolicyBlockedResult({
+      domain: 'legacy-native-host.example',
+      inWhitelist: false,
+      resolves: false,
+    }),
+    false
+  );
 });
 
 void test('native policy confirmation requires a denied domain that does not resolve publicly', () => {

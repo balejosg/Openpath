@@ -27,7 +27,7 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 
-WHITELIST_CMD = "/usr/local/bin/whitelist"
+WHITELIST_CMD_CANDIDATES = ["/usr/local/bin/openpath", "/usr/local/bin/whitelist"]
 MAX_DOMAINS = 50
 MAX_PATH_RULES = 500
 MAX_LOG_SIZE_MB = 5
@@ -171,6 +171,18 @@ def get_system_disabled_flag_path():
     return Path("/var/lib/openpath/system-disabled.flag")
 
 
+def get_whitelist_command_path():
+    env_path = os.environ.get("OPENPATH_WHITELIST_CMD")
+    if env_path:
+        return env_path
+
+    for candidate in WHITELIST_CMD_CANDIDATES:
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+
+    return None
+
+
 def whitelist_marks_system_disabled(whitelist_file):
     try:
         with open(whitelist_file, "r", encoding="utf-8", errors="ignore") as f:
@@ -208,18 +220,23 @@ def check_domain(domain):
             "resolved_ip": str or None
         }
     """
+    whitelist_cmd = get_whitelist_command_path()
     result = {
         "domain": domain,
         "in_whitelist": False,
-        "policy_active": is_dns_policy_active(),
+        "policy_active": is_dns_policy_active() and whitelist_cmd is not None,
         "resolves": False,
         "resolved_ip": None,
     }
 
+    if whitelist_cmd is None:
+        result["error"] = "OpenPath whitelist command not found"
+        return result
+
     try:
         # Ejecutar whitelist check
         proc = subprocess.run(
-            [WHITELIST_CMD, "check", domain], capture_output=True, text=True, timeout=10
+            [whitelist_cmd, "check", domain], capture_output=True, text=True, timeout=10
         )
 
         output = proc.stdout
@@ -268,9 +285,14 @@ def check_domains(domains):
 
 def get_whitelist_domains():
     """Obtiene la lista de dominios en la whitelist"""
+    whitelist_cmd = get_whitelist_command_path()
+    if whitelist_cmd is None:
+        log_debug("OpenPath whitelist command not found")
+        return []
+
     try:
         proc = subprocess.run(
-            [WHITELIST_CMD, "domains"], capture_output=True, text=True, timeout=10
+            [whitelist_cmd, "domains"], capture_output=True, text=True, timeout=10
         )
 
         domains = [d.strip() for d in proc.stdout.split("\n") if d.strip()]
@@ -283,9 +305,13 @@ def get_whitelist_domains():
 
 def get_system_status():
     """Obtiene el estado del sistema whitelist"""
+    whitelist_cmd = get_whitelist_command_path()
+    if whitelist_cmd is None:
+        return {"output": "", "active": False}
+
     try:
         proc = subprocess.run(
-            [WHITELIST_CMD, "status"], capture_output=True, text=True, timeout=10
+            [whitelist_cmd, "status"], capture_output=True, text=True, timeout=10
         )
 
         return {

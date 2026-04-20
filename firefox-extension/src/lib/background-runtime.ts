@@ -46,7 +46,7 @@ interface BackgroundRuntime {
 export function isNativePolicyBlockedResult(
   result: VerifyResponse['results'][number] | undefined
 ): boolean {
-  if (!result || result.policyActive === false) {
+  if (result?.policyActive !== true) {
     return false;
   }
 
