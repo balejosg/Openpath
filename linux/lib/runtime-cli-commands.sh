@@ -17,6 +17,10 @@ prepare_registration_connectivity() {
     OPENPATH_PROTECTED_DOMAINS_READY=0
 
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnsmasq 2>/dev/null; then
+        if ! validate_ip "${PRIMARY_DNS:-}"; then
+            PRIMARY_DNS=$(detect_primary_dns)
+            export PRIMARY_DNS
+        fi
         # shellcheck disable=SC2034 # Shared state consumed by sourced DNS helpers.
         WHITELIST_DOMAINS=()
         # shellcheck disable=SC2034 # Shared state consumed by sourced DNS helpers.

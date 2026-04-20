@@ -887,6 +887,58 @@ EOF
     [[ "$output" == *"classroom_id=cls_123"* ]]
 }
 
+@test "prepare_registration_connectivity detects upstream DNS before regenerating dnsmasq" {
+    local helper_script="$TEST_TMP_DIR/prepare-registration-dns.sh"
+    local state_dir="$TEST_TMP_DIR/registration-dns-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/prepare-registration-connectivity.sh"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export VAR_STATE_DIR="$state_dir/var"
+export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+export WHITELIST_FILE="$state_dir/whitelist.txt"
+export DNSMASQ_CONF="$state_dir/openpath.conf"
+export PRIMARY_DNS=""
+
+mkdir -p "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+
+source "$project_dir/linux/lib/common.sh"
+
+detect_primary_dns() {
+    printf '%s\n' "9.9.9.9"
+}
+
+generate_dnsmasq_config() {
+    printf 'primary=%s\n' "$PRIMARY_DNS" > "$DNSMASQ_CONF"
+}
+
+restart_dnsmasq() { return 0; }
+systemctl() { return 0; }
+
+awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-commands.sh" > "$extracted_script"
+
+source "$extracted_script"
+prepare_registration_connectivity "https://control.example" "Room 101" "cls_123"
+
+cat "$DNSMASQ_CONF"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"primary=9.9.9.9"* ]]
+}
+
 @test "cmd_enroll persists api, classroom, and tokenized whitelist together after successful registration" {
     local helper_script="$TEST_TMP_DIR/run-cmd-enroll-success.sh"
     local state_dir="$TEST_TMP_DIR/enroll-success-state"
