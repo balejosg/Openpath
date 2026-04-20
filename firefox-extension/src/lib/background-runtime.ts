@@ -43,6 +43,17 @@ interface BackgroundRuntime {
   init: () => Promise<void>;
 }
 
+export function isNativePolicyBlockedResult(
+  result: VerifyResponse['results'][number] | undefined
+): boolean {
+  if (!result || result.policyActive === false) {
+    return false;
+  }
+
+  const resolves = result.resolves ?? result.resolvedIp !== undefined;
+  return !result.inWhitelist && !resolves;
+}
+
 export function createBackgroundRuntime(
   browser: Browser,
   options: BackgroundRuntimeOptions = {}
@@ -114,8 +125,7 @@ export function createBackgroundRuntime(
     }
 
     const result = response.results.find((item) => item.domain === context.hostname);
-    const resolves = result?.resolves ?? result?.resolvedIp !== undefined;
-    return result?.inWhitelist === false && !resolves;
+    return isNativePolicyBlockedResult(result);
   }
 
   async function isNativeHostAvailable(): Promise<boolean> {

@@ -12,6 +12,7 @@ export interface NativeResponse {
 export interface NativeCheckResult {
   domain: string;
   in_whitelist: boolean;
+  policy_active?: boolean;
   resolves?: boolean;
   resolved_ip?: string;
   error?: string;
@@ -26,6 +27,7 @@ export interface NativeCheckResponse {
 export interface VerifyResult {
   domain: string;
   inWhitelist: boolean;
+  policyActive?: boolean;
   resolves?: boolean;
   resolvedIp?: string;
   error?: string;
@@ -115,6 +117,9 @@ export function createNativeMessagingClient(options: {
           inWhitelist: result.in_whitelist,
         };
 
+        if (result.policy_active !== undefined) {
+          mapped.policyActive = result.policy_active;
+        }
         if (result.resolves !== undefined) {
           mapped.resolves = result.resolves;
         }

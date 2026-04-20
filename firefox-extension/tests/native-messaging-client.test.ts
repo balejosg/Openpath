@@ -25,7 +25,13 @@ await describe('native messaging client', async () => {
       browserApi: createBrowserStub({
         success: true,
         results: [
-          { domain: 'example.com', in_whitelist: true, resolves: true, resolved_ip: '127.0.0.1' },
+          {
+            domain: 'example.com',
+            in_whitelist: true,
+            policy_active: true,
+            resolves: true,
+            resolved_ip: '127.0.0.1',
+          },
         ],
       }),
       hostName: 'whitelist_native_host',
@@ -34,7 +40,13 @@ await describe('native messaging client', async () => {
     assert.deepEqual(await client.checkDomains(['example.com']), {
       success: true,
       results: [
-        { domain: 'example.com', inWhitelist: true, resolves: true, resolvedIp: '127.0.0.1' },
+        {
+          domain: 'example.com',
+          inWhitelist: true,
+          policyActive: true,
+          resolves: true,
+          resolvedIp: '127.0.0.1',
+        },
       ],
     });
   });

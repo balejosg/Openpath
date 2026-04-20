@@ -164,6 +164,38 @@ def send_message(message):
     sys.stdout.buffer.flush()
 
 
+def get_system_disabled_flag_path():
+    env_path = os.environ.get("OPENPATH_SYSTEM_DISABLED_FLAG")
+    if env_path:
+        return Path(env_path)
+    return Path("/var/lib/openpath/system-disabled.flag")
+
+
+def whitelist_marks_system_disabled(whitelist_file):
+    try:
+        with open(whitelist_file, "r", encoding="utf-8", errors="ignore") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                return line.startswith("#") and "DESACTIVADO" in line.upper()
+    except Exception as e:
+        log_debug(f"Error checking whitelist disabled marker: {e}")
+
+    return False
+
+
+def is_dns_policy_active():
+    if get_system_disabled_flag_path().exists():
+        return False
+
+    whitelist_file = get_whitelist_file_path()
+    if whitelist_file is None:
+        return False
+
+    return not whitelist_marks_system_disabled(whitelist_file)
+
+
 def check_domain(domain):
     """
     Verifica si un dominio está en la whitelist y si resuelve.
@@ -179,6 +211,7 @@ def check_domain(domain):
     result = {
         "domain": domain,
         "in_whitelist": False,
+        "policy_active": is_dns_policy_active(),
         "resolves": False,
         "resolved_ip": None,
     }
