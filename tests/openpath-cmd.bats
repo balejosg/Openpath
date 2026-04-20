@@ -805,7 +805,7 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "cmd_enroll does not persist partial classroom state when registration fails" {
+@test "cmd_enroll persists API connectivity but not tokenized whitelist when registration fails" {
     local helper_script="$TEST_TMP_DIR/run-cmd-enroll-registration-failure.sh"
     local state_dir="$TEST_TMP_DIR/enroll-state"
 
@@ -835,15 +835,21 @@ YELLOW=""
 BLUE=""
 NC=""
 
+source "$project_dir/linux/lib/common.sh"
+
 normalize_machine_name_value() { printf '%s\n' "$1"; }
 register_machine() { REGISTER_RESPONSE='{"success":false}'; return 1; }
 persist_machine_name() { return 0; }
 reset_cached_whitelist_state() { :; }
+generate_dnsmasq_config() { return 0; }
+restart_dnsmasq() { return 0; }
 systemctl() { return 0; }
 dpkg() { printf 'Version: 4.1.15-1\n'; }
 hostname() { printf 'max12\n'; }
 
 {
+    awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^cmd_enroll\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
@@ -862,6 +868,9 @@ printf 'api_url_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/api-url.conf" && echo y
 printf 'classroom_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/classroom.conf" && echo yes || echo no)"
 printf 'classroom_id_exists=%s\n' "$(test -f "$ETC_CONFIG_DIR/classroom-id.conf" && echo yes || echo no)"
 printf 'whitelist_url_exists=%s\n' "$(test -f "$WHITELIST_URL_CONF" && echo yes || echo no)"
+printf 'api_url=%s\n' "$(cat "$ETC_CONFIG_DIR/api-url.conf" 2>/dev/null || true)"
+printf 'classroom=%s\n' "$(cat "$ETC_CONFIG_DIR/classroom.conf" 2>/dev/null || true)"
+printf 'classroom_id=%s\n' "$(cat "$ETC_CONFIG_DIR/classroom-id.conf" 2>/dev/null || true)"
 EOF
     chmod +x "$helper_script"
 
@@ -869,10 +878,13 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"status=1"* ]]
-    [[ "$output" == *"api_url_exists=no"* ]]
-    [[ "$output" == *"classroom_exists=no"* ]]
-    [[ "$output" == *"classroom_id_exists=no"* ]]
+    [[ "$output" == *"api_url_exists=yes"* ]]
+    [[ "$output" == *"classroom_exists=yes"* ]]
+    [[ "$output" == *"classroom_id_exists=yes"* ]]
     [[ "$output" == *"whitelist_url_exists=no"* ]]
+    [[ "$output" == *"api_url=https://control.example"* ]]
+    [[ "$output" == *"classroom=Room 101"* ]]
+    [[ "$output" == *"classroom_id=cls_123"* ]]
 }
 
 @test "cmd_enroll persists api, classroom, and tokenized whitelist together after successful registration" {
@@ -916,11 +928,15 @@ register_machine() {
 }
 persist_machine_name() { printf '%s\n' "$1" > "$ETC_CONFIG_DIR/persisted-machine-name"; return 0; }
 reset_cached_whitelist_state() { :; }
+generate_dnsmasq_config() { return 0; }
+restart_dnsmasq() { return 0; }
 systemctl() { return 0; }
 dpkg() { printf 'Version: 4.1.15-1\n'; }
 hostname() { printf 'max12\n'; }
 
 {
+    awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^cmd_enroll\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^reset_cached_whitelist_state\(\) \{/,/^}/' \
