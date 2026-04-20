@@ -1,16 +1,16 @@
 Package: openpath-dnsmasq
-Version: 0.0.20260420074607-1
+Version: 0.0.20260420083102-1
 Architecture: all
 Depends: dnsmasq, iptables, ipset, iproute2, curl, libcap2-bin, dnsutils, conntrack, python3
 Recommends: firefox-esr, unattended-upgrades
 Maintainer: Las Encinas IT <it@lasencinas.edu>
 Priority: optional
 Section: net
-Filename: pool/main/o/openpath-dnsmasq/openpath-dnsmasq_0.0.20260420074607-1_all.deb
-Size: 614118
-SHA256: ed4d4b4bc540576dcd3934b1b4d59d9106bcafa470c66a2dad6ba5e2f441db6a
-SHA1: 6332cfebd9d0cca9993060062a535dc2797c544c
-MD5sum: e77f661a22452de2d8cdc608e85a2669
+Filename: pool/main/o/openpath-dnsmasq/openpath-dnsmasq_0.0.20260420083102-1_all.deb
+Size: 614516
+SHA256: 883f280b625cc2fd7341e8061f83a61715fd6323e049a76d206f178f2284d612
+SHA1: 58e130eab49f467f142b0ed714f04d98dbcda6a2
+MD5sum: 6c9605a473f10d180b22f0e261bd91fc
 Description: DNS Whitelist System for Educational Environments
  A multi-layer internet access control system using DNS sinkhole,
  iptables firewall, and browser policies. Blocks all domains by
