@@ -60,14 +60,14 @@ case "$1" in
             exit 1
         fi
         
-        # Step 1: Free port 53 (disable systemd-resolved)
-        echo "  Liberando puerto 53..."
-        free_port_53
-        
-        # Step 2: Detect and save primary DNS
+        # Step 1: Detect and save primary DNS before disabling systemd-resolved.
         echo "  Detectando DNS primario..."
         PRIMARY_DNS=$(detect_primary_dns)
         echo "$PRIMARY_DNS" > "$ORIGINAL_DNS_FILE"
+
+        # Step 2: Free port 53 (disable systemd-resolved)
+        echo "  Liberando puerto 53..."
+        free_port_53
         
         # Step 3: Configure DNS
         echo "  Configurando DNS..."

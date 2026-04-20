@@ -82,6 +82,102 @@ github.com"
     [ "$valid" = true ]
 }
 
+@test "detect_primary_dns reads non-local resolv.conf nameserver before fallback" {
+    local state_dir="$TEST_TMP_DIR/detect-resolv"
+    mkdir -p "$state_dir/etc"
+
+    cat > "$state_dir/resolv.conf" <<'EOF'
+nameserver 127.0.0.53
+nameserver 168.63.129.16
+EOF
+
+    local helper_script="$TEST_TMP_DIR/detect-primary-dns-resolv.sh"
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export VAR_STATE_DIR="$state_dir/var"
+export FALLBACK_DNS_PRIMARY="8.8.8.8"
+export OPENPATH_SYSTEMD_RESOLV_CONF="$state_dir/missing-systemd-resolv.conf"
+export OPENPATH_RESOLV_CONF="$state_dir/resolv.conf"
+
+mkdir -p "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+
+source "$project_dir/linux/lib/common.sh"
+
+nmcli() { return 127; }
+ip() { return 1; }
+timeout() {
+    shift
+    if [ "${1:-}" = "dig" ] && [ "${2:-}" = "@168.63.129.16" ]; then
+        printf '%s\n' "142.250.184.206"
+        return 0
+    fi
+    return 1
+}
+
+detect_primary_dns
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "168.63.129.16" ]
+}
+
+@test "detect_primary_dns never reuses loopback as dnsmasq upstream" {
+    local state_dir="$TEST_TMP_DIR/detect-loopback"
+    mkdir -p "$state_dir/etc"
+
+    printf '%s\n' "127.0.0.1" > "$state_dir/etc/original-dns.conf"
+    printf '%s\n' "nameserver 168.63.129.16" > "$state_dir/resolv.conf"
+
+    local helper_script="$TEST_TMP_DIR/detect-primary-dns-loopback.sh"
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export VAR_STATE_DIR="$state_dir/var"
+export FALLBACK_DNS_PRIMARY="8.8.8.8"
+export OPENPATH_SYSTEMD_RESOLV_CONF="$state_dir/missing-systemd-resolv.conf"
+export OPENPATH_RESOLV_CONF="$state_dir/resolv.conf"
+
+mkdir -p "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+
+source "$project_dir/linux/lib/common.sh"
+
+nmcli() { return 127; }
+ip() { return 1; }
+timeout() {
+    shift
+    case "${2:-}" in
+        @127.0.0.1|@168.63.129.16)
+            printf '%s\n' "142.250.184.206"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+detect_primary_dns
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "168.63.129.16" ]
+}
+
 # ============== resolv.conf configuration tests ==============
 
 @test "resolv.conf points to localhost" {
@@ -90,6 +186,39 @@ github.com"
     echo "nameserver 127.0.0.1" > "$resolv_file"
     
     grep -q "nameserver 127.0.0.1" "$resolv_file"
+}
+
+@test "dnsmasq init script reads preserved upstream DNS from /etc openpath config" {
+    local state_dir="$TEST_TMP_DIR/dns-init-script"
+    local helper_script="$TEST_TMP_DIR/create-dns-init-script.sh"
+
+    mkdir -p "$state_dir/bin" "$state_dir/etc" "$state_dir/var"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+
+export INSTALL_DIR="$project_dir/linux"
+export ETC_CONFIG_DIR="$state_dir/etc/openpath"
+export VAR_STATE_DIR="$state_dir/var/lib/openpath"
+export SCRIPTS_DIR="$state_dir/bin"
+mkdir -p "$ETC_CONFIG_DIR" "$VAR_STATE_DIR" "$SCRIPTS_DIR"
+
+source "$project_dir/linux/lib/common.sh"
+source "$project_dir/linux/lib/dns.sh"
+
+create_dns_init_script
+
+grep -nF "$ETC_CONFIG_DIR/original-dns.conf" "$SCRIPTS_DIR/dnsmasq-init-resolv.sh"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
 }
 
 # ============== Tests de generate_dnsmasq_config ==============

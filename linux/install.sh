@@ -205,8 +205,8 @@ main() {
 
     run_installer_step 1 "$INSTALLER_STEP_TOTAL" "Instalando librerias" step_install_libraries
     run_installer_step 2 "$INSTALLER_STEP_TOTAL" "Instalando dependencias" step_install_dependencies
-    run_installer_step 3 "$INSTALLER_STEP_TOTAL" "Liberando puerto 53" step_free_port_53
-    run_installer_step 4 "$INSTALLER_STEP_TOTAL" "Detectando DNS primario" step_detect_dns
+    run_installer_step 3 "$INSTALLER_STEP_TOTAL" "Detectando DNS primario" step_detect_dns
+    run_installer_step 4 "$INSTALLER_STEP_TOTAL" "Liberando puerto 53" step_free_port_53
     run_installer_step 5 "$INSTALLER_STEP_TOTAL" "Instalando scripts" step_install_scripts
     run_installer_step 6 "$INSTALLER_STEP_TOTAL" "Configurando permisos sudo" step_configure_sudoers
     run_installer_step 7 "$INSTALLER_STEP_TOTAL" "Creando servicios systemd" step_create_services

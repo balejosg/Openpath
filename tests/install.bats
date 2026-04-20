@@ -125,6 +125,28 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "installers detect upstream DNS before stopping systemd-resolved" {
+    local install_file="$PROJECT_DIR/linux/install.sh"
+    local postinst_file="$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+
+    local install_detect_line
+    local install_free_line
+    install_detect_line=$(grep -n 'Detectando DNS primario" step_detect_dns' "$install_file" | cut -d: -f1)
+    install_free_line=$(grep -n 'Liberando puerto 53" step_free_port_53' "$install_file" | cut -d: -f1)
+
+    local postinst_detect_line
+    local postinst_free_line
+    postinst_detect_line=$(grep -n "Detectando DNS primario" "$postinst_file" | head -1 | cut -d: -f1)
+    postinst_free_line=$(grep -n "Liberando puerto 53" "$postinst_file" | head -1 | cut -d: -f1)
+
+    [ -n "$install_detect_line" ]
+    [ -n "$install_free_line" ]
+    [ -n "$postinst_detect_line" ]
+    [ -n "$postinst_free_line" ]
+    [ "$install_detect_line" -lt "$install_free_line" ]
+    [ "$postinst_detect_line" -lt "$postinst_free_line" ]
+}
+
 @test "apt bootstrap script keeps browser setup gated behind request setup validation" {
     run grep -n "OPENPATH_BROWSER_SETUP_SCRIPT" "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -eq 0 ]

@@ -93,11 +93,27 @@ register_machine() {
     local payload
     payload=$(build_machine_registration_payload "$reported_hostname" "$classroom_name" "$classroom_id" "$version")
 
-    REGISTER_RESPONSE=$(curl -s -X POST \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $auth_token" \
-        -d "$payload" \
-        "$api_url/api/machines/register" 2>/dev/null || echo '{"success":false}')
+    local curl_stderr
+    curl_stderr=$(mktemp "${TMPDIR:-/tmp}/openpath-register.XXXXXX")
+
+    if REGISTER_RESPONSE=$(curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $auth_token" \
+            -d "$payload" \
+            "$api_url/api/machines/register" 2>"$curl_stderr"); then
+        rm -f "$curl_stderr"
+    else
+        local curl_status=$?
+        local curl_error
+        curl_error=$(tr '\n\r' ' ' < "$curl_stderr" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+        rm -f "$curl_stderr"
+
+        REGISTER_RESPONSE="curl failed (exit $curl_status)"
+        if [ -n "$curl_error" ]; then
+            REGISTER_RESPONSE="$REGISTER_RESPONSE: $curl_error"
+        fi
+        return 1
+    fi
 
     parse_machine_registration_response "$REGISTER_RESPONSE"
 }

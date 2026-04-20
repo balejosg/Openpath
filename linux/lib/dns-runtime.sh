@@ -195,6 +195,8 @@ EOF
 create_dns_init_script() {
     local fallback_primary="${FALLBACK_DNS_PRIMARY:-8.8.8.8}"
     local fallback_secondary="${FALLBACK_DNS_SECONDARY:-8.8.4.4}"
+    local original_dns_file="${ORIGINAL_DNS_FILE:-/etc/openpath/original-dns.conf}"
+    local legacy_original_dns_file="${VAR_STATE_DIR:-/var/lib/openpath}/original-dns.conf"
 
     cat > "$SCRIPTS_DIR/dnsmasq-init-resolv.sh" << EOF
 #!/bin/bash
@@ -202,17 +204,66 @@ create_dns_init_script() {
 
 FALLBACK_DNS_PRIMARY="${fallback_primary}"
 FALLBACK_DNS_SECONDARY="${fallback_secondary}"
+ORIGINAL_DNS_FILE="${original_dns_file}"
+LEGACY_ORIGINAL_DNS_FILE="${legacy_original_dns_file}"
 
 mkdir -p /run/dnsmasq
 
-if [ -f /var/lib/openpath/original-dns.conf ]; then
-    PRIMARY_DNS=\$(cat /var/lib/openpath/original-dns.conf | head -1)
-else
-    if command -v nmcli >/dev/null 2>&1; then
-        PRIMARY_DNS=\$(nmcli dev show 2>/dev/null | grep -i "IP4.DNS\[1\]" | awk '{print \$2}' | head -1)
+is_usable_upstream_dns() {
+    local dns="\$1"
+    [[ "\$dns" =~ ^[0-9]{1,3}(\\.[0-9]{1,3}){3}\$ ]] || return 1
+    case "\$dns" in
+        0.*|127.*|169.254.*|224.*|225.*|226.*|227.*|228.*|229.*|23[0-9].*|24[0-9].*|25[0-5].*)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+read_dns_from_file() {
+    local dns_file="\$1"
+    local dns=""
+    [ -f "\$dns_file" ] || return 1
+    dns=\$(head -1 "\$dns_file" 2>/dev/null || true)
+    if is_usable_upstream_dns "\$dns"; then
+        printf '%s\\n' "\$dns"
+        return 0
     fi
-    [ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS=\$(ip route | grep default | awk '{print \$3}' | head -1)
-    [ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS="\$FALLBACK_DNS_PRIMARY"
+    return 1
+}
+
+read_dns_from_resolv_conf() {
+    local resolv_conf="\$1"
+    local dns=""
+    [ -f "\$resolv_conf" ] || return 1
+    while IFS= read -r dns; do
+        dns="\${dns%%#*}"
+        dns=\$(printf '%s' "\$dns" | awk '\$1 == "nameserver" { print \$2 }')
+        [ -n "\$dns" ] || continue
+        if is_usable_upstream_dns "\$dns"; then
+            printf '%s\\n' "\$dns"
+            return 0
+        fi
+    done < "\$resolv_conf"
+    return 1
+}
+
+PRIMARY_DNS=""
+PRIMARY_DNS=\$(read_dns_from_file "\$ORIGINAL_DNS_FILE" || true)
+[ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS=\$(read_dns_from_file "\$LEGACY_ORIGINAL_DNS_FILE" || true)
+if [ -z "\$PRIMARY_DNS" ] && command -v nmcli >/dev/null 2>&1; then
+    while IFS= read -r dns; do
+        if is_usable_upstream_dns "\$dns"; then
+            PRIMARY_DNS="\$dns"
+            break
+        fi
+    done < <(nmcli dev show 2>/dev/null | awk 'toupper(\$1) ~ /^IP4\\.DNS/ { print \$2 }')
+fi
+[ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS=\$(read_dns_from_resolv_conf /run/systemd/resolve/resolv.conf || true)
+[ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS=\$(read_dns_from_resolv_conf /etc/resolv.conf || true)
+[ -z "\$PRIMARY_DNS" ] && PRIMARY_DNS=\$(ip route | grep default | awk '{print \$3}' | head -1)
+if ! is_usable_upstream_dns "\$PRIMARY_DNS"; then
+    PRIMARY_DNS="\$FALLBACK_DNS_PRIMARY"
 fi
 
 cat > /run/dnsmasq/resolv.conf << DNSEOF

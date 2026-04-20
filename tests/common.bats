@@ -404,6 +404,39 @@ EOF
     [ "$REGISTERED_MACHINE_NAME" = "pc-01-abcd1234" ]
 }
 
+@test "register_machine reports curl transport errors instead of fake unsuccessful response" {
+    local helper_script="$TEST_TMP_DIR/register-machine-curl-error.sh"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+source "$project_dir/linux/lib/common.sh"
+
+curl() {
+    printf '%s\n' "curl: (6) Could not resolve host: control.example" >&2
+    return 6
+}
+
+set +e
+register_machine "pc-01" "Room 101" "cls_123" "4.1.0" "https://control.example" "enroll-token"
+status=$?
+set -e
+
+printf 'status=%s\n' "$status"
+printf 'response=%s\n' "$REGISTER_RESPONSE"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"status=1"* ]]
+    [[ "$output" == *"response=curl failed (exit 6): curl: (6) Could not resolve host: control.example"* ]]
+    [[ "$output" != *'{"success":false}'* ]]
+}
+
 # ============== Tests de init_directories ==============
 
 @test "init_directories creates CONFIG_DIR" {

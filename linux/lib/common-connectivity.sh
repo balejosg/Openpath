@@ -10,6 +10,47 @@ CAPTIVE_PORTAL_CHECK_URL="${CAPTIVE_PORTAL_CHECK_URL:-${CAPTIVE_PORTAL_URL:-http
 CAPTIVE_PORTAL_CHECK_EXPECTED="${CAPTIVE_PORTAL_CHECK_EXPECTED:-${CAPTIVE_PORTAL_EXPECTED:-success}}"
 
 # Detect primary DNS dynamically
+is_usable_upstream_dns() {
+    local dns="$1"
+
+    validate_ip "$dns" || return 1
+
+    case "$dns" in
+        0.*|127.*|169.254.*|224.*|225.*|226.*|227.*|228.*|229.*|23[0-9].*|24[0-9].*|25[0-5].*)
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+dns_candidate_resolves() {
+    local dns="$1"
+
+    is_usable_upstream_dns "$dns" || return 1
+    timeout 5 dig @"$dns" google.com +short >/dev/null 2>&1
+}
+
+detect_dns_from_resolv_conf() {
+    local resolv_conf="$1"
+    local dns
+
+    [ -n "$resolv_conf" ] && [ -f "$resolv_conf" ] || return 1
+
+    while IFS= read -r dns; do
+        dns="${dns%%#*}"
+        dns=$(printf '%s' "$dns" | awk '$1 == "nameserver" { print $2 }')
+        [ -n "$dns" ] || continue
+
+        if dns_candidate_resolves "$dns"; then
+            echo "$dns"
+            return 0
+        fi
+    done < "$resolv_conf"
+
+    return 1
+}
+
 detect_primary_dns() {
     local dns=""
 
@@ -17,7 +58,7 @@ detect_primary_dns() {
     if [ -f "$ORIGINAL_DNS_FILE" ]; then
         local saved_dns
         saved_dns=$(head -1 "$ORIGINAL_DNS_FILE")
-        if [ -n "$saved_dns" ] && validate_ip "$saved_dns" && timeout 5 dig @"$saved_dns" google.com +short >/dev/null 2>&1; then
+        if dns_candidate_resolves "$saved_dns"; then
             echo "$saved_dns"
             return 0
         fi
@@ -25,33 +66,41 @@ detect_primary_dns() {
 
     # 2. NetworkManager
     if command -v nmcli >/dev/null 2>&1; then
-        dns=$(nmcli dev show 2>/dev/null | grep -i "IP4.DNS\[1\]" | awk '{print $2}' | head -1)
-        if [ -n "$dns" ] && validate_ip "$dns" && timeout 5 dig @"$dns" google.com +short >/dev/null 2>&1; then
-            echo "$dns"
-            return 0
-        fi
-    fi
-
-    # 3. systemd-resolved
-    if [ -f /run/systemd/resolve/resolv.conf ]; then
-        dns=$(grep "^nameserver" /run/systemd/resolve/resolv.conf | head -1 | awk '{print $2}')
-        if [ -n "$dns" ] && [ "$dns" != "127.0.0.53" ] && validate_ip "$dns"; then
-            if timeout 5 dig @"$dns" google.com +short >/dev/null 2>&1; then
+        while IFS= read -r dns; do
+            [ -n "$dns" ] || continue
+            if dns_candidate_resolves "$dns"; then
                 echo "$dns"
                 return 0
             fi
-        fi
+        done < <(nmcli dev show 2>/dev/null | awk 'toupper($1) ~ /^IP4\.DNS/ { print $2 }')
     fi
 
-    # 4. Gateway as DNS
+    # 3. systemd-resolved
+    if dns=$(detect_dns_from_resolv_conf "${OPENPATH_SYSTEMD_RESOLV_CONF:-/run/systemd/resolve/resolv.conf}"); then
+        echo "$dns"
+        return 0
+    fi
+
+    # 4. Current resolver configuration, when it exposes a real upstream.
+    if dns=$(detect_dns_from_resolv_conf "${OPENPATH_RESOLV_CONF:-/etc/resolv.conf}"); then
+        echo "$dns"
+        return 0
+    fi
+
+    # 5. Gateway as DNS
     local gw
     gw=$(ip route | grep default | awk '{print $3}' | head -1)
-    if [ -n "$gw" ] && validate_ip "$gw" && timeout 5 dig @"$gw" google.com +short >/dev/null 2>&1; then
+    if dns_candidate_resolves "$gw"; then
         echo "$gw"
         return 0
     fi
 
-    echo "${FALLBACK_DNS_PRIMARY:-8.8.8.8}"
+    dns="${FALLBACK_DNS_PRIMARY:-8.8.8.8}"
+    if is_usable_upstream_dns "$dns"; then
+        echo "$dns"
+    else
+        echo "8.8.8.8"
+    fi
 }
 
 validate_ip() {
