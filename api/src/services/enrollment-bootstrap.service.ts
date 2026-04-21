@@ -36,13 +36,13 @@ export async function buildLinuxEnrollmentBootstrap(input: {
 
   const configuredLinuxAgentVersion = process.env.OPENPATH_LINUX_AGENT_VERSION?.trim() ?? '';
   try {
-    const linuxAgentAptSuite = normalizeLinuxAgentAptSuite(
+    const configuredLinuxAgentAptSuite = normalizeLinuxAgentAptSuite(
       process.env.OPENPATH_LINUX_AGENT_APT_SUITE
     );
-    const effectiveLinuxAgentVersion = await resolveEnrollmentLinuxAgentVersionPin(
+    const linuxAgentVersionPin = await resolveEnrollmentLinuxAgentVersionPin(
       aptRepoUrl,
       configuredLinuxAgentVersion,
-      linuxAgentAptSuite
+      configuredLinuxAgentAptSuite
     );
 
     return {
@@ -54,8 +54,8 @@ export async function buildLinuxEnrollmentBootstrap(input: {
           classroomName: context.data.classroom.name,
           enrollmentToken: context.data.enrollmentToken,
           aptRepoUrl,
-          linuxAgentVersion: effectiveLinuxAgentVersion,
-          linuxAgentAptSuite,
+          linuxAgentVersion: linuxAgentVersionPin.version,
+          linuxAgentAptSuite: linuxAgentVersionPin.suite,
         }),
       },
     };

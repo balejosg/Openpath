@@ -21,6 +21,11 @@ export interface LinuxAgentAptPackageMetadata {
   version: string;
 }
 
+export interface LinuxAgentVersionPin {
+  suite: LinuxAgentAptSuite;
+  version: string;
+}
+
 export function readLinuxAgentVersion(): string {
   const envVersion = process.env.OPENPATH_LINUX_AGENT_VERSION?.trim();
   if (envVersion) {
@@ -172,26 +177,37 @@ export async function resolveEnrollmentLinuxAgentVersionPin(
   aptRepoUrl: string,
   configuredVersion: string,
   configuredSuite = 'stable'
-): Promise<string> {
+): Promise<LinuxAgentVersionPin> {
   const version = configuredVersion.trim();
+  const primarySuite = normalizeLinuxAgentAptSuite(configuredSuite);
+  const suiteCandidates = getLinuxAgentAptSuiteCandidates(primarySuite);
   if (!version) {
-    return '';
+    return { version: '', suite: primarySuite };
   }
 
-  const suite = normalizeLinuxAgentAptSuite(configuredSuite);
-  const packagesUrl = buildAptPackagesUrl(aptRepoUrl, suite);
-  const manifest = await downloadAptPackagesManifest(aptRepoUrl, suite);
-  if (aptMetadataAdvertisesLinuxAgentVersion(manifest, version)) {
-    return version;
+  for (const suite of suiteCandidates) {
+    const packagesUrl = buildAptPackagesUrl(aptRepoUrl, suite);
+    const manifest = await downloadAptPackagesManifest(aptRepoUrl, suite);
+    if (aptMetadataAdvertisesLinuxAgentVersion(manifest, version)) {
+      if (suite !== suiteCandidates[0]) {
+        logger.warn('Resolved enrollment Linux agent version from alternate APT suite', {
+          version,
+          configuredSuite: primarySuite,
+          matchedSuite: suite,
+          packagesUrl,
+        });
+      }
+      return { version, suite };
+    }
   }
 
-  logger.error('Configured OPENPATH_LINUX_AGENT_VERSION is absent from APT metadata', {
+  logger.error('Configured OPENPATH_LINUX_AGENT_VERSION is absent from APT delivery suites', {
     version,
-    suite,
-    packagesUrl,
+    configuredSuite: primarySuite,
+    checkedSuites: suiteCandidates,
   });
   throw new Error(
-    `OPENPATH_LINUX_AGENT_VERSION ${version} is not advertised by APT suite ${suite}`
+    `OPENPATH_LINUX_AGENT_VERSION ${version} is not advertised by APT suites ${suiteCandidates.join(', ')}`
   );
 }
 

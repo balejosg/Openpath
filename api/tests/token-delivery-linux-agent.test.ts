@@ -392,15 +392,36 @@ Version: 9.9.9-1
       }
     });
 
-    await test('should fail closed when configured linux package pin is absent from the selected APT suite', async () => {
+    await test('should fail closed when configured linux package pin is absent from delivery suites', async () => {
       const originalPinnedVersion = process.env.OPENPATH_LINUX_AGENT_VERSION;
       const originalAptSuite = process.env.OPENPATH_LINUX_AGENT_APT_SUITE;
-      const restoreFetch = mockStableAptPackagesManifest(`
+      const originalFetch = globalThis.fetch;
+      const staleManifest = `
 Package: openpath-dnsmasq
 Version: 4.1.10-1
-`);
+`;
       process.env.OPENPATH_LINUX_AGENT_VERSION = '4.1.9';
       process.env.OPENPATH_LINUX_AGENT_APT_SUITE = 'stable';
+      clearLinuxAgentAptMetadataCache();
+
+      globalThis.fetch = (async (
+        input: string | URL | Request,
+        init?: RequestInit
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+
+        if (
+          url.endsWith('/dists/stable/main/binary-amd64/Packages') ||
+          url.endsWith('/dists/unstable/main/binary-amd64/Packages')
+        ) {
+          return new Response(staleManifest, {
+            status: 200,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        }
+
+        return originalFetch(input, init);
+      }) as typeof fetch;
 
       try {
         const enrollmentToken = await harness.getEnrollmentToken(classroomId);
@@ -410,9 +431,83 @@ Version: 4.1.10-1
 
         assert.strictEqual(response.status, 500);
         const body = await response.text();
-        assert.match(body, /not advertised by APT suite stable/);
+        assert.match(body, /not advertised by APT suites stable, unstable/);
       } finally {
-        restoreFetch();
+        globalThis.fetch = originalFetch;
+        clearLinuxAgentAptMetadataCache();
+        if (originalPinnedVersion === undefined) {
+          delete process.env.OPENPATH_LINUX_AGENT_VERSION;
+        } else {
+          process.env.OPENPATH_LINUX_AGENT_VERSION = originalPinnedVersion;
+        }
+        if (originalAptSuite === undefined) {
+          delete process.env.OPENPATH_LINUX_AGENT_APT_SUITE;
+        } else {
+          process.env.OPENPATH_LINUX_AGENT_APT_SUITE = originalAptSuite;
+        }
+      }
+    });
+
+    await test('should enroll with the alternate APT suite when the configured suite is stale', async () => {
+      const originalPinnedVersion = process.env.OPENPATH_LINUX_AGENT_VERSION;
+      const originalAptSuite = process.env.OPENPATH_LINUX_AGENT_APT_SUITE;
+      const pinnedVersion = '0.0.20260421042634';
+      const originalFetch = globalThis.fetch;
+
+      process.env.OPENPATH_LINUX_AGENT_VERSION = pinnedVersion;
+      process.env.OPENPATH_LINUX_AGENT_APT_SUITE = 'unstable';
+      clearLinuxAgentAptMetadataCache();
+
+      globalThis.fetch = (async (
+        input: string | URL | Request,
+        init?: RequestInit
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+
+        if (url.endsWith('/dists/unstable/main/binary-amd64/Packages')) {
+          return new Response(
+            `
+Package: openpath-dnsmasq
+Version: 4.1.25-1
+Filename: pool/main/o/openpath-dnsmasq/openpath-dnsmasq_4.1.25-1_all.deb
+Size: 588544
+SHA256: ${'b'.repeat(64)}
+`,
+            { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+          );
+        }
+
+        if (url.endsWith('/dists/stable/main/binary-amd64/Packages')) {
+          return new Response(
+            `
+Package: openpath-dnsmasq
+Version: ${pinnedVersion}-1
+Filename: pool/main/o/openpath-dnsmasq/openpath-dnsmasq_${pinnedVersion}-1_all.deb
+Size: 588544
+SHA256: ${'c'.repeat(64)}
+`,
+            { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+          );
+        }
+
+        return originalFetch(input, init);
+      }) as typeof fetch;
+
+      try {
+        const enrollmentToken = await harness.getEnrollmentToken(classroomId);
+        const response = await fetch(`${harness.apiUrl}/api/enroll/${classroomId}`, {
+          headers: { Authorization: `Bearer ${enrollmentToken}` },
+        });
+
+        assert.strictEqual(response.status, 200);
+        const body = await response.text();
+        assert.match(body, /LINUX_AGENT_VERSION='0\.0\.20260421042634'/);
+        assert.match(body, /LINUX_AGENT_APT_SUITE='stable'/);
+        assert.doesNotMatch(body, /--unstable/);
+        assert.match(body, /--package-version "\$LINUX_AGENT_VERSION"/);
+      } finally {
+        globalThis.fetch = originalFetch;
+        clearLinuxAgentAptMetadataCache();
         if (originalPinnedVersion === undefined) {
           delete process.env.OPENPATH_LINUX_AGENT_VERSION;
         } else {
