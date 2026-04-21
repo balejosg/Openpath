@@ -17,19 +17,25 @@ prepare_registration_connectivity() {
     OPENPATH_PROTECTED_DOMAINS_READY=0
 
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnsmasq 2>/dev/null; then
+        deactivate_firewall || true
+        restore_dns || return 1
+    fi
+
+    return 0
+}
+
+activate_enrolled_connectivity() {
+    if command -v systemctl >/dev/null 2>&1; then
         if ! validate_ip "${PRIMARY_DNS:-}"; then
             PRIMARY_DNS=$(detect_primary_dns)
             export PRIMARY_DNS
         fi
-        # shellcheck disable=SC2034 # Shared state consumed by sourced DNS helpers.
-        WHITELIST_DOMAINS=()
-        # shellcheck disable=SC2034 # Shared state consumed by sourced DNS helpers.
-        BLOCKED_SUBDOMAINS=()
-        # shellcheck disable=SC2034 # Shared state consumed by sourced DNS helpers.
-        BLOCKED_PATHS=()
-        if ! generate_dnsmasq_config || ! restart_dnsmasq; then
+
+        if ! free_port_53 || ! configure_upstream_dns || ! configure_resolv_conf || ! create_dns_init_script; then
             return 1
         fi
+
+        systemctl daemon-reload 2>/dev/null || true
     fi
 
     return 0
@@ -171,6 +177,11 @@ except Exception:
             exit 1
         fi
         persist_machine_name "${REGISTERED_MACHINE_NAME:-$machine_name}" || true
+
+        if ! activate_enrolled_connectivity; then
+            echo -e "${RED}Error: no se pudo activar la conectividad DNS tras el registro${NC}"
+            exit 1
+        fi
 
         classroom="$persisted_classroom"
         classroom_id="$persisted_classroom_id"

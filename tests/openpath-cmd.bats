@@ -841,14 +841,22 @@ normalize_machine_name_value() { printf '%s\n' "$1"; }
 register_machine() { REGISTER_RESPONSE='{"success":false}'; return 1; }
 persist_machine_name() { return 0; }
 reset_cached_whitelist_state() { :; }
+deactivate_firewall() { return 0; }
+restore_dns() { return 0; }
 generate_dnsmasq_config() { return 0; }
 restart_dnsmasq() { return 0; }
+free_port_53() { return 0; }
+configure_upstream_dns() { return 0; }
+configure_resolv_conf() { return 0; }
+create_dns_init_script() { return 0; }
 systemctl() { return 0; }
 dpkg() { printf 'Version: 4.1.15-1\n'; }
 hostname() { printf 'max12\n'; }
 
 {
     awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
+    awk '/^activate_enrolled_connectivity\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^cmd_enroll\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
@@ -887,8 +895,8 @@ EOF
     [[ "$output" == *"classroom_id=cls_123"* ]]
 }
 
-@test "prepare_registration_connectivity detects upstream DNS before regenerating dnsmasq" {
-    local helper_script="$TEST_TMP_DIR/prepare-registration-dns.sh"
+@test "activate_enrolled_connectivity detects upstream DNS before configuring dnsmasq" {
+    local helper_script="$TEST_TMP_DIR/activate-enrolled-dns.sh"
     local state_dir="$TEST_TMP_DIR/registration-dns-state"
 
     mkdir -p "$state_dir"
@@ -899,7 +907,7 @@ set -euo pipefail
 
 project_dir="$1"
 state_dir="$2"
-extracted_script="$state_dir/prepare-registration-connectivity.sh"
+extracted_script="$state_dir/activate-enrolled-connectivity.sh"
 
 export ETC_CONFIG_DIR="$state_dir/etc"
 export VAR_STATE_DIR="$state_dir/var"
@@ -920,14 +928,17 @@ generate_dnsmasq_config() {
     printf 'primary=%s\n' "$PRIMARY_DNS" > "$DNSMASQ_CONF"
 }
 
-restart_dnsmasq() { return 0; }
+free_port_53() { return 0; }
+configure_upstream_dns() { return 0; }
+configure_resolv_conf() { generate_dnsmasq_config; return 0; }
+create_dns_init_script() { return 0; }
 systemctl() { return 0; }
 
-awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+awk '/^activate_enrolled_connectivity\(\) \{/,/^}/' \
     "$project_dir/linux/lib/runtime-cli-commands.sh" > "$extracted_script"
 
 source "$extracted_script"
-prepare_registration_connectivity "https://control.example" "Room 101" "cls_123"
+activate_enrolled_connectivity
 
 cat "$DNSMASQ_CONF"
 EOF
@@ -937,6 +948,67 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"primary=9.9.9.9"* ]]
+}
+
+@test "prepare_registration_connectivity restores the system resolver before registration when dnsmasq is active" {
+    local helper_script="$TEST_TMP_DIR/prepare-registration-resolver.sh"
+    local state_dir="$TEST_TMP_DIR/registration-resolver-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+extracted_script="$state_dir/prepare-registration-connectivity.sh"
+
+export ETC_CONFIG_DIR="$state_dir/etc"
+export VAR_STATE_DIR="$state_dir/var"
+export WHITELIST_URL_CONF="$ETC_CONFIG_DIR/whitelist-url.conf"
+export WHITELIST_FILE="$state_dir/whitelist.txt"
+export DNSMASQ_CONF="$state_dir/openpath.conf"
+export CALLS_FILE="$state_dir/calls"
+
+mkdir -p "$ETC_CONFIG_DIR" "$VAR_STATE_DIR"
+
+source "$project_dir/linux/lib/common.sh"
+
+record_call() {
+    printf '%s\n' "$1" >> "$CALLS_FILE"
+}
+
+persist_openpath_classroom_runtime_config() {
+    record_call "persist:$1:$2:$3"
+    return 0
+}
+deactivate_firewall() { record_call "deactivate_firewall"; return 0; }
+restore_dns() { record_call "restore_dns"; return 0; }
+generate_dnsmasq_config() { record_call "generate_dnsmasq_config"; return 0; }
+restart_dnsmasq() { record_call "restart_dnsmasq"; return 0; }
+systemctl() {
+    [ "${1:-}" = "is-active" ] && [ "${2:-}" = "--quiet" ] && [ "${3:-}" = "dnsmasq" ]
+}
+
+awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+    "$project_dir/linux/lib/runtime-cli-commands.sh" > "$extracted_script"
+
+source "$extracted_script"
+prepare_registration_connectivity "https://control.example" "Room 101" "cls_123"
+
+cat "$CALLS_FILE"
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"persist:https://control.example:Room 101:cls_123"* ]]
+    [[ "$output" == *"deactivate_firewall"* ]]
+    [[ "$output" == *"restore_dns"* ]]
+    [[ "$output" != *"generate_dnsmasq_config"* ]]
+    [[ "$output" != *"restart_dnsmasq"* ]]
 }
 
 @test "cmd_enroll persists api, classroom, and tokenized whitelist together after successful registration" {
@@ -980,14 +1052,22 @@ register_machine() {
 }
 persist_machine_name() { printf '%s\n' "$1" > "$ETC_CONFIG_DIR/persisted-machine-name"; return 0; }
 reset_cached_whitelist_state() { :; }
+deactivate_firewall() { return 0; }
+restore_dns() { return 0; }
 generate_dnsmasq_config() { return 0; }
 restart_dnsmasq() { return 0; }
+free_port_53() { return 0; }
+configure_upstream_dns() { return 0; }
+configure_resolv_conf() { return 0; }
+create_dns_init_script() { return 0; }
 systemctl() { return 0; }
 dpkg() { printf 'Version: 4.1.15-1\n'; }
 hostname() { printf 'max12\n'; }
 
 {
     awk '/^prepare_registration_connectivity\(\) \{/,/^}/' \
+        "$project_dir/linux/lib/runtime-cli-commands.sh"
+    awk '/^activate_enrolled_connectivity\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
     awk '/^cmd_enroll\(\) \{/,/^}/' \
         "$project_dir/linux/lib/runtime-cli-commands.sh"
