@@ -38,6 +38,37 @@ async function readElementText(
   return (await element.getText()).trim();
 }
 
+async function readBlockedPageDomDiagnostics(state: StudentPolicyDriverState): Promise<string> {
+  const driver = state.getDriver();
+  try {
+    const snapshot = await driver.executeScript<Record<string, unknown>>(`
+      const readText = (selector) => document.querySelector(selector)?.textContent?.trim() ?? null;
+      const requestStatus = document.querySelector('#request-status');
+      const reasonInput = document.querySelector('#request-reason');
+      const submitButton = document.querySelector('#submit-unblock-request');
+      const runtimeGlobal = globalThis;
+      return {
+        readyState: document.readyState,
+        locationHref: window.location.href,
+        bodyText: (document.body?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 1000),
+        blockedDomainText: readText('#blocked-domain'),
+        blockedErrorText: readText('#blocked-error'),
+        requestStatusTextContent: requestStatus?.textContent ?? null,
+        requestStatusClass: requestStatus?.className ?? null,
+        reasonValueLength: typeof reasonInput?.value === 'string' ? reasonInput.value.length : null,
+        submitDisabled: typeof submitButton?.disabled === 'boolean' ? submitButton.disabled : null,
+        hasChromeRuntime: typeof runtimeGlobal.chrome?.runtime?.sendMessage === 'function',
+        hasBrowserRuntime: typeof runtimeGlobal.browser?.runtime?.sendMessage === 'function'
+      };
+    `);
+
+    return JSON.stringify(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `<unavailable: ${message}>`;
+  }
+}
+
 export async function openAndExpectLoaded(
   state: StudentPolicyDriverState,
   options: OpenAndExpectLoadedOptions
@@ -155,6 +186,7 @@ export async function submitBlockedScreenRequest(
   } catch (error) {
     const currentUrl = await driver.getCurrentUrl().catch(() => '<unavailable>');
     const title = await driver.getTitle().catch(() => '<unavailable>');
+    const domDiagnostics = await readBlockedPageDomDiagnostics(state);
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       [
@@ -162,6 +194,7 @@ export async function submitBlockedScreenRequest(
         `latest #request-status: ${latestStatus || '<empty>'}`,
         `currentUrl: ${currentUrl}`,
         `title: ${title}`,
+        `blocked page DOM: ${domDiagnostics}`,
       ].join('; ')
     );
   }

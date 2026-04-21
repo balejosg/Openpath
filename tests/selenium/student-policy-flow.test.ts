@@ -301,6 +301,20 @@ test('submitBlockedScreenRequest includes blocked page status when success wait 
         async getTitle() {
           return 'Sitio bloqueado';
         },
+        async executeScript(script: string) {
+          if (script.includes('document.readyState')) {
+            return {
+              bodyText: 'Este sitio esta bloqueado por ahora Solicitar desbloqueo',
+              readyState: 'complete',
+              reasonValueLength: 38,
+              requestStatusClass: 'feedback request-feedback',
+              requestStatusTextContent: '',
+              submitDisabled: false,
+            };
+          }
+
+          return '';
+        },
         async wait(condition: (driver: unknown) => Promise<boolean>, timeoutMs: number) {
           const result = await condition(this);
           assert.equal(result, false);
@@ -322,6 +336,10 @@ test('submitBlockedScreenRequest includes blocked page status when success wait 
       assert.match(error.message, /latest #request-status: No se pudo enviar la solicitud/);
       assert.match(error.message, /currentUrl: moz-extension:\/\/extension-id\/blocked/);
       assert.match(error.message, /title: Sitio bloqueado/);
+      assert.match(error.message, /blocked page DOM:/);
+      assert.match(error.message, /"readyState":"complete"/);
+      assert.match(error.message, /"requestStatusTextContent":""/);
+      assert.match(error.message, /"submitDisabled":false/);
       return true;
     }
   );
