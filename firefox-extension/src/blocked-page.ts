@@ -7,6 +7,11 @@ interface BlockedPageRuntime {
   sendMessage(message: unknown): Promise<unknown>;
 }
 
+interface CallbackRuntime {
+  lastError?: { message?: string } | null;
+  sendMessage(message: unknown, callback: (response: unknown) => void): void;
+}
+
 function getElement(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
@@ -32,10 +37,35 @@ function setRequestStatus(text: string, type?: 'success' | 'error' | 'pending'):
 }
 
 function getBrowserRuntime(): BlockedPageRuntime | null {
-  const globalWithBrowser = globalThis as {
+  const globalWithRuntime = globalThis as {
     browser?: { runtime?: Partial<BlockedPageRuntime> };
+    chrome?: { runtime?: Partial<CallbackRuntime> };
   };
-  const runtime = globalWithBrowser.browser?.runtime;
+
+  const callbackRuntime = globalWithRuntime.chrome?.runtime;
+  if (typeof callbackRuntime?.sendMessage === 'function') {
+    const sendMessage = callbackRuntime.sendMessage.bind(callbackRuntime);
+    return {
+      sendMessage: (message: unknown) =>
+        new Promise((resolve, reject) => {
+          try {
+            sendMessage(message, (response: unknown) => {
+              const lastError = callbackRuntime.lastError;
+              if (lastError) {
+                reject(new Error(lastError.message ?? 'runtime.sendMessage failed'));
+                return;
+              }
+
+              resolve(response);
+            });
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        }),
+    };
+  }
+
+  const runtime = globalWithRuntime.browser?.runtime;
   return typeof runtime?.sendMessage === 'function'
     ? { sendMessage: runtime.sendMessage.bind(runtime) }
     : null;

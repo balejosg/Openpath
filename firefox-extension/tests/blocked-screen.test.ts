@@ -54,7 +54,8 @@ function normalizeMessages(messages: unknown[]): Record<string, unknown>[] {
 
 function runBlockedScript(
   response: unknown,
-  search = '?domain=learning.example&error=NS_ERROR_UNKNOWN_HOST&origin=portal.example'
+  search = '?domain=learning.example&error=NS_ERROR_UNKNOWN_HOST&origin=portal.example',
+  runtimeApi: 'browser-promise' | 'chrome-callback' = 'browser-promise'
 ): {
   elements: Map<string, MockElement>;
   messages: unknown[];
@@ -75,18 +76,41 @@ function runBlockedScript(
   const elements = new Map(ids.map((id) => [id, new MockElement()]));
   const messages: unknown[] = [];
 
-  Object.defineProperties(globalThis, {
-    browser: {
-      configurable: true,
-      value: {
-        runtime: {
-          sendMessage: (message: unknown): Promise<unknown> => {
-            messages.push(message);
-            return Promise.resolve(response);
+  const runtimeGlobals =
+    runtimeApi === 'chrome-callback'
+      ? {
+          chrome: {
+            configurable: true,
+            value: {
+              runtime: {
+                lastError: null,
+                sendMessage: (
+                  message: unknown,
+                  callback: ((response: unknown) => void) | undefined
+                ): void => {
+                  messages.push(message);
+                  callback?.(response);
+                },
+              },
+            },
           },
-        },
-      },
-    },
+        }
+      : {
+          browser: {
+            configurable: true,
+            value: {
+              runtime: {
+                sendMessage: (message: unknown): Promise<unknown> => {
+                  messages.push(message);
+                  return Promise.resolve(response);
+                },
+              },
+            },
+          },
+        };
+
+  Object.defineProperties(globalThis, {
+    ...runtimeGlobals,
     document: {
       configurable: true,
       value: {
@@ -121,12 +145,14 @@ function runBlockedScript(
 function clearBlockedScreenGlobals(): void {
   const globalRecord = globalThis as {
     browser?: unknown;
+    chrome?: unknown;
     document?: unknown;
     navigator?: unknown;
     window?: unknown;
   };
 
   delete globalRecord.browser;
+  delete globalRecord.chrome;
   delete globalRecord.document;
   delete globalRecord.navigator;
   delete globalRecord.window;
@@ -152,6 +178,36 @@ void describe('blocked screen', () => {
       id: 'req_123',
       status: 'pending',
     });
+
+    const reason = elements.get('request-reason');
+    assert.ok(reason);
+    reason.value = 'Lo necesito para una actividad de clase';
+
+    await elements.get('submit-unblock-request')?.trigger('click');
+    await flushBlockedScreenAsyncHandlers();
+
+    assert.deepStrictEqual(normalizeMessages(messages), [
+      {
+        action: 'submitBlockedDomainRequest',
+        domain: 'learning.example',
+        reason: 'Lo necesito para una actividad de clase',
+        origin: 'portal.example',
+        error: 'NS_ERROR_UNKNOWN_HOST',
+      },
+    ]);
+    assert.match(elements.get('request-status')?.textContent ?? '', /Solicitud enviada/);
+  });
+
+  void test('uses callback runtime messaging when the blocked page runs on the chrome namespace', async () => {
+    const { elements, messages } = runBlockedScript(
+      {
+        success: true,
+        id: 'req_125',
+        status: 'pending',
+      },
+      '?domain=learning.example&error=NS_ERROR_UNKNOWN_HOST&origin=portal.example',
+      'chrome-callback'
+    );
 
     const reason = elements.get('request-reason');
     assert.ok(reason);
