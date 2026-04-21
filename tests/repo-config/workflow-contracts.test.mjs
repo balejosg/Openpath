@@ -339,8 +339,8 @@ test('required Windows CI runs Pester in an untracked child host without success
   );
 
   assert.ok(
-    ciWorkflow.includes('runs-on: windows-2025'),
-    'ci.yml should pin the required Windows Pester lane to windows-2025'
+    windowsJobBlock.includes('runs-on: [self-hosted, Windows, X64, proxmox, openpath]'),
+    'ci.yml should route the required Windows Pester lane to the pinned OpenPath self-hosted Windows runner'
   );
   assert.ok(
     windowsJobBlock.includes('timeout-minutes: 25'),
@@ -349,6 +349,10 @@ test('required Windows CI runs Pester in an untracked child host without success
   assert.ok(
     !ciWorkflow.includes('runs-on: windows-2022'),
     'ci.yml should stop pinning the required Windows Pester lane to windows-2022'
+  );
+  assert.ok(
+    !ciWorkflow.includes('runs-on: windows-2025'),
+    'ci.yml should stop pinning the required Windows Pester lane to windows-2025 once the self-hosted runner is available'
   );
   assert.ok(
     !ciWorkflow.includes('persist-credentials: true'),
@@ -652,20 +656,31 @@ test('required Windows CI runs Pester in an untracked child host without success
   }
 });
 
-test('documents that hosted Windows Pester teardown cancellation is not repo-fixable', () => {
+test('documents historical hosted Windows Pester teardown cancellation without treating it as the active runner path', () => {
   const agentInstructions = readText('AGENTS.md');
   const e2eReadme = readText('tests/e2e/README.md');
   const windowsPesterRunner = readText('tests/e2e/ci/run-windows-pester-isolated.ps1');
 
   assert.ok(
     agentInstructions.includes(
-      'Do not attempt to "fix" the hosted Windows Pester teardown cancellation from repo code.'
+      'Do not reintroduce repo-side cleanup hacks for the historical hosted Windows Pester teardown cancellation.'
     ),
-    'AGENTS.md should explicitly forbid repo-side fixes for the documented hosted Windows Pester teardown defect'
+    'AGENTS.md should explicitly forbid repo-side cleanup hacks for the historical hosted Windows Pester teardown defect'
+  );
+  assert.match(
+    agentInstructions,
+    /The required Windows Pester lane now runs on the pinned self-hosted OpenPath\s+Windows runner\./,
+    'AGENTS.md should document that the active Windows Pester lane is self-hosted'
   );
   assert.ok(
     e2eReadme.includes(
-      'Do not add descendant process cleanup, WMI process killing, success marker recovery, or timeout-sentinel logic to this lane without new upstream runner evidence and maintainer approval.'
+      'Windows lanes in GitHub Actions target the pinned OpenPath self-hosted Windows runner.'
+    ),
+    'tests/e2e/README.md should document that the active Windows lanes are self-hosted'
+  );
+  assert.ok(
+    e2eReadme.includes(
+      'Do not reintroduce descendant process cleanup, WMI process killing, success marker recovery, or timeout-sentinel logic without new upstream runner evidence and maintainer approval.'
     ),
     'tests/e2e/README.md should tell future agents not to reattempt repo-side hosted-runner cleanup fixes'
   );
@@ -739,6 +754,14 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
     'windows-e2e should run only for Windows E2E relevant changes'
   );
   assert.ok(
+    windowsE2eBlock.includes('runs-on: [self-hosted, Windows, X64, proxmox, openpath]'),
+    'windows-e2e should run on the pinned OpenPath self-hosted Windows runner'
+  );
+  assert.ok(
+    !windowsE2eBlock.includes('${{ matrix.os }}') && !windowsE2eBlock.includes('matrix:'),
+    'windows-e2e should not keep a hosted-runner matrix after moving to the pinned self-hosted Windows runner'
+  );
+  assert.ok(
     linuxStudentPolicyBlock.includes(
       "needs.detect-relevant-changes.outputs.linux_student_policy == 'true'"
     ),
@@ -749,6 +772,14 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
       "needs.detect-relevant-changes.outputs.windows_student_policy == 'true'"
     ),
     'windows-student-policy should run only for Windows student-policy relevant changes'
+  );
+  assert.ok(
+    windowsStudentPolicyBlock.includes('runs-on: [self-hosted, Windows, X64, proxmox, openpath]'),
+    'windows-student-policy should run on the pinned OpenPath self-hosted Windows runner'
+  );
+  assert.ok(
+    !e2eWorkflow.includes('runs-on: windows-2022'),
+    'e2e-tests.yml should stop using hosted windows-2022 runners for Windows lanes'
   );
   assert.ok(
     e2eWorkflow.includes('ci/run-windows-student-flow\\.ps1'),

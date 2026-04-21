@@ -144,19 +144,17 @@ jobs:
   # Windows E2E Tests
   # ============================================
   windows-e2e:
-    name: Windows E2E (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Windows E2E
+    runs-on: [self-hosted, Windows, X64, proxmox, openpath]
     timeout-minutes: 25
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.windows_e2e == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2022]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Run Windows E2E
         shell: pwsh
@@ -202,7 +200,7 @@ jobs:
   # ============================================
   windows-student-policy:
     name: Windows Student Policy
-    runs-on: windows-2022
+    runs-on: [self-hosted, Windows, X64, proxmox, openpath]
     timeout-minutes: 50
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.windows_student_policy == 'true'
@@ -210,6 +208,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node

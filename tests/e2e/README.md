@@ -36,8 +36,10 @@ npm run test:student-policy:linux
 npm run test:student-policy:windows
 ```
 
-## Windows CI Timeout Note
+## Windows CI Runner Note
 
-If the Windows Pester lane times out after `Run Windows Unit Tests` and `Complete job` have both succeeded, treat it as the documented hosted-runner teardown defect rather than a client regression. Use the successful Pester step plus the separate Windows E2E and Windows Student Policy workflows as release evidence until the platform behavior changes.
+Windows lanes in GitHub Actions target the pinned OpenPath self-hosted Windows runner.
 
-Do not add descendant process cleanup, WMI process killing, success marker recovery, or timeout-sentinel logic to this lane without new upstream runner evidence and maintainer approval.
+The older GitHub-hosted Windows runner could cancel the Pester lane after `Run Windows Unit Tests` and `Complete job` had both succeeded. Keep that as historical context for old runs rather than evidence of a client regression.
+
+Do not reintroduce descendant process cleanup, WMI process killing, success marker recovery, or timeout-sentinel logic without new upstream runner evidence and maintainer approval.

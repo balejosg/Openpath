@@ -164,7 +164,7 @@ jobs:
   # ============================================
   test-windows:
     name: Windows Agent Tests (Pester)
-    runs-on: windows-2025
+    runs-on: [self-hosted, Windows, X64, proxmox, openpath]
     timeout-minutes: 25
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.windows_bound == 'true'
