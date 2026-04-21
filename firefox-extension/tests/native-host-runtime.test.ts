@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -63,6 +63,60 @@ void test('native host confirms local DNS blocks when OpenPath CLI is unavailabl
       policy_active: true,
       resolves: false,
       resolved_ip: null,
+    },
+  ]);
+});
+
+void test('native host treats CLI sinkhole responses as blocked', () => {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'openpath-native-host-'));
+  const whitelistPath = join(runtimeDir, 'whitelist.txt');
+  const fakeOpenPath = join(runtimeDir, 'openpath');
+  writeFileSync(whitelistPath, '## WHITELIST\nallowed.example\n', 'utf8');
+  writeFileSync(
+    fakeOpenPath,
+    [
+      '#!/bin/sh',
+      'if [ "$1" = "check" ]; then',
+      '  printf "Verificando: %s\\n\\n" "$2"',
+      '  printf "  En whitelist: ✗ NO\\n"',
+      '  printf "  Resuelve: ✓ → 192.0.2.1\\n"',
+      '  exit 0',
+      'fi',
+      'exit 1',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  chmodSync(fakeOpenPath, 0o755);
+
+  const response = runNativeHostCheck(
+    {
+      ...process.env,
+      OPENPATH_SYSTEM_DISABLED_FLAG: join(runtimeDir, 'system-disabled.flag'),
+      OPENPATH_WHITELIST_CMD: fakeOpenPath,
+      OPENPATH_WHITELIST_FILE: whitelistPath,
+      XDG_DATA_HOME: runtimeDir,
+    },
+    ['blocked.example']
+  ) as {
+    results?: {
+      domain?: string;
+      in_whitelist?: boolean;
+      policy_active?: boolean;
+      resolved_ip?: string | null;
+      resolves?: boolean;
+    }[];
+    success?: boolean;
+  };
+
+  assert.equal(response.success, true);
+  assert.deepEqual(response.results, [
+    {
+      domain: 'blocked.example',
+      in_whitelist: false,
+      policy_active: true,
+      resolves: false,
+      resolved_ip: '192.0.2.1',
     },
   ]);
 });

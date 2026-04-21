@@ -35,6 +35,7 @@ interface ConfirmBlockedScreenContext extends BlockedScreenContext {
 }
 
 const NATIVE_HOST_NAME = 'whitelist_native_host';
+const BLOCKED_DNS_SENTINELS = new Set(['0.0.0.0', '::', '192.0.2.1', '100::']);
 interface BackgroundRuntimeOptions {
   hostName?: string;
 }
@@ -50,7 +51,12 @@ export function isNativePolicyBlockedResult(
     return false;
   }
 
-  const resolves = result.resolves ?? result.resolvedIp !== undefined;
+  const resolvedIp =
+    typeof result.resolvedIp === 'string' && result.resolvedIp.length > 0
+      ? result.resolvedIp
+      : null;
+  const resolves =
+    result.resolves ?? (resolvedIp !== null && !BLOCKED_DNS_SENTINELS.has(resolvedIp));
   return !result.inWhitelist && !resolves;
 }
 

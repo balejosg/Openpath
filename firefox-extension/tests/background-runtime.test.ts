@@ -59,3 +59,15 @@ void test('native policy confirmation requires a denied domain that does not res
     false
   );
 });
+
+void test('native policy confirmation treats null resolvedIp as unresolved', () => {
+  assert.equal(
+    isNativePolicyBlockedResult({
+      domain: 'legacy-null-ip.example',
+      inWhitelist: false,
+      policyActive: true,
+      resolvedIp: null,
+    } as unknown as Parameters<typeof isNativePolicyBlockedResult>[0]),
+    true
+  );
+});

@@ -32,6 +32,7 @@ MAX_DOMAINS = 50
 MAX_PATH_RULES = 500
 MAX_LOG_SIZE_MB = 5
 BLOCKED_DNS_SENTINELS = {"0.0.0.0", "::", "192.0.2.1", "100::"}
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def get_log_path():
@@ -246,6 +247,14 @@ def resolve_domain_with_system_dns(domain):
     return False, first_blocked_sentinel
 
 
+def is_blocked_dns_sentinel(ip):
+    return ip in BLOCKED_DNS_SENTINELS
+
+
+def clean_cli_token(value):
+    return ANSI_ESCAPE_RE.sub("", value).strip()
+
+
 def check_domain(domain):
     """
     Verifica si un dominio está en la whitelist y si resuelve.
@@ -290,11 +299,14 @@ def check_domain(domain):
             result["in_whitelist"] = True
 
         if "→" in output:
-            result["resolves"] = True
             # Extraer IP
             ip_match = re.search(r"→\s*(\S+)", output)
             if ip_match:
-                result["resolved_ip"] = ip_match.group(1)
+                resolved_ip = clean_cli_token(ip_match.group(1))
+                result["resolved_ip"] = resolved_ip
+                result["resolves"] = not is_blocked_dns_sentinel(resolved_ip)
+            else:
+                result["resolves"] = True
 
     except subprocess.TimeoutExpired:
         log_debug(f"Timeout checking domain: {domain}")
