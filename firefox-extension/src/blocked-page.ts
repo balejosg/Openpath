@@ -111,6 +111,11 @@ function getBrowserRuntime(): BlockedPageRuntime | null {
     chrome?: { runtime?: Partial<CallbackRuntime> };
   };
 
+  const runtime = globalWithRuntime.browser?.runtime;
+  if (typeof runtime?.sendMessage === 'function') {
+    return { sendMessage: runtime.sendMessage.bind(runtime) };
+  }
+
   const callbackRuntime = globalWithRuntime.chrome?.runtime;
   if (typeof callbackRuntime?.sendMessage === 'function') {
     const sendMessage = callbackRuntime.sendMessage.bind(callbackRuntime);
@@ -134,10 +139,7 @@ function getBrowserRuntime(): BlockedPageRuntime | null {
     };
   }
 
-  const runtime = globalWithRuntime.browser?.runtime;
-  return typeof runtime?.sendMessage === 'function'
-    ? { sendMessage: runtime.sendMessage.bind(runtime) }
-    : null;
+  return null;
 }
 
 async function copyText(text: string): Promise<boolean> {
