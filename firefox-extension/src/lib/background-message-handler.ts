@@ -1,7 +1,9 @@
 import type { Runtime } from 'webextension-polyfill';
 
 import {
+  GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION,
   SUBMIT_BLOCKED_DOMAIN_REQUEST_ACTION,
+  isGetRecentBlockedDomainRequestStatusMessage,
   isSubmitBlockedDomainRequestMessage,
 } from './blocked-screen-contract.js';
 import type { NativeResponse, VerifyResponse } from './native-messaging-client.js';
@@ -18,6 +20,18 @@ interface BackgroundMessage {
   tabId: number;
   type?: string;
   url?: string;
+}
+
+const RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_TTL_MS = 120_000;
+
+interface RecentBlockedDomainRequestStatus {
+  request: SubmitBlockedDomainResult;
+  storedAt: number;
+}
+
+function normalizeRecentBlockedDomainKey(domain: unknown): string | null {
+  const normalized = typeof domain === 'string' ? domain.trim().toLowerCase() : '';
+  return normalized.length > 0 ? normalized : null;
 }
 
 export interface BackgroundMessageHandlerDeps {
@@ -70,6 +84,42 @@ export function buildSubmitBlockedDomainInput(
 export function createBackgroundMessageHandler(
   deps: BackgroundMessageHandlerDeps
 ): (message: unknown, sender: Runtime.MessageSender) => Promise<unknown> {
+  const recentBlockedDomainRequestStatuses = new Map<string, RecentBlockedDomainRequestStatus>();
+
+  function saveRecentBlockedDomainRequestStatus(
+    input: SubmitBlockedDomainInput,
+    request: SubmitBlockedDomainResult
+  ): void {
+    const domainKey = normalizeRecentBlockedDomainKey(input.domain);
+    if (!domainKey || !request.success) {
+      return;
+    }
+
+    recentBlockedDomainRequestStatuses.set(domainKey, {
+      request,
+      storedAt: Date.now(),
+    });
+  }
+
+  function readRecentBlockedDomainRequestStatus(domain: string): SubmitBlockedDomainResult | null {
+    const domainKey = normalizeRecentBlockedDomainKey(domain);
+    if (!domainKey) {
+      return null;
+    }
+
+    const cached = recentBlockedDomainRequestStatuses.get(domainKey);
+    if (!cached) {
+      return null;
+    }
+
+    if (Date.now() - cached.storedAt > RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_TTL_MS) {
+      recentBlockedDomainRequestStatuses.delete(domainKey);
+      return null;
+    }
+
+    return cached.request;
+  }
+
   return async (message: unknown, _sender: Runtime.MessageSender): Promise<unknown> => {
     const msg = message as BackgroundMessage;
 
@@ -161,10 +211,23 @@ export function createBackgroundMessageHandler(
             return { success: false, error: 'domain and reason are required' };
           }
 
-          return await deps.submitBlockedDomainRequest(buildSubmitBlockedDomainInput(msg));
+          const input = buildSubmitBlockedDomainInput(msg);
+          const result = await deps.submitBlockedDomainRequest(input);
+          saveRecentBlockedDomainRequestStatus(input, result);
+          return result;
         } catch (error) {
           return { success: false, error: deps.getErrorMessage(error) };
         }
+
+      case GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION:
+        if (!isGetRecentBlockedDomainRequestStatusMessage(message)) {
+          return { success: false, error: 'domain is required' };
+        }
+
+        return {
+          success: true,
+          request: readRecentBlockedDomainRequestStatus(message.domain),
+        };
 
       case 'triggerWhitelistUpdate':
         try {

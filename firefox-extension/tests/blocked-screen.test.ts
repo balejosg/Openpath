@@ -4,6 +4,10 @@ import { test, describe } from 'node:test';
 
 import { main } from '../src/blocked-page.js';
 
+type MockRuntimeResponse =
+  | Record<string, unknown>
+  | ((message: unknown) => Record<string, unknown>);
+
 class MockElement {
   className = '';
   disabled = false;
@@ -53,7 +57,7 @@ function normalizeMessages(messages: unknown[]): Record<string, unknown>[] {
 }
 
 function runBlockedScript(
-  response: unknown,
+  response: MockRuntimeResponse,
   search = '?domain=learning.example&error=NS_ERROR_UNKNOWN_HOST&origin=portal.example',
   runtimeApi: 'browser-promise' | 'chrome-callback' | 'browser-and-chrome' = 'browser-promise',
   sessionStorageStore = new Map<string, string>()
@@ -78,6 +82,8 @@ function runBlockedScript(
   const elements = new Map(ids.map((id) => [id, new MockElement()]));
   const messages: unknown[] = [];
   const runtimeApis: string[] = [];
+  const resolveResponse = (message: unknown): unknown =>
+    typeof response === 'function' ? response(message) : response;
 
   const runtimeGlobals =
     runtimeApi === 'browser-and-chrome'
@@ -89,7 +95,7 @@ function runBlockedScript(
                 sendMessage: (message: unknown): Promise<unknown> => {
                   runtimeApis.push('browser');
                   messages.push(message);
-                  return Promise.resolve(response);
+                  return Promise.resolve(resolveResponse(message));
                 },
               },
             },
@@ -120,7 +126,7 @@ function runBlockedScript(
                   ): void => {
                     runtimeApis.push('chrome');
                     messages.push(message);
-                    callback?.(response);
+                    callback?.(resolveResponse(message));
                   },
                 },
               },
@@ -134,7 +140,7 @@ function runBlockedScript(
                   sendMessage: (message: unknown): Promise<unknown> => {
                     runtimeApis.push('browser');
                     messages.push(message);
-                    return Promise.resolve(response);
+                    return Promise.resolve(resolveResponse(message));
                   },
                 },
               },
@@ -273,6 +279,38 @@ void describe('blocked screen', () => {
 
     assert.deepStrictEqual(secondLoad.messages, []);
     assert.match(secondLoad.elements.get('request-status')?.textContent ?? '', /Solicitud enviada/);
+  });
+
+  void test('restores a recent submitted status from the background after document replacement', async () => {
+    const { elements, messages } = runBlockedScript((message: unknown) => {
+      const action = (message as { action?: string }).action;
+      if (action === 'getRecentBlockedDomainRequestStatus') {
+        return {
+          success: true,
+          request: {
+            success: true,
+            id: 'req_128',
+            status: 'pending',
+            domain: 'learning.example',
+          },
+        };
+      }
+
+      return { success: false, error: 'should not submit again' };
+    }, '?domain=learning.example&error=OPENPATH_NATIVE_POLICY_BLOCKED&origin=portal.example');
+
+    await flushBlockedScreenAsyncHandlers();
+
+    assert.deepStrictEqual(normalizeMessages(messages), [
+      {
+        action: 'getRecentBlockedDomainRequestStatus',
+        domain: 'learning.example',
+        reason: undefined,
+        origin: undefined,
+        error: undefined,
+      },
+    ]);
+    assert.match(elements.get('request-status')?.textContent ?? '', /Solicitud enviada/);
   });
 
   void test('uses callback runtime messaging when the blocked page runs on the chrome namespace', async () => {

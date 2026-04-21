@@ -1,4 +1,6 @@
 export const SUBMIT_BLOCKED_DOMAIN_REQUEST_ACTION = 'submitBlockedDomainRequest' as const;
+export const GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION =
+  'getRecentBlockedDomainRequestStatus' as const;
 
 export interface BlockedScreenContext {
   blockedDomain: string;
@@ -20,6 +22,11 @@ export interface SubmitBlockedDomainRequestMessage {
   reason: string;
   origin?: string | undefined;
   error?: string | undefined;
+}
+
+export interface GetRecentBlockedDomainRequestStatusMessage {
+  action: typeof GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION;
+  domain: string;
 }
 
 export interface BlockedMonitorNavigation {
@@ -86,6 +93,15 @@ export function buildSubmitBlockedDomainRequestMessage(
   return message;
 }
 
+export function buildGetRecentBlockedDomainRequestStatusMessage(
+  domain: string
+): GetRecentBlockedDomainRequestStatusMessage {
+  return {
+    action: GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION,
+    domain,
+  };
+}
+
 export function isSubmitBlockedDomainRequestMessage(
   message: unknown
 ): message is SubmitBlockedDomainRequestMessage {
@@ -98,6 +114,18 @@ export function isSubmitBlockedDomainRequestMessage(
     typeof record.reason === 'string' &&
     isOptionalString(record.origin) &&
     isOptionalString(record.error)
+  );
+}
+
+export function isGetRecentBlockedDomainRequestStatusMessage(
+  message: unknown
+): message is GetRecentBlockedDomainRequestStatusMessage {
+  const record = message as Partial<GetRecentBlockedDomainRequestStatusMessage> | null;
+  return (
+    typeof record === 'object' &&
+    record !== null &&
+    record.action === GET_RECENT_BLOCKED_DOMAIN_REQUEST_STATUS_ACTION &&
+    typeof record.domain === 'string'
   );
 }
 

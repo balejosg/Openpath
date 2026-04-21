@@ -207,6 +207,47 @@ await describe('background message handler', async () => {
     assert.deepEqual(response, { success: true, status: 'pending' });
   });
 
+  await test('returns a recent successful blocked-domain submission for replacement blocked pages', async () => {
+    const handler = createHandlerFixture({
+      submitBlockedDomainRequest: (input) =>
+        Promise.resolve({
+          success: true,
+          id: 'request-1',
+          status: 'pending',
+          ...(input.domain !== undefined ? { domain: input.domain } : {}),
+        }),
+    });
+
+    await handler(
+      {
+        action: SUBMIT_BLOCKED_DOMAIN_REQUEST_ACTION,
+        tabId: 1,
+        domain: 'example.com',
+        reason: 'needed for class',
+      },
+      {}
+    );
+
+    const response = await handler(
+      {
+        action: 'getRecentBlockedDomainRequestStatus',
+        tabId: 1,
+        domain: 'example.com',
+      },
+      {}
+    );
+
+    assert.deepEqual(response, {
+      success: true,
+      request: {
+        success: true,
+        id: 'request-1',
+        status: 'pending',
+        domain: 'example.com',
+      },
+    });
+  });
+
   await test('reports hostname validation errors for retryLocalUpdate', async () => {
     const handler = createHandlerFixture();
 

@@ -1,5 +1,6 @@
 import {
   buildBlockedScreenContextFromSearch,
+  buildGetRecentBlockedDomainRequestStatusMessage,
   buildSubmitBlockedDomainRequestMessage,
 } from './lib/blocked-screen-contract.js';
 
@@ -15,6 +16,10 @@ interface CallbackRuntime {
 type RequestStatusType = 'success' | 'error' | 'pending';
 
 const RECENT_REQUEST_STATUS_TTL_MS = 120_000;
+const BACKGROUND_REQUEST_STATUS_RESTORE_WINDOW_MS = 30_000;
+const BACKGROUND_REQUEST_STATUS_RESTORE_INTERVAL_MS = 500;
+const NATIVE_POLICY_BLOCKED_ERROR = 'OPENPATH_NATIVE_POLICY_BLOCKED';
+const REQUEST_SUBMITTED_SUCCESS_TEXT = 'Solicitud enviada. Quedara pendiente hasta que la revisen.';
 
 function getElement(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -75,6 +80,11 @@ function saveRecentRequestStatus(domain: string, text: string, type: RequestStat
   }
 }
 
+function showSubmittedRequestStatus(domain: string): void {
+  setRequestStatus(REQUEST_SUBMITTED_SUCCESS_TEXT, 'success');
+  saveRecentRequestStatus(domain, REQUEST_SUBMITTED_SUCCESS_TEXT, 'success');
+}
+
 function restoreRecentRequestStatus(domain: string): void {
   const storage = getSessionStorage();
   if (!storage) return;
@@ -103,6 +113,12 @@ function restoreRecentRequestStatus(domain: string): void {
   } catch {
     storage.removeItem(key);
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function getBrowserRuntime(): BlockedPageRuntime | null {
@@ -178,6 +194,31 @@ async function submitUnblockRequest(input: {
   return runtime.sendMessage(buildSubmitBlockedDomainRequestMessage(input));
 }
 
+async function restoreRecentRequestStatusFromBackground(domain: string): Promise<void> {
+  const runtime = getBrowserRuntime();
+  if (!runtime) {
+    return;
+  }
+
+  const expiresAt = Date.now() + BACKGROUND_REQUEST_STATUS_RESTORE_WINDOW_MS;
+  do {
+    const response = (await runtime.sendMessage(
+      buildGetRecentBlockedDomainRequestStatusMessage(domain)
+    )) as { success?: boolean; request?: { success?: boolean } | null } | null;
+
+    if (response?.success === true && response.request?.success === true) {
+      showSubmittedRequestStatus(domain);
+      return;
+    }
+
+    if (Date.now() >= expiresAt) {
+      return;
+    }
+
+    await delay(BACKGROUND_REQUEST_STATUS_RESTORE_INTERVAL_MS);
+  } while (Date.now() < expiresAt);
+}
+
 export function main(): void {
   const context = buildBlockedScreenContextFromSearch(window.location.search);
 
@@ -208,6 +249,9 @@ export function main(): void {
   }
 
   restoreRecentRequestStatus(context.blockedDomain);
+  if (context.error === NATIVE_POLICY_BLOCKED_ERROR) {
+    void restoreRecentRequestStatusFromBackground(context.blockedDomain);
+  }
 
   submitBtn.addEventListener('click', () => {
     void (async (): Promise<void> => {
@@ -229,9 +273,7 @@ export function main(): void {
           error: context.error,
         })) as { success?: boolean; error?: unknown } | null;
         if (response?.success === true) {
-          const successText = 'Solicitud enviada. Quedara pendiente hasta que la revisen.';
-          setRequestStatus(successText, 'success');
-          saveRecentRequestStatus(context.blockedDomain, successText, 'success');
+          showSubmittedRequestStatus(context.blockedDomain);
           reasonInput.value = '';
           return;
         }
