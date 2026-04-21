@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert';
 
-import { By, until } from 'selenium-webdriver';
+import { By, until, type WebElement } from 'selenium-webdriver';
 
 import {
   DEFAULT_BLOCKED_TIMEOUT_MS,
@@ -17,6 +17,26 @@ import type {
   OpenAndExpectLoadedOptions,
 } from './student-policy-types';
 import type { StudentPolicyDriverState } from './student-policy-driver-state';
+
+async function readElementText(
+  state: StudentPolicyDriverState,
+  element: WebElement
+): Promise<string> {
+  const driver = state.getDriver();
+  try {
+    const textContent = await driver.executeScript<string>(
+      'return arguments[0]?.textContent ?? "";',
+      element
+    );
+    if (typeof textContent === 'string' && textContent.trim().length > 0) {
+      return textContent.trim();
+    }
+  } catch {
+    // Fall back to WebDriver's visible-text extraction below.
+  }
+
+  return (await element.getText()).trim();
+}
 
 export async function openAndExpectLoaded(
   state: StudentPolicyDriverState,
@@ -129,7 +149,7 @@ export async function submitBlockedScreenRequest(
   try {
     await driver.wait(async () => {
       const statusElement = await driver.findElement(By.css('#request-status'));
-      latestStatus = (await statusElement.getText()).trim();
+      latestStatus = await readElementText(state, statusElement);
       return /Solicitud enviada|Request submitted/i.test(latestStatus);
     }, timeoutMs);
   } catch (error) {
