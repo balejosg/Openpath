@@ -36,6 +36,7 @@ export interface BackgroundMessageHandlerDeps {
     success: true;
     version: string;
   };
+  getOpenPathDiagnostics: (domains: string[]) => Promise<unknown>;
   getSystemHostname: () => Promise<unknown>;
   isNativeHostAvailable: () => Promise<boolean>;
   retryLocalUpdate: (tabId: number, hostname: string) => Promise<{ success: boolean }>;
@@ -89,6 +90,16 @@ export function createBackgroundMessageHandler(
       case 'getNativeBlockedPathsDebug':
         try {
           return await deps.getNativeBlockedPathsDebug();
+        } catch (error) {
+          return {
+            success: false,
+            error: deps.getErrorMessage(error),
+          };
+        }
+
+      case 'getOpenPathDiagnostics':
+        try {
+          return await deps.getOpenPathDiagnostics(Array.isArray(msg.domains) ? msg.domains : []);
         } catch (error) {
           return {
             success: false,

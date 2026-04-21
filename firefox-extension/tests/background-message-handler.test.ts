@@ -26,6 +26,29 @@ function createHandlerFixture(
       rawRules: ['example.com/*'],
       compiledPatterns: ['*://example.com/*'],
     }),
+    getOpenPathDiagnostics: (domains) =>
+      Promise.resolve({
+        success: true,
+        extensionOrigin: 'moz-extension://unit-test/',
+        manifestVersion: '2.0.0',
+        nativeAvailable: true,
+        nativeCheck: {
+          success: true,
+          results: domains.map((domain) => ({
+            domain,
+            inWhitelist: false,
+            policyActive: true,
+            resolves: false,
+          })),
+        },
+        pathRules: {
+          success: true,
+          version: 'v1',
+          count: 1,
+          rawRules: ['example.com/*'],
+          compiledPatterns: ['*://example.com/*'],
+        },
+      }),
     getSystemHostname: () => Promise.resolve({ success: true, hostname: 'lab-pc-01' }),
     isNativeHostAvailable: () => Promise.resolve(true),
     retryLocalUpdate: () => Promise.resolve({ success: true }),
@@ -97,6 +120,44 @@ await describe('background message handler', async () => {
       outcome: {
         cancel: true,
         url: 'https://example.com/private',
+      },
+    });
+  });
+
+  await test('returns extension diagnostics for canary boundary checks', async () => {
+    const handler = createHandlerFixture();
+
+    const response = await handler(
+      {
+        action: 'getOpenPathDiagnostics',
+        domains: ['blocked.example'],
+        tabId: 1,
+      },
+      {}
+    );
+
+    assert.deepEqual(response, {
+      success: true,
+      extensionOrigin: 'moz-extension://unit-test/',
+      manifestVersion: '2.0.0',
+      nativeAvailable: true,
+      nativeCheck: {
+        success: true,
+        results: [
+          {
+            domain: 'blocked.example',
+            inWhitelist: false,
+            policyActive: true,
+            resolves: false,
+          },
+        ],
+      },
+      pathRules: {
+        success: true,
+        version: 'v1',
+        count: 1,
+        rawRules: ['example.com/*'],
+        compiledPatterns: ['*://example.com/*'],
       },
     });
   });

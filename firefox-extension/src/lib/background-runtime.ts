@@ -132,6 +132,35 @@ export function createBackgroundRuntime(
     return await nativeMessagingClient.isAvailable();
   }
 
+  async function getOpenPathDiagnostics(domains: string[]): Promise<unknown> {
+    const requestedDomains = domains
+      .map((domain) => domain.trim().toLowerCase())
+      .filter((domain) => domain.length > 0);
+    const [nativeAvailable, nativeCheck, nativeBlockedPaths] = await Promise.all([
+      isNativeHostAvailable().catch(() => false),
+      requestedDomains.length > 0
+        ? checkDomainsWithNative(requestedDomains).catch((error: unknown) => ({
+            success: false,
+            results: [],
+            error: getErrorMessage(error),
+          }))
+        : Promise.resolve({ success: true, results: [] }),
+      nativeMessagingClient
+        .sendMessage({ action: 'get-blocked-paths' })
+        .catch((error: unknown) => ({ success: false, error: getErrorMessage(error) })),
+    ]);
+
+    return {
+      success: true,
+      extensionOrigin,
+      manifestVersion: browser.runtime.getManifest().version,
+      nativeAvailable,
+      nativeCheck,
+      nativeBlockedPaths,
+      pathRules: blockedPathRulesController.getDebugState(),
+    };
+  }
+
   async function submitBlockedDomainRequest(
     input: SubmitBlockedDomainInput
   ): Promise<SubmitBlockedDomainResult> {
@@ -180,6 +209,7 @@ export function createBackgroundRuntime(
       (await nativeMessagingClient.sendMessage({
         action: 'get-blocked-paths',
       })) as NativeBlockedPathsResponse,
+    getOpenPathDiagnostics,
     getPathRulesDebug: blockedPathRulesController.getDebugState,
     getSystemHostname: () => nativeMessagingClient.sendMessage({ action: 'get-hostname' }),
     isNativeHostAvailable,
