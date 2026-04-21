@@ -1,0 +1,50 @@
+name: Self-Hosted Linux Runner Smoke
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-linux-runner-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Linux runner smoke
+    runs-on: [self-hosted, Linux, X64, proxmox, openpath]
+    timeout-minutes: 5
+
+    steps:
+      - name: Check runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+
+          if [ "$RUNNER_NAME" != "openpath-linux-102" ]; then
+            echo "::error::Expected openpath-linux-102, got $RUNNER_NAME"
+            exit 1
+          fi
+
+          if [ "$RUNNER_OS" != "Linux" ] || [ "$RUNNER_ARCH" != "X64" ]; then
+            echo "::error::Expected Linux/X64, got $RUNNER_OS/$RUNNER_ARCH"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run non-mutating workspace check
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f package.json
+          test -d .github/workflows
+          git status --short
