@@ -1,4 +1,4 @@
-import type { Browser, WebNavigation, WebRequest } from 'webextension-polyfill';
+import type { Browser, Runtime, WebNavigation, WebRequest } from 'webextension-polyfill';
 import { getErrorMessage, logger } from './logger.js';
 import { shouldClearBlockedMonitorStateOnNavigate } from './blocked-screen-contract.js';
 import {
@@ -58,8 +58,29 @@ interface BackgroundListenersOptions {
     details: WebRequest.OnBeforeRequestDetailsType
   ) => { cancel?: boolean; redirectUrl?: string; reason?: string } | null;
   confirmBlockedScreenNavigation?: (context: ConfirmBlockedScreenContext) => Promise<boolean>;
-  handleRuntimeMessage: Parameters<Browser['runtime']['onMessage']['addListener']>[0];
+  handleRuntimeMessage: (message: unknown, sender: Runtime.MessageSender) => Promise<unknown>;
   redirectToBlockedScreen: (context: BlockedScreenContext) => Promise<void>;
+}
+
+function createRuntimeMessageResponder(
+  handleRuntimeMessage: BackgroundListenersOptions['handleRuntimeMessage']
+): (
+  message: unknown,
+  sender: Runtime.MessageSender,
+  sendResponse: (response: unknown) => void
+) => true {
+  return (message, sender, sendResponse) => {
+    void Promise.resolve(handleRuntimeMessage(message, sender)).then(
+      (response) => {
+        sendResponse(response);
+      },
+      (error: unknown) => {
+        sendResponse({ success: false, error: getErrorMessage(error) });
+      }
+    );
+
+    return true;
+  };
 }
 
 function isTopFrameNavigation(details: { frameId?: number; type?: string }): boolean {
@@ -343,5 +364,7 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     logger.debug(`[Monitor] Tab ${tabId.toString()} cerrada, datos eliminados`);
   });
 
-  options.browser.runtime.onMessage.addListener(options.handleRuntimeMessage);
+  options.browser.runtime.onMessage.addListener(
+    createRuntimeMessageResponder(options.handleRuntimeMessage)
+  );
 }

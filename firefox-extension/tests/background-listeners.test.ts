@@ -45,6 +45,7 @@ function waitForAsyncListeners(): Promise<void> {
 function createListenerHarness(
   options: {
     confirmBlockedScreenNavigation?: (context: ConfirmBlockedScreenContext) => Promise<boolean>;
+    handleRuntimeMessage?: (message: unknown, sender: unknown) => unknown;
   } = {}
 ): {
   addedBlocks: BlockedScreenContext[];
@@ -52,6 +53,9 @@ function createListenerHarness(
   beforeRequestFilters: unknown[];
   confirmCalls: ConfirmBlockedScreenContext[];
   redirects: BlockedScreenContext[];
+  runtimeMessage:
+    | ((message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => unknown)
+    | null;
   webRequestBefore: WebRequestBeforeListener | null;
   webNavigationBefore: WebNavigationBeforeListener | null;
   webNavigationError: WebNavigationErrorListener | null;
@@ -66,6 +70,9 @@ function createListenerHarness(
   let webRequestError: WebRequestErrorListener | null = null;
   let webNavigationBefore: WebNavigationBeforeListener | null = null;
   let webNavigationError: WebNavigationErrorListener | null = null;
+  let runtimeMessage:
+    | ((message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => unknown)
+    | null = null;
 
   const browser = {
     webRequest: {
@@ -96,7 +103,13 @@ function createListenerHarness(
     runtime: {
       getURL: (path: string) => `moz-extension://unit-test/${path}`,
       onMessage: {
-        addListener: () => undefined,
+        addListener: (listener: unknown): void => {
+          runtimeMessage = listener as (
+            message: unknown,
+            sender: unknown,
+            sendResponse: (response: unknown) => void
+          ) => unknown;
+        },
       },
     },
     tabs: {
@@ -128,7 +141,8 @@ function createListenerHarness(
     clearTabRuntimeState: () => undefined,
     disposeTab: () => undefined,
     evaluateBlockedPath: () => null,
-    handleRuntimeMessage: () => undefined,
+    handleRuntimeMessage:
+      options.handleRuntimeMessage ?? ((): Promise<undefined> => Promise.resolve(undefined)),
     redirectToBlockedScreen: (context: BlockedScreenContext) => {
       redirects.push(context);
       return Promise.resolve();
@@ -154,6 +168,11 @@ function createListenerHarness(
     get webRequestBefore(): WebRequestBeforeListener | null {
       return webRequestBefore;
     },
+    get runtimeMessage():
+      | ((message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => unknown)
+      | null {
+      return runtimeMessage;
+    },
     get webNavigationBefore(): WebNavigationBeforeListener | null {
       return webNavigationBefore;
     },
@@ -167,6 +186,26 @@ function createListenerHarness(
 }
 
 void describe('background listeners blocked-screen routing', () => {
+  void test('keeps runtime message channel open until async handlers send a response', async () => {
+    const harness = createListenerHarness({
+      handleRuntimeMessage: () => Promise.resolve({ success: true, id: 'request-1' }),
+    });
+    assert.ok(harness.runtimeMessage);
+
+    const responses: unknown[] = [];
+    const keepAlive = harness.runtimeMessage(
+      { action: 'submitBlockedDomainRequest' },
+      { tab: { id: 1 } },
+      (response) => {
+        responses.push(response);
+      }
+    );
+
+    assert.equal(keepAlive, true);
+    await waitForAsyncListeners();
+    assert.deepEqual(responses, [{ success: true, id: 'request-1' }]);
+  });
+
   void test('registers path blocking only for frame navigation request types', () => {
     const harness = createListenerHarness();
 
