@@ -431,6 +431,13 @@ test('required Windows CI runs Pester in an untracked child host without success
     'the self-hosted Windows reset helper should normalize Acrylic and Firefox policy state between jobs'
   );
   assert.ok(
+    windowsRunnerReset.includes('Stop-Service -Name $acrylicServiceName') &&
+      !windowsRunnerReset.includes('sc.exe delete $acrylicServiceName') &&
+      !windowsRunnerReset.includes('Acrylic DNS Proxy",') &&
+      !windowsRunnerReset.includes("Acrylic DNS Proxy'"),
+    'the self-hosted Windows reset helper should preserve runner-provisioned Acrylic binaries and service for fast Windows lanes'
+  );
+  assert.ok(
     !windowsJobBlock.includes('git init .'),
     'ci.yml should not keep the manual Windows checkout workaround once the lane returns to the direct Pester pattern'
   );

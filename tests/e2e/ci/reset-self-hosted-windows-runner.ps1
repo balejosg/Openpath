@@ -38,12 +38,9 @@ Get-Process -ErrorAction SilentlyContinue |
 
 $acrylicServiceName = 'AcrylicDNSProxySvc'
 Stop-Service -Name $acrylicServiceName -Force -ErrorAction SilentlyContinue
-& sc.exe delete $acrylicServiceName 2>$null | Out-Null
 
 $pathsToRemove = @(
-    'C:\OpenPath',
-    "${env:ProgramFiles}\Acrylic DNS Proxy",
-    "${env:ProgramFiles(x86)}\Acrylic DNS Proxy"
+    'C:\OpenPath'
 )
 
 foreach ($path in $pathsToRemove) {
