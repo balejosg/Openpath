@@ -21,6 +21,21 @@ function Get-OpenPathDnsSettings {
     return [PSCustomObject]$settings
 }
 
+function Resolve-SslipIpv4Address {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Domain)
+
+    $match = [regex]::Match($Domain, '(?i)(?:^|\.)(?<ip>(?:\d{1,3}\.){3}\d{1,3})\.sslip\.io$')
+    if (-not $match.Success) { return $null }
+
+    $octets = @($match.Groups['ip'].Value.Split('.') | ForEach-Object { [int]$_ })
+    foreach ($octet in $octets) {
+        if ($octet -lt 0 -or $octet -gt 255) { return $null }
+    }
+
+    return ($octets -join '.')
+}
+
 function Get-AcrylicForwardRules {
     [CmdletBinding()]
     param(
@@ -30,6 +45,7 @@ function Get-AcrylicForwardRules {
 
     $normalizedDomain = $Domain.Trim()
     if (-not $normalizedDomain) { return @() }
+    $sslipIpv4Address = Resolve-SslipIpv4Address -Domain $normalizedDomain
 
     $blockedDescendants = @(
         foreach ($subdomain in @($BlockedSubdomains)) {
@@ -42,6 +58,10 @@ function Get-AcrylicForwardRules {
     )
 
     if ($blockedDescendants.Count -eq 0) {
+        if ($sslipIpv4Address) {
+            return @("$sslipIpv4Address $normalizedDomain", "$sslipIpv4Address >$normalizedDomain")
+        }
+
         return @("FW $normalizedDomain", "FW >$normalizedDomain")
     }
 

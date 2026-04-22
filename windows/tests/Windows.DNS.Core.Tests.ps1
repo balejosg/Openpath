@@ -153,6 +153,25 @@ Describe "DNS Module" {
             }
         }
 
+        It "Resolves sslip.io fixture domains locally without relying on upstream DNS" {
+            InModuleScope DNS {
+                $definition = New-AcrylicHostsDefinition `
+                    -WhitelistedDomains @('portal.127.0.0.1.sslip.io', 'site.10.20.30.40.sslip.io') `
+                    -DnsSettings ([PSCustomObject]@{
+                        PrimaryDNS = '1.1.1.1'
+                        SecondaryDNS = '1.0.0.1'
+                        MaxDomains = 10
+                    })
+
+                $content = ConvertTo-AcrylicHostsContent -Definition $definition
+
+                $content | Should -Match '127\.0\.0\.1 portal\.127\.0\.0\.1\.sslip\.io'
+                $content | Should -Match '127\.0\.0\.1 >portal\.127\.0\.0\.1\.sslip\.io'
+                $content | Should -Match '10\.20\.30\.40 site\.10\.20\.30\.40\.sslip\.io'
+                $content | Should -Not -Match 'FW portal\.127\.0\.0\.1\.sslip\.io'
+            }
+        }
+
         It "Keeps Acrylic hosts modeling and rendering split into helpers" {
             $modulePath = Join-Path $PSScriptRoot ".." "lib" "DNS.psm1"
             $configPath = Join-Path $PSScriptRoot ".." "lib" "internal" "DNS.Acrylic.Config.ps1"
