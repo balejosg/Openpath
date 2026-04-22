@@ -241,7 +241,6 @@ function Set-AcrylicConfiguration {
 
     $configPath = "$acrylicPath\AcrylicConfiguration.ini"
     $dnsSettings = Get-OpenPathDnsSettings
-    $definition = New-AcrylicHostsDefinition -WhitelistedDomains $WhitelistedDomains -DnsSettings $dnsSettings
     Write-OpenPathLog "Configuring Acrylic..."
 
     $iniContent = if (Test-Path $configPath) { Get-Content $configPath -Raw } else { "" }
@@ -250,8 +249,8 @@ function Set-AcrylicConfiguration {
         "SecondaryServerAddress" = $dnsSettings.SecondaryDNS
         "LocalIPv4BindingAddress" = "127.0.0.1"
         "LocalIPv4BindingPort" = "53"
-        "PrimaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask
-        "SecondaryServerDomainNameAffinityMask" = $definition.DomainAffinityMask
+        "PrimaryServerDomainNameAffinityMask" = ""
+        "SecondaryServerDomainNameAffinityMask" = ""
         "IgnoreNegativeResponsesFromPrimaryServer" = "No"
         "IgnoreNegativeResponsesFromSecondaryServer" = "No"
         "AddressCacheDisabled" = "Yes"
