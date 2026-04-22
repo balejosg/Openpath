@@ -244,6 +244,9 @@ function Set-AcrylicConfiguration {
     Write-OpenPathLog "Configuring Acrylic..."
 
     $iniContent = if (Test-Path $configPath) { Get-Content $configPath -Raw } else { "" }
+    if ($iniContent -notmatch '(?m)^\[GlobalSection\]\s*$') {
+        $iniContent = "[GlobalSection]`n$iniContent"
+    }
     $settings = @{
         "PrimaryServerAddress" = $dnsSettings.PrimaryDNS
         "SecondaryServerAddress" = $dnsSettings.SecondaryDNS

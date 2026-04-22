@@ -483,6 +483,16 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('windows Acrylic configuration keeps required global section for fresh portable installs', () => {
+    const dnsConfigModule = readText('windows/lib/internal/DNS.Acrylic.Config.ps1');
+
+    assert.match(
+      dnsConfigModule,
+      /if \(\$iniContent -notmatch '\(\?m\)\^\\\[GlobalSection\\\]\\s\*\$'\) \{\s*\$iniContent = "\[GlobalSection\]`n\$iniContent"\s*\}/,
+      'Set-AcrylicConfiguration should create [GlobalSection] before writing settings when AcrylicConfiguration.ini is missing or sectionless'
+    );
+  });
+
   test('Windows student-policy diagnostics capture Acrylic DNS state and sslip probes', () => {
     const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
 

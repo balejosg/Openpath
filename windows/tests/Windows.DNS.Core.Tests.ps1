@@ -255,6 +255,7 @@ Describe "DNS Module" {
             $result | Should -BeTrue
             $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
             Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                '[GlobalSection]',
                 'PrimaryServerDomainNameAffinityMask=',
                 'SecondaryServerDomainNameAffinityMask=',
                 'IgnoreNegativeResponsesFromPrimaryServer=No',
@@ -295,6 +296,7 @@ Describe "DNS Module" {
             $result | Should -BeTrue
             $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
             Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
+                '[GlobalSection]',
                 'PrimaryServerDomainNameAffinityMask=',
                 'IgnoreNegativeResponsesFromPrimaryServer=No',
                 'AddressCacheDisabled=Yes'
