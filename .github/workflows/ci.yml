@@ -11,7 +11,13 @@ on:
       - 'tests/**'
       - '.release-please-manifest.json'
       - 'release-please-config.json'
+      - 'scripts/require-release-quality-gate.mjs'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/e2e-tests.yml'
+      - '.github/workflows/installer-contracts.yml'
+      - '.github/workflows/prerelease-deb.yml'
+      - '.github/workflows/release-extension.yml'
+      - '.github/workflows/release-scripts.yml'
   pull_request:
     branches: [main]
     paths:
@@ -22,7 +28,13 @@ on:
       - 'tests/**'
       - '.release-please-manifest.json'
       - 'release-please-config.json'
+      - 'scripts/require-release-quality-gate.mjs'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/e2e-tests.yml'
+      - '.github/workflows/installer-contracts.yml'
+      - '.github/workflows/prerelease-deb.yml'
+      - '.github/workflows/release-extension.yml'
+      - '.github/workflows/release-scripts.yml'
   workflow_dispatch:
 
 permissions:
@@ -100,12 +112,18 @@ jobs:
           if echo "$changed_files" | grep -Eq '^(linux/|tests/[^/]+\.bats$|tests/e2e/agent-integration\.bats$|tests/e2e/ci/run-linux-[^/]+\.sh|tests/e2e/Dockerfile|\.github/workflows/ci\.yml$)'; then
             linux_bound=true
           fi
+          if echo "$changed_files" | grep -Eq '^(scripts/require-release-quality-gate\.mjs$|\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\.yml$)'; then
+            linux_bound=true
+          fi
 
           if echo "$changed_files" | grep -Eq '^(windows/|tests/e2e/Windows-E2E\.Tests\.ps1|tests/e2e/ci/run-windows-pester-isolated\.ps1|tests/e2e/ci/run-windows-[^/]+\.ps1|\.github/workflows/ci\.yml$)'; then
             windows_bound=true
           fi
+          if echo "$changed_files" | grep -Eq '^(scripts/require-release-quality-gate\.mjs$|\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\.yml$)'; then
+            windows_bound=true
+          fi
 
-          if echo "$changed_files" | grep -Eq '^(api/|firefox-extension/|windows/|tests/|\.github/workflows/ci\.yml$)'; then
+          if echo "$changed_files" | grep -Eq '^(api/|firefox-extension/|windows/|tests/|scripts/require-release-quality-gate\.mjs$|\.github/workflows/(ci|e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\.yml$)'; then
             delivery_contracts=true
           fi
 

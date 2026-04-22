@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -36,6 +37,10 @@ jobs:
           build-api: 'false'
           build-extension: 'true'
 
+      - name: Run Firefox Extension tests
+        run: |
+          npm test --workspace=@openpath/firefox-extension
+
       - name: Extract version and prepare variables
         id: vars
         run: |
@@ -54,12 +59,17 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "release_name=Extension v${VERSION} (${SHORT_SHA})" >> $GITHUB_OUTPUT
 
-      - name: Create and push tag
-        continue-on-error: true
+      - name: Require same-commit CI, E2E, and installer evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "🏷️  Creating tag: ${{ steps.vars.outputs.tag }}"
-          git tag "${{ steps.vars.outputs.tag }}"
-          git push origin "${{ steps.vars.outputs.tag }}" || echo "Tag already exists or push failed, continuing..."
+          node scripts/require-release-quality-gate.mjs \
+            --sha "${{ github.sha }}" \
+            --require "CI::CI Success" \
+            --require "E2E Tests::E2E Summary" \
+            --require "Installer Contracts::Installer Contracts Success" \
+            --timeout-minutes 90 \
+            --poll-seconds 30
 
       - name: Build XPI package
         run: |
@@ -118,6 +128,13 @@ jobs:
             echo "  ✗ Error: Native host package not created"
             exit 1
           fi
+
+      - name: Create and push tag
+        continue-on-error: true
+        run: |
+          echo "🏷️  Creating tag: ${{ steps.vars.outputs.tag }}"
+          git tag "${{ steps.vars.outputs.tag }}"
+          git push origin "${{ steps.vars.outputs.tag }}" || echo "Tag already exists or push failed, continuing..."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

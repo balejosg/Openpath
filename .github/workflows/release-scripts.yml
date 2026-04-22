@@ -15,6 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -49,13 +50,6 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "release_name=Installation Scripts v${VERSION} (${SHORT_SHA})" >> $GITHUB_OUTPUT
 
-      - name: Create and push tag
-        continue-on-error: true
-        run: |
-          echo "🏷️  Creating tag: ${{ steps.vars.outputs.tag }}"
-          git tag "${{ steps.vars.outputs.tag }}"
-          git push origin "${{ steps.vars.outputs.tag }}" || echo "Tag already exists or push failed, continuing..."
-
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
 
@@ -75,6 +69,18 @@ jobs:
           echo "🔍 Validating package structure before creating release..."
           chmod +x tests/e2e/pre-install-validation.sh
           ./tests/e2e/pre-install-validation.sh
+
+      - name: Require same-commit CI, E2E, and installer evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/require-release-quality-gate.mjs \
+            --sha "${{ github.sha }}" \
+            --require "CI::CI Success" \
+            --require "E2E Tests::E2E Summary" \
+            --require "Installer Contracts::Installer Contracts Success" \
+            --timeout-minutes 90 \
+            --poll-seconds 30
 
       - name: Package Linux scripts
         run: |
@@ -129,6 +135,13 @@ jobs:
             echo "  ✗ Error: Windows package not created"
             exit 1
           fi
+
+      - name: Create and push tag
+        continue-on-error: true
+        run: |
+          echo "🏷️  Creating tag: ${{ steps.vars.outputs.tag }}"
+          git tag "${{ steps.vars.outputs.tag }}"
+          git push origin "${{ steps.vars.outputs.tag }}" || echo "Tag already exists or push failed, continuing..."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

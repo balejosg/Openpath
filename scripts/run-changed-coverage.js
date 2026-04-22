@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 const ROOT_DIR = resolve(import.meta.dirname, '..');
@@ -14,17 +14,82 @@ const WORKSPACE_ORDER = [
 ];
 
 function getChangedFiles() {
+  const { base, head } = parseRangeArgs(process.argv.slice(2));
+
   try {
-    const output = execSync('git diff --cached --name-only --diff-filter=ACMR', {
+    if (base) {
+      const output = gitOutput(['diff', '--name-only', '--diff-filter=ACMR', base, head]);
+
+      return output.split('\n').filter((file) => file.trim());
+    }
+
+    const staged = execSync('git diff --cached --name-only --diff-filter=ACMR', {
       encoding: 'utf-8',
       cwd: ROOT_DIR,
     });
 
-    return output.split('\n').filter((file) => file.trim());
+    const stagedFiles = staged.split('\n').filter((file) => file.trim());
+    if (stagedFiles.length > 0) {
+      return stagedFiles;
+    }
+
+    if (gitRefExists('HEAD~1')) {
+      const output = gitOutput(['diff', '--name-only', '--diff-filter=ACMR', 'HEAD~1', head]);
+
+      return output.split('\n').filter((file) => file.trim());
+    }
+
+    return [];
   } catch (error) {
-    console.error('Failed to read staged files:', error.message);
+    console.error('Failed to read changed files:', error.message);
     process.exit(1);
   }
+}
+
+function parseRangeArgs(argv) {
+  const options = {
+    base: process.env.OPENPATH_VERIFY_BASE || '',
+    head: process.env.OPENPATH_VERIFY_HEAD || 'HEAD',
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+
+    if (arg === '--base' && next) {
+      options.base = next;
+      index += 1;
+      continue;
+    }
+    if (arg === '--head' && next) {
+      options.head = next;
+      index += 1;
+      continue;
+    }
+
+    throw new Error(`Unknown or incomplete argument: ${arg}`);
+  }
+
+  return options;
+}
+
+function gitRefExists(ref) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+      cwd: ROOT_DIR,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gitOutput(args) {
+  return execFileSync('git', args, {
+    encoding: 'utf-8',
+    cwd: ROOT_DIR,
+  });
 }
 
 function getCoverageWorkspaces(files) {

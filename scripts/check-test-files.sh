@@ -23,6 +23,16 @@ skipped_count=0
 allowlisted_count=0
 manifested_count=0
 
+SCRIPT_SOURCE_PATTERNS=(
+  'linux/*.sh'
+  'linux/lib/*.sh'
+  'linux/scripts/**/*.sh'
+  'windows/*.ps1'
+  'windows/lib/**/*.ps1'
+  'windows/lib/**/*.psm1'
+  'windows/scripts/*.ps1'
+)
+
 # Load allowlist (grandfathered files)
 declare -A ALLOWLIST
 if [[ -f ".test-allowlist" ]]; then
@@ -178,6 +188,26 @@ test_exists_for() {
   return 0
 }
 
+script_test_exists_for() {
+  local src_file="$1"
+  local mapped_tests
+  mapped_tests="${TEST_FILE_MAP[$src_file]:-}"
+
+  if [[ -z "$mapped_tests" ]]; then
+    return 1
+  fi
+
+  IFS=',' read -r -a explicit_tests <<< "$mapped_tests"
+  for explicit_test in "${explicit_tests[@]}"; do
+    if [[ ! -f "$explicit_test" ]]; then
+      return 1
+    fi
+  done
+
+  ((manifested_count++)) || true
+  return 0
+}
+
 echo "Checking test file coverage for source files..."
 echo ""
 
@@ -208,6 +238,25 @@ for workspace in api react-spa shared dashboard firefox-extension; do
   done < <(find "$workspace/src" -type f \( -name "*.ts" -o -name "*.tsx" \) -print0 2>/dev/null)
 done
 
+while IFS= read -r -d '' src_file; do
+  if [[ "$src_file" == windows/tests/* || "$src_file" == tests/* ]]; then
+    ((skipped_count++)) || true
+    continue
+  fi
+
+  # Skip allowlisted (grandfathered) files
+  if is_allowlisted "$src_file"; then
+    ((allowlisted_count++)) || true
+    continue
+  fi
+
+  ((checked_count++)) || true
+
+  if ! script_test_exists_for "$src_file"; then
+    missing_tests+=("$src_file")
+  fi
+done < <(git ls-files -z "${SCRIPT_SOURCE_PATTERNS[@]}")
+
 echo "Checked: $checked_count source files"
 echo "Skipped: $skipped_count files (excluded patterns)"
 echo "Allowlisted: $allowlisted_count files (grandfathered, tech debt)"
@@ -220,6 +269,10 @@ if [[ ${#missing_tests[@]} -gt 0 ]]; then
   for file in "${missing_tests[@]}"; do
     echo -e "  ${YELLOW}$file${NC}"
     mapped_tests="${TEST_FILE_MAP[$file]:-}"
+    if [[ -z "$mapped_tests" && ( "$file" == linux/*.sh || "$file" == linux/lib/*.sh || "$file" == linux/scripts/*.sh || "$file" == windows/*.ps1 || "$file" == windows/lib/*.ps1 || "$file" == windows/lib/*.psm1 || "$file" == windows/scripts/*.ps1 ) ]]; then
+      echo "    Missing explicit .test-file-map entry"
+      continue
+    fi
     if [[ -n "$mapped_tests" ]]; then
       IFS=',' read -r -a explicit_tests <<< "$mapped_tests"
       echo "    Expected mapped suites:"

@@ -42,14 +42,16 @@ jobs:
   build-prerelease:
     name: Build Prerelease Package
     runs-on: ubuntu-latest
-    needs: ci-success
-    if: ${{ needs.ci-success.outputs.ci_success_conclusion == 'success' }}
+    needs: [ci-success, release-quality-gate]
+    if: ${{ needs.ci-success.outputs.ci_success_conclusion == 'success' && needs.release-quality-gate.result == 'success' }}
     outputs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Get version from run number
         id: version
@@ -83,6 +85,31 @@ jobs:
           name: prerelease-deb-package
           path: build/*.deb
           retention-days: 14
+
+  release-quality-gate:
+    name: Release Quality Gate
+    runs-on: ubuntu-latest
+    needs: ci-success
+    if: ${{ needs.ci-success.outputs.ci_success_conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Require same-commit CI, E2E, and installer evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/require-release-quality-gate.mjs \
+            --sha "${{ github.event.workflow_run.head_sha }}" \
+            --require "CI::CI Success" \
+            --require "E2E Tests::E2E Summary" \
+            --require "Installer Contracts::Installer Contracts Success" \
+            --timeout-minutes 90 \
+            --poll-seconds 30
 
   publish-prerelease:
     name: Publish Prerelease to APT Repository

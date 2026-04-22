@@ -145,6 +145,59 @@ describe('repository verification contract', () => {
     assert.ok(!hook.includes('[3/3]'), 'pre-commit should keep the staged guard lean');
   });
 
+  test('coverage verification can evaluate pushed commit ranges instead of staged files only', () => {
+    const verifyFullScript = readText('scripts/verify-full.sh');
+    const runChangedCoverage = readText('scripts/run-changed-coverage.js');
+    const checkNewFileCoverage = readText('scripts/check-new-file-coverage.js');
+
+    for (const script of [runChangedCoverage, checkNewFileCoverage]) {
+      assert.ok(
+        script.includes('--base') && script.includes('--head'),
+        'coverage scripts should accept explicit --base/--head ranges for pre-push and CI-style checks'
+      );
+      assert.ok(
+        script.includes('OPENPATH_VERIFY_BASE') && script.includes('OPENPATH_VERIFY_HEAD'),
+        'coverage scripts should accept OPENPATH_VERIFY_BASE/OPENPATH_VERIFY_HEAD environment overrides'
+      );
+      assert.ok(
+        script.includes('HEAD~1') && script.includes('git diff --cached'),
+        'coverage scripts should keep staged checks but fall back to the last commit when no range is supplied'
+      );
+    }
+
+    assert.ok(
+      verifyFullScript.includes('OPENPATH_VERIFY_BASE') &&
+        verifyFullScript.includes('OPENPATH_VERIFY_HEAD'),
+      'verify:full should export a concrete coverage range so committed changes are not silently skipped'
+    );
+  });
+
+  test('repository test-file enforcement covers mapped Linux and Windows client scripts', () => {
+    const checkTestFilesScript = readText('scripts/check-test-files.sh');
+
+    assert.ok(
+      checkTestFilesScript.includes('SCRIPT_SOURCE_PATTERNS'),
+      'check-test-files.sh should maintain an explicit list of non-TypeScript client script patterns'
+    );
+    assert.ok(
+      checkTestFilesScript.includes('linux/*.sh') &&
+        checkTestFilesScript.includes('linux/lib/*.sh') &&
+        checkTestFilesScript.includes('linux/scripts/**/*.sh'),
+      'check-test-files.sh should scan Linux shell entrypoints, libraries, and runtime scripts'
+    );
+    assert.ok(
+      checkTestFilesScript.includes('windows/*.ps1') &&
+        checkTestFilesScript.includes('windows/lib/**/*.ps1') &&
+        checkTestFilesScript.includes('windows/lib/**/*.psm1') &&
+        checkTestFilesScript.includes('windows/scripts/*.ps1'),
+      'check-test-files.sh should scan Windows PowerShell entrypoints, libraries, modules, and runtime scripts'
+    );
+    assert.ok(
+      checkTestFilesScript.includes('Missing explicit .test-file-map entry'),
+      'non-TypeScript client scripts should require explicit .test-file-map coverage rather than implicit filename guesses'
+    );
+  });
+
   test('api Dockerfile uses dependency-only manifests and npm cache mounts', () => {
     const dockerfile = readFileSync(resolve(projectRoot, 'api/Dockerfile'), 'utf8');
 

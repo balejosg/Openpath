@@ -900,3 +900,89 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
     'E2E summary should fail if changed-path detection fails before lane gating'
   );
 });
+
+test('release artifact workflows wait for same-commit quality evidence before publishing', () => {
+  const prereleaseWorkflow = readText('.github/workflows/prerelease-deb.yml');
+  const scriptsReleaseWorkflow = readText('.github/workflows/release-scripts.yml');
+  const extensionReleaseWorkflow = readText('.github/workflows/release-extension.yml');
+  const gateScript = readText('scripts/require-release-quality-gate.mjs');
+
+  assert.ok(
+    gateScript.includes('gh run list') && gateScript.includes('gh run view'),
+    'release quality gate should inspect GitHub Actions runs and their summary jobs with gh'
+  );
+  assert.ok(
+    gateScript.includes('--require') &&
+      gateScript.includes('workflowName') &&
+      gateScript.includes('jobName'),
+    'release quality gate should require workflow/job pairs for the same SHA'
+  );
+
+  assert.ok(
+    prereleaseWorkflow.includes('release-quality-gate:'),
+    'prerelease-deb.yml should define a dedicated release quality gate job'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes('--sha "${{ github.event.workflow_run.head_sha }}"'),
+    'prerelease-deb.yml should gate the same commit that triggered CI'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes('--require "CI::CI Success"') &&
+      prereleaseWorkflow.includes('--require "E2E Tests::E2E Summary"') &&
+      prereleaseWorkflow.includes('--require "Installer Contracts::Installer Contracts Success"'),
+    'prerelease-deb.yml should require CI, E2E, and installer contract summary jobs before publishing'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes('needs: [ci-success, release-quality-gate]'),
+    'prerelease build should not start until the same-SHA release quality gate passes'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes('ref: ${{ github.event.workflow_run.head_sha }}'),
+    'prerelease build should checkout the exact commit that passed the gate'
+  );
+
+  for (const [relativePath, workflow] of [
+    ['.github/workflows/release-scripts.yml', scriptsReleaseWorkflow],
+    ['.github/workflows/release-extension.yml', extensionReleaseWorkflow],
+  ]) {
+    assert.ok(
+      workflow.includes('actions: read'),
+      `${relativePath} should grant read access to Actions metadata for the quality gate`
+    );
+    assert.ok(
+      workflow.includes('node scripts/require-release-quality-gate.mjs') &&
+        workflow.includes('--sha "${{ github.sha }}"') &&
+        workflow.includes('--require "CI::CI Success"') &&
+        workflow.includes('--require "E2E Tests::E2E Summary"'),
+      `${relativePath} should wait for same-SHA CI and E2E summary jobs before publishing`
+    );
+    assert.ok(
+      workflow.indexOf('node scripts/require-release-quality-gate.mjs') <
+        workflow.indexOf('name: Create and push tag'),
+      `${relativePath} should run the quality gate before creating a tag`
+    );
+    assert.ok(
+      workflow.indexOf('name: Create and push tag') <
+        workflow.indexOf('uses: softprops/action-gh-release@v3'),
+      `${relativePath} should create the tag only after local package validation and before publishing the GitHub release`
+    );
+  }
+
+  assert.ok(
+    scriptsReleaseWorkflow.includes('--require "Installer Contracts::Installer Contracts Success"'),
+    'release-scripts.yml should require installer contract evidence before publishing installer artifacts'
+  );
+  assert.ok(
+    extensionReleaseWorkflow.includes('npm test --workspace=@openpath/firefox-extension'),
+    'release-extension.yml should run the Firefox extension tests in the release job before publishing'
+  );
+});
+
+test('E2E release evidence is not cancelled by newer pushes on the same branch', () => {
+  const e2eWorkflow = readText('.github/workflows/e2e-tests.yml');
+
+  assert.ok(
+    e2eWorkflow.includes('cancel-in-progress: false'),
+    'e2e-tests.yml should preserve in-flight same-SHA release evidence instead of cancelling it on the next push'
+  );
+});

@@ -1024,6 +1024,38 @@ function Write-WindowsDiagnostics {
     $diagnosticPath = Join-Path $script:ArtifactsRoot 'windows-diagnostics.txt'
     $whitelistPath = 'C:\OpenPath\data\whitelist.txt'
     $logPath = 'C:\OpenPath\data\logs\openpath.log'
+    $acrylicArtifactDir = Join-Path $script:ArtifactsRoot 'acrylic'
+    $acrylicFiles = @(
+        'AcrylicConfiguration.ini',
+        'AcrylicHosts.txt',
+        'AcrylicCache.dat',
+        'AcrylicDebug.txt'
+    )
+    $acrylicRoots = @(
+        "${env:ProgramFiles(x86)}\Acrylic DNS Proxy",
+        "$env:ProgramFiles\Acrylic DNS Proxy"
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    New-Item -ItemType Directory -Path $acrylicArtifactDir -Force | Out-Null
+    foreach ($acrylicRoot in $acrylicRoots) {
+        foreach ($fileName in $acrylicFiles) {
+            $candidatePath = Join-Path $acrylicRoot $fileName
+            if (Test-Path $candidatePath) {
+                $destinationPath = Join-Path $acrylicArtifactDir $fileName
+                Copy-Item $candidatePath -Destination $destinationPath -Force
+            }
+        }
+    }
+
+    $dnsProbeOutput = foreach ($probeHost in @(
+            'google.com',
+            'portal.127.0.0.1.sslip.io',
+            'api.site.127.0.0.1.sslip.io',
+            'blocked.127.0.0.1.sslip.io'
+        )) {
+        "=== Resolve-DnsName $probeHost via 127.0.0.1 ==="
+        Resolve-DnsName -Name $probeHost -Server 127.0.0.1 -DnsOnly -ErrorAction SilentlyContinue | Out-String
+    }
 
     @(
         '=== Scheduled Tasks ==='
@@ -1032,8 +1064,8 @@ function Write-WindowsDiagnostics {
         $(if (Test-Path 'C:\OpenPath\data\config.json') { Get-Content 'C:\OpenPath\data\config.json' -Raw } else { 'Config file missing' })
         '=== Student Scenario ==='
         $(if (Test-Path (Join-Path $script:ArtifactsRoot 'student-scenario.json')) { Get-Content (Join-Path $script:ArtifactsRoot 'student-scenario.json') -Raw } else { 'Student scenario missing' })
-        '=== Resolve-DnsName google.com ==='
-        (Resolve-DnsName -Name 'google.com' -Server 127.0.0.1 -DnsOnly -ErrorAction SilentlyContinue | Out-String)
+        '=== DNS Probes ==='
+        ($dnsProbeOutput | Out-String)
         '=== Whitelist ==='
         $(if (Test-Path $whitelistPath) { Get-Content $whitelistPath -Raw } else { 'Whitelist file missing' })
         '=== OpenPath Log Tail ==='

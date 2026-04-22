@@ -8,7 +8,7 @@
  * Part of the mandatory test enforcement policy.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import ts from 'typescript';
@@ -61,38 +61,89 @@ function isExcluded(filePath) {
 
 function getChangedFiles() {
   try {
-    // Get staged files (for pre-commit) or changed files in last commit
-    let files;
-    try {
+    const { base, head } = parseRangeArgs(process.argv.slice(2));
+    let files = '';
+
+    if (base) {
+      files = gitOutput(['diff', '--name-only', '--diff-filter=ACMR', base, head]);
+    } else {
       files = execSync('git diff --cached --name-only --diff-filter=ACMR', {
         encoding: 'utf-8',
         cwd: ROOT_DIR,
       });
-    } catch {
-      // Fallback to last commit diff
-      files = execSync('git diff HEAD~1 --name-only --diff-filter=ACMR', {
-        encoding: 'utf-8',
-        cwd: ROOT_DIR,
-      });
+
+      if (!files.trim() && gitRefExists('HEAD~1')) {
+        files = gitOutput(['diff', '--name-only', '--diff-filter=ACMR', 'HEAD~1', head]);
+      }
     }
 
-    return files
-      .split('\n')
-      .filter((f) => f.trim())
-      .filter((f) => /\.(ts|tsx)$/.test(f))
-      .filter((f) => !isExcluded(f))
-      .filter(
-        (f) =>
-          f.startsWith('api/src/') ||
-          f.startsWith('react-spa/src/') ||
-          f.startsWith('shared/src/') ||
-          f.startsWith('dashboard/src/') ||
-          f.startsWith('firefox-extension/src/')
-      );
+    return filterChangedSourceFiles(files);
   } catch (error) {
     console.error('Failed to get changed files:', error.message);
     return [];
   }
+}
+
+function parseRangeArgs(argv) {
+  const options = {
+    base: process.env.OPENPATH_VERIFY_BASE || '',
+    head: process.env.OPENPATH_VERIFY_HEAD || 'HEAD',
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+
+    if (arg === '--base' && next) {
+      options.base = next;
+      index += 1;
+      continue;
+    }
+    if (arg === '--head' && next) {
+      options.head = next;
+      index += 1;
+      continue;
+    }
+
+    throw new Error(`Unknown or incomplete argument: ${arg}`);
+  }
+
+  return options;
+}
+
+function gitRefExists(ref) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+      cwd: ROOT_DIR,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gitOutput(args) {
+  return execFileSync('git', args, {
+    encoding: 'utf-8',
+    cwd: ROOT_DIR,
+  });
+}
+
+function filterChangedSourceFiles(files) {
+  return files
+    .split('\n')
+    .filter((f) => f.trim())
+    .filter((f) => /\.(ts|tsx)$/.test(f))
+    .filter((f) => !isExcluded(f))
+    .filter(
+      (f) =>
+        f.startsWith('api/src/') ||
+        f.startsWith('react-spa/src/') ||
+        f.startsWith('shared/src/') ||
+        f.startsWith('dashboard/src/') ||
+        f.startsWith('firefox-extension/src/')
+    );
 }
 
 function loadCoverageData() {

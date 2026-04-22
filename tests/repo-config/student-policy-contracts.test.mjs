@@ -483,6 +483,33 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('Windows student-policy diagnostics capture Acrylic DNS state and sslip probes', () => {
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+
+    for (const fileName of [
+      'AcrylicConfiguration.ini',
+      'AcrylicHosts.txt',
+      'AcrylicCache.dat',
+      'AcrylicDebug.txt',
+    ]) {
+      assert.ok(
+        windowsRunner.includes(fileName),
+        `Windows student-policy diagnostics should copy ${fileName} into the artifact bundle when present`
+      );
+    }
+
+    assert.ok(
+      windowsRunner.includes('portal.127.0.0.1.sslip.io') &&
+        windowsRunner.includes('api.site.127.0.0.1.sslip.io') &&
+        windowsRunner.includes('blocked.127.0.0.1.sslip.io'),
+      'Windows student-policy diagnostics should probe the fixture sslip hostnames that Selenium navigates'
+    );
+    assert.ok(
+      windowsRunner.includes('Resolve-DnsName -Name $probeHost -Server 127.0.0.1 -DnsOnly'),
+      'Windows student-policy diagnostics should resolve fixture hostnames through the local Acrylic resolver'
+    );
+  });
+
   test('root tooling can resolve drizzle-orm for hoisted drizzle-kit commands', () => {
     const packageJson = readPackageJson();
     const packageLock = readJson('package-lock.json');
