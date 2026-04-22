@@ -220,7 +220,7 @@ function Update-AcrylicHost {
     }
     Write-OpenPathLog "Generating AcrylicHosts.txt with $(@($definition.EffectiveWhitelistedDomains).Count) domains..."
     $content = ConvertTo-AcrylicHostsContent -Definition $definition
-    $content | Set-Content $hostsPath -Encoding UTF8 -Force
+    $content | Set-Content $hostsPath -Encoding ASCII -Force
 
     $configurationUpdated = Set-AcrylicConfiguration -WhitelistedDomains $definition.EffectiveWhitelistedDomains
     if (-not $configurationUpdated) {
@@ -347,7 +347,7 @@ function Set-AcrylicConfiguration {
     $iniContent = Set-AcrylicAllowedAddress -Content $iniContent -Key 'IP1' -Value '127.*'
     $iniContent = Set-AcrylicAllowedAddress -Content $iniContent -Key 'IP2' -Value '::1'
 
-    $iniContent | Set-Content $configPath -Encoding UTF8 -Force
+    $iniContent | Set-Content $configPath -Encoding ASCII -Force
     Write-OpenPathLog "Acrylic configuration updated"
     return $true
 }

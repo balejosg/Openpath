@@ -523,6 +523,16 @@ describe('repository verification contract', () => {
         dnsConfigModule.includes("-Key 'IP2' -Value '::1'"),
       'Set-AcrylicConfiguration should explicitly allow local loopback requests in [AllowedAddressesSection]'
     );
+    assert.match(
+      dnsConfigModule,
+      /\$content \| Set-Content \$hostsPath -Encoding ASCII -Force/,
+      'Update-AcrylicHost should write AcrylicHosts.txt without a UTF-8 BOM so Acrylic can parse it'
+    );
+    assert.match(
+      dnsConfigModule,
+      /\$iniContent \| Set-Content \$configPath -Encoding ASCII -Force/,
+      'Set-AcrylicConfiguration should write AcrylicConfiguration.ini without a UTF-8 BOM so Acrylic can parse [GlobalSection]'
+    );
   });
 
   test('Windows student-policy diagnostics capture Acrylic DNS state and sslip probes', () => {

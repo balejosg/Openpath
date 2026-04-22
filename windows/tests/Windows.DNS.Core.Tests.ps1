@@ -227,6 +227,7 @@ Describe "DNS Module" {
 
         It "Leaves Acrylic upstream affinity masks empty so hosts rules control policy" {
             $script:capturedAcrylicConfig = $null
+            $script:capturedAcrylicConfigEncoding = $null
 
             Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
             Mock Get-OpenPathDnsSettings {
@@ -247,6 +248,7 @@ Describe "DNS Module" {
 
                 if ($Path -like '*AcrylicConfiguration.ini') {
                     $script:capturedAcrylicConfig = $Value
+                    $script:capturedAcrylicConfigEncoding = $Encoding
                 }
             } -ModuleName DNS
 
@@ -271,6 +273,7 @@ Describe "DNS Module" {
                 'IgnoreNegativeResponsesFromSecondaryServer=No',
                 'AddressCacheDisabled=Yes'
             )
+            $script:capturedAcrylicConfigEncoding | Should -Be 'ASCII'
             $script:capturedAcrylicConfig | Should -Not -Match 'PrimaryServerDomainNameAffinityMask=.*example\.com'
             $script:capturedAcrylicConfig | Should -Not -Match 'SecondaryServerDomainNameAffinityMask=.*raw\.githubusercontent\.com'
         }
@@ -323,6 +326,7 @@ Describe "DNS Module" {
         It "Allows updating Acrylic hosts before any classroom whitelist exists" {
             $script:capturedAcrylicConfig = $null
             $script:capturedHostsContent = $null
+            $script:capturedHostsEncoding = $null
 
             Mock Get-AcrylicPath { 'C:\Program Files (x86)\Acrylic DNS Proxy' } -ModuleName DNS
             Mock Get-OpenPathDnsSettings {
@@ -347,6 +351,7 @@ Describe "DNS Module" {
 
                 if ($Path -like '*AcrylicHosts.txt') {
                     $script:capturedHostsContent = $Value
+                    $script:capturedHostsEncoding = $Encoding
                 }
             } -ModuleName DNS
 
@@ -357,6 +362,7 @@ Describe "DNS Module" {
             $script:capturedHostsContent | Should -Match '# WHITELISTED DOMAINS \(0\)'
             $script:capturedHostsContent | Should -Match 'NX \*'
             $script:capturedHostsContent | Should -Not -Match 'FW example\.com'
+            $script:capturedHostsEncoding | Should -Be 'ASCII'
             $script:capturedAcrylicConfig | Should -Not -BeNullOrEmpty
             Assert-ContentContainsAll -Content $script:capturedAcrylicConfig -Needles @(
                 'PrimaryServerDomainNameAffinityMask=',
