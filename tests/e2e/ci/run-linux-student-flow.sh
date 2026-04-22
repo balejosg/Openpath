@@ -72,7 +72,7 @@ debug_state() {
         bash -lc 'for host in raw.githubusercontent.com github.com "blocked.${OPENPATH_STUDENT_HOST_SUFFIX}"; do echo "== $host =="; dig @127.0.0.1 "$host" +short +time=3 +tries=1 2>&1 || true; done' || true
     echo ""
     echo "Firefox native host snapshot:"
-    docker exec "$CONTAINER_NAME" bash -lc 'ls -l /openpath/firefox-extension/openpath-firefox-extension.xpi /usr/local/bin/openpath-native-host.py /usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json /root/.mozilla/native-messaging-hosts/whitelist_native_host.json 2>/dev/null || true' || true
+    docker exec "$CONTAINER_NAME" bash -lc 'ls -l /openpath/firefox-extension/openpath-firefox-extension.xpi /usr/local/lib/openpath/openpath-native-host.py /usr/local/bin/openpath-native-host.py /usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json /root/.mozilla/native-messaging-hosts/whitelist_native_host.json 2>/dev/null || true' || true
 }
 
 on_error() {
@@ -544,12 +544,10 @@ readiness_errors=()
 xpi_path="/openpath/firefox-extension/openpath-firefox-extension.xpi"
 system_manifest="/usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json"
 root_manifest="/root/.mozilla/native-messaging-hosts/whitelist_native_host.json"
-native_host="/usr/local/bin/openpath-native-host.py"
 
 [[ -s "$xpi_path" ]] || readiness_errors+=("Firefox XPI missing or empty: $xpi_path")
 [[ -s "$system_manifest" ]] || readiness_errors+=("system Firefox native host manifest missing: $system_manifest")
 [[ -s "$root_manifest" ]] || readiness_errors+=("root Firefox native host manifest missing: $root_manifest")
-[[ -x "$native_host" ]] || readiness_errors+=("native host executable missing: $native_host")
 
 if [[ -s "$root_manifest" ]]; then
     manifest_name="$(jq -r ".name // \"\"" "$root_manifest")"
@@ -557,8 +555,12 @@ if [[ -s "$root_manifest" ]]; then
     if [[ "$manifest_name" != "whitelist_native_host" ]]; then
         readiness_errors+=("root Firefox native host manifest has unexpected name: $manifest_name")
     fi
-    if [[ "$manifest_path" != "$native_host" ]]; then
-        readiness_errors+=("root Firefox native host manifest points to $manifest_path, expected $native_host")
+    if [[ -z "$manifest_path" ]]; then
+        readiness_errors+=("root Firefox native host manifest has no path")
+    elif [[ "$manifest_path" != /* ]]; then
+        readiness_errors+=("root Firefox native host manifest path is not absolute: $manifest_path")
+    elif ! [[ -x "$manifest_path" ]]; then
+        readiness_errors+=("native host executable missing or not executable: $manifest_path")
     fi
     if ! jq -e ".allowed_extensions | index(\"monitor-bloqueos@openpath\")" "$root_manifest" >/dev/null; then
         readiness_errors+=("root Firefox native host manifest does not allow monitor-bloqueos@openpath")

@@ -816,8 +816,17 @@ describe('repository verification contract', () => {
     );
     assert.match(
       linuxRunner,
-      /assert_linux_firefox_extension_ready\(\) \{[\s\S]*?openpath-firefox-extension\.xpi[\s\S]*?whitelist_native_host\.json[\s\S]*?openpath-native-host\.py/,
+      /assert_linux_firefox_extension_ready\(\) \{[\s\S]*?openpath-firefox-extension\.xpi[\s\S]*?whitelist_native_host\.json[\s\S]*?manifest_path/,
       'Linux student-policy runner should verify the Firefox XPI and native messaging host before Selenium'
+    );
+    assert.ok(
+      !linuxRunner.includes('native_host="/usr/local/bin/openpath-native-host.py"'),
+      'Linux student-policy readiness should validate the native host executable path from the installed Firefox manifest, not a legacy hardcoded path'
+    );
+    assert.match(
+      linuxRunner,
+      /manifest_path="\$\(jq -r "\.path \/\/ \\"\\"" "\$root_manifest"\)"[\s\S]*?\[\[ -x "\$manifest_path" \]\]/,
+      'Linux student-policy readiness should require the native host path declared by the root Firefox manifest to be executable'
     );
     assert.match(
       linuxRunner,
