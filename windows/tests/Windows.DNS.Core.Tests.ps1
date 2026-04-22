@@ -1,17 +1,17 @@
-function Assert-IsAsciiEncoding {
-    param([object]$Encoding)
-
-    $Encoding | Should -Not -BeNullOrEmpty
-    if ($Encoding -is [System.Text.Encoding]) {
-        $Encoding.WebName | Should -Be 'us-ascii'
-        return
-    }
-
-    ([string]$Encoding) | Should -Match 'ASCII'
-}
-
 Describe "DNS Module" {
     BeforeAll {
+        function Assert-IsAsciiEncoding {
+            param([object]$Encoding)
+
+            $Encoding | Should -Not -BeNullOrEmpty
+            if ($Encoding -is [System.Text.Encoding]) {
+                $Encoding.WebName | Should -Be 'us-ascii'
+                return
+            }
+
+            ([string]$Encoding) | Should -Match 'ASCII'
+        }
+
         $modulePath = Join-Path $PSScriptRoot ".." "lib"
         Import-Module "$modulePath\DNS.psm1" -Force -ErrorAction SilentlyContinue
     }

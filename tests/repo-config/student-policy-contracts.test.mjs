@@ -568,6 +568,11 @@ describe('repository verification contract', () => {
       pesterDnsTests.includes('function Assert-IsAsciiEncoding'),
       'Windows DNS Pester tests should normalize mocked Set-Content encoding values before asserting ASCII'
     );
+    assert.match(
+      pesterDnsTests,
+      /BeforeAll\s*\{\s*function Assert-IsAsciiEncoding/,
+      'Windows DNS Pester helpers should be defined in BeforeAll so Pester v5 exposes them to It blocks'
+    );
     assert.ok(
       !pesterDnsTests.includes("| Should -Be 'ASCII'"),
       'Windows DNS Pester tests should not compare mocked Encoding values with a raw string'
