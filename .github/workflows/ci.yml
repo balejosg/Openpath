@@ -137,6 +137,7 @@ jobs:
   test-linux-dnsmasq:
     name: Linux Agent Tests (BATS)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: detect-relevant-changes
     if: needs.detect-relevant-changes.outputs.linux_bound == 'true'
     outputs:

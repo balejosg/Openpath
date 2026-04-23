@@ -393,6 +393,10 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should gate the Linux lane on the dedicated linux_bound output'
   );
   assert.ok(
+    linuxJobBlock.includes('timeout-minutes: 25'),
+    'ci.yml should cap the Linux BATS lane so a hung agent test cannot block release evidence indefinitely'
+  );
+  assert.ok(
     linuxJobBlock.includes('uses: actions/checkout@v6'),
     'ci.yml should keep the Linux lane on actions/checkout because the Windows-specific checkout workaround should stay isolated to the required Pester job'
   );
