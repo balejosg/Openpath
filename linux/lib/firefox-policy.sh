@@ -37,6 +37,57 @@ read_firefox_managed_extension_install_url() {
 
 ensure_firefox_policies_dir() {
     mkdir -p "$(dirname "$FIREFOX_POLICIES")"
+    sync_firefox_distribution_policy_paths
+}
+
+firefox_distribution_policy_paths() {
+    local firefox_dir=""
+    local candidate=""
+    local seen=""
+
+    if declare -F detect_firefox_dir >/dev/null 2>&1; then
+        firefox_dir="$(detect_firefox_dir 2>/dev/null || true)"
+        if [ -n "$firefox_dir" ]; then
+            printf '%s\n' "$firefox_dir/distribution/policies.json"
+            seen=":$firefox_dir:"
+        fi
+    fi
+
+    for candidate in /usr/lib/firefox-esr /usr/lib/firefox /opt/firefox; do
+        if [ -d "$candidate" ] && [[ "$seen" != *":$candidate:"* ]]; then
+            printf '%s\n' "$candidate/distribution/policies.json"
+            seen="${seen}:$candidate:"
+        fi
+    done
+}
+
+sync_firefox_distribution_policy_paths() {
+    local policy_path=""
+    local canonical_real=""
+    local policy_real=""
+
+    canonical_real="$(readlink -f "$FIREFOX_POLICIES" 2>/dev/null || true)"
+
+    while IFS= read -r policy_path; do
+        [ -n "$policy_path" ] || continue
+        [ "$policy_path" != "$FIREFOX_POLICIES" ] || continue
+
+        mkdir -p "$(dirname "$policy_path")" 2>/dev/null || continue
+
+        policy_real="$(readlink -f "$policy_path" 2>/dev/null || true)"
+        if [ -n "$canonical_real" ] && [ "$policy_real" = "$canonical_real" ]; then
+            continue
+        fi
+
+        if [ -L "$policy_path" ] || [ ! -e "$policy_path" ]; then
+            rm -f "$policy_path" 2>/dev/null || true
+            ln -s "$FIREFOX_POLICIES" "$policy_path" 2>/dev/null || {
+                [ -f "$FIREFOX_POLICIES" ] && cp "$FIREFOX_POLICIES" "$policy_path" 2>/dev/null || true
+            }
+        elif [ -f "$FIREFOX_POLICIES" ]; then
+            cp "$FIREFOX_POLICIES" "$policy_path" 2>/dev/null || true
+        fi
+    done < <(firefox_distribution_policy_paths)
 }
 
 mutate_firefox_policies() {
@@ -44,6 +95,7 @@ mutate_firefox_policies() {
     local ext_id="${2:-}"
     local install_entry="${3:-}"
     local install_url="${4:-}"
+    local status=0
 
     ensure_firefox_policies_dir
 
@@ -56,6 +108,13 @@ mutate_firefox_policies() {
         --extension-id "$ext_id" \
         --install-entry "$install_entry" \
         --install-url "$install_url"
+    status=$?
+
+    if [ "$status" -eq 0 ]; then
+        sync_firefox_distribution_policy_paths
+    fi
+
+    return "$status"
 }
 
 get_policies_hash() {

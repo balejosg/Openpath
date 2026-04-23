@@ -40,6 +40,21 @@
     [ -d "$(dirname "$FIREFOX_POLICIES")" ]
 }
 
+@test "generate_firefox_policies exposes canonical policy file through Firefox distribution path" {
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox"
+    mkdir -p "$firefox_dir"
+    : > "$firefox_dir/firefox"
+
+    BLOCKED_PATHS=()
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+    detect_firefox_dir() { echo "$TEST_TMP_DIR/usr/lib/firefox"; }
+
+    generate_firefox_policies
+    [ -L "$firefox_dir/distribution/policies.json" ]
+    [ "$(readlink "$firefox_dir/distribution/policies.json")" = "$FIREFOX_POLICIES" ]
+}
+
 @test "generate_firefox_policies creates valid JSON" {
     BLOCKED_PATHS=("example.com/ads" "test.org/tracking")
 
