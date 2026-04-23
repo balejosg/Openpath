@@ -1,16 +1,17 @@
 Package: openpath-dnsmasq
 Version: 0.0.20260423082503-1
 Architecture: all
+Maintainer: Las Encinas IT <it@lasencinas.edu>
 Depends: dnsmasq, iptables, ipset, iproute2, curl, libcap2-bin, dnsutils, conntrack, python3
 Recommends: firefox-esr, unattended-upgrades
-Maintainer: Las Encinas IT <it@lasencinas.edu>
-Priority: optional
-Section: net
-Filename: pool/main/o/openpath-dnsmasq/openpath-dnsmasq_0.0.20260423082503-1_all.deb
+Filename: pool/unstable/main/openpath-dnsmasq_0.0.20260423082503-1_all.deb
 Size: 619186
-SHA256: 56c3448254a31864daacbb6f0b787e6c8ca31f1c9cc52574267b32d635b6cd82
-SHA1: e93c0006756447bc40ae819c8b6b013b5b9a95c6
 MD5sum: 4457da22d10aabeb433271c2b5a6262e
+SHA1: e93c0006756447bc40ae819c8b6b013b5b9a95c6
+SHA256: 56c3448254a31864daacbb6f0b787e6c8ca31f1c9cc52574267b32d635b6cd82
+Section: net
+Priority: optional
+Homepage: https://github.com/balejosg/openpath
 Description: DNS Whitelist System for Educational Environments
  A multi-layer internet access control system using DNS sinkhole,
  iptables firewall, and browser policies. Blocks all domains by
@@ -23,5 +24,31 @@ Description: DNS Whitelist System for Educational Environments
   - Automatic whitelist updates
   - Health monitoring
   - Captive portal detection
+
+Package: openpath-dnsmasq
+Version: 0.0.20260423092727-1
+Architecture: all
+Maintainer: Las Encinas IT <it@lasencinas.edu>
+Depends: dnsmasq, iptables, ipset, iproute2, curl, libcap2-bin, dnsutils, conntrack, python3
+Recommends: firefox-esr, unattended-upgrades
+Filename: pool/unstable/main/openpath-dnsmasq_0.0.20260423092727-1_amd64.deb
+Size: 619198
+MD5sum: 9c8f9ac798c4d34c38ed9b9793c87154
+SHA1: a91288623931ba1e3817ee3cb2305835ba71a974
+SHA256: e76b1104b4b84ef22b9e6a7728c2f7b7fa7d894f6f653aee58472c6ae7677063
+Section: net
+Priority: optional
 Homepage: https://github.com/balejosg/openpath
+Description: DNS Whitelist System for Educational Environments
+ A multi-layer internet access control system using DNS sinkhole,
+ iptables firewall, and browser policies. Blocks all domains by
+ default, allowing only whitelisted domains.
+ .
+ Features:
+  - DNS sinkhole (dnsmasq)
+  - Firewall rules (iptables)
+  - Browser policies (Firefox/Chromium)
+  - Automatic whitelist updates
+  - Health monitoring
+  - Captive portal detection
 
