@@ -375,6 +375,20 @@ load 'test_helper'
     [ "$status" -eq 0 ]
 }
 
+@test "deb publish workflow keeps prior openpath-dnsmasq versions advertised" {
+    run grep -n 'copy_retained_suite_packages' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'dpkg-scanpackages --arch amd64 --multiversion' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'apt-ftparchive release "dists/\$suite"' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -n 'gpg --batch --yes --default-key "\$GPG_KEY_ID" --clearsign' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
+    [ "$status" -eq 0 ]
+}
+
 @test "stable deb publish workflow requires a persistent APT signing key" {
     run grep -n 'Missing APT_GPG_PRIVATE_KEY' "$PROJECT_DIR/.github/workflows/reusable-deb-publish.yml"
     [ "$status" -eq 0 ]

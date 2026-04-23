@@ -103,7 +103,7 @@ jobs:
 
       - name: Install reprepro and GPG
         run: |
-          sudo env DEBIAN_FRONTEND=noninteractive bash -c '. ./linux/lib/apt.sh && apt_install_with_retry "reprepro and gnupg" apt-get install -y reprepro gnupg'
+          sudo env DEBIAN_FRONTEND=noninteractive bash -c '. ./linux/lib/apt.sh && apt_install_with_retry "APT publish tooling" apt-get install -y reprepro gnupg dpkg-dev apt-utils'
 
       - name: Require persistent APT signing key
         run: |
@@ -155,6 +155,40 @@ jobs:
           basedir .
           EOF
 
+      - name: Retain advertised package versions
+        working-directory: gh-pages/apt
+        run: |
+          copy_retained_suite_packages() {
+            local suite="$1"
+            local packages_file="dists/$suite/main/binary-amd64/Packages"
+            local retained_dir="pool/$suite/main"
+
+            mkdir -p "$retained_dir"
+            if [ ! -f "$packages_file" ]; then
+              return 0
+            fi
+
+            awk -F': ' '
+              $1 == "Package" { package = $2 }
+              $1 == "Filename" { filename = $2 }
+              /^$/ {
+                if (package == "openpath-dnsmasq" && filename != "") print filename
+                package = ""
+                filename = ""
+              }
+              END {
+                if (package == "openpath-dnsmasq" && filename != "") print filename
+              }
+            ' "$packages_file" | while IFS= read -r filename; do
+              [ -n "$filename" ] || continue
+              if [ -f "$filename" ]; then
+                cp -n "$filename" "$retained_dir/"
+              fi
+            done
+          }
+
+          copy_retained_suite_packages "$SUITE"
+
       - name: Add package to repository
         working-directory: gh-pages/apt
         run: |
@@ -162,15 +196,34 @@ jobs:
           if [ "${{ inputs.remove-legacy-stable-package }}" = "true" ] && [ "$SUITE" = "stable" ]; then
             reprepro remove stable whitelist-dnsmasq || true
           fi
+          mkdir -p "pool/$SUITE/main"
+          cp ../../packages/*.deb "pool/$SUITE/main/"
           reprepro includedeb "$SUITE" ../../packages/*.deb
 
-      - name: Re-sign published suites
+      - name: Rebuild and sign published suite metadata
         working-directory: gh-pages/apt
         run: |
           for suite in stable unstable; do
             if [ -d "dists/$suite" ]; then
+              echo "Rebuilding $suite metadata with retained openpath-dnsmasq versions..."
+              retained_dir="pool/$suite/main"
+              if compgen -G "$retained_dir/*.deb" >/dev/null; then
+                mkdir -p "dists/$suite/main/binary-amd64"
+                dpkg-scanpackages --arch amd64 --multiversion "$retained_dir" /dev/null > "dists/$suite/main/binary-amd64/Packages"
+                gzip -kf "dists/$suite/main/binary-amd64/Packages"
+              fi
+
               echo "Re-signing $suite metadata with ${{ env.GPG_KEY_ID }}..."
               reprepro export "$suite"
+              if compgen -G "$retained_dir/*.deb" >/dev/null; then
+                dpkg-scanpackages --arch amd64 --multiversion "$retained_dir" /dev/null > "dists/$suite/main/binary-amd64/Packages"
+                gzip -kf "dists/$suite/main/binary-amd64/Packages"
+              fi
+              apt-ftparchive release "dists/$suite" > "dists/$suite/Release"
+              gpg --batch --yes --default-key "$GPG_KEY_ID" --clearsign \
+                -o "dists/$suite/InRelease" "dists/$suite/Release"
+              gpg --batch --yes --default-key "$GPG_KEY_ID" -abs \
+                -o "dists/$suite/Release.gpg" "dists/$suite/Release"
             fi
           done
 
