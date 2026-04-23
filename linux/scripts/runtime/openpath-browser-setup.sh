@@ -28,6 +28,7 @@ FIREFOX_EXTENSION_ID="${OPENPATH_FIREFOX_EXTENSION_ID:-monitor-bloqueos@openpath
 FIREFOX_APP_ID="{ec8030f7-c20a-464f-9b0e-13a3a9e97384}"
 FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="${OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS:-20}"
 FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES="${OPENPATH_FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES:-2}"
+FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS="${OPENPATH_FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS:-60}"
 
 load_common_runtime() {
     if [ -f "$INSTALL_DIR/lib/common.sh" ]; then
@@ -280,12 +281,12 @@ run_firefox_activation_probe() {
         && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "$activation_user" \
             env HOME="$profile_home" \
-            timeout --kill-after=5s 30s "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
+            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
             >/dev/null 2>&1
         return $?
     fi
 
-    HOME="$profile_home" timeout --kill-after=5s 30s "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
+    HOME="$profile_home" timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
         >/dev/null 2>&1
 }
 

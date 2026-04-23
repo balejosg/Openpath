@@ -488,6 +488,7 @@ EOF
 
     [ "$status" -eq 0 ]
     grep -F -- '--kill-after=5s' "$timeout_calls_file"
+    grep -F -- ' 60s ' "$timeout_calls_file"
 }
 
 @test "openpath-browser-setup accepts registration written before activation probe timeout" {
