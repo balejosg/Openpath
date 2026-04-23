@@ -308,6 +308,7 @@ verify_firefox_extension_registered() {
     local activation_user=""
     local profile_home=""
     local deadline=0
+    local activation_status=0
     local marker_path="${FIREFOX_EXTENSION_READY_FILE:-$VAR_STATE_DIR/firefox-extension-ready}"
 
     rm -f "$marker_path" 2>/dev/null || true
@@ -329,14 +330,19 @@ verify_firefox_extension_registered() {
             return 0
         fi
 
-        if ! run_firefox_activation_probe "$firefox_binary" "$activation_user" "$profile_home"; then
-            log_error "Firefox could not be started to activate managed extension policies"
-            return 1
+        if run_firefox_activation_probe "$firefox_binary" "$activation_user" "$profile_home"; then
+            activation_status=0
+        else
+            activation_status=$?
         fi
 
         if firefox_profile_has_extension_registration "$profile_home" "$FIREFOX_EXTENSION_ID"; then
             write_firefox_extension_ready_marker "$activation_user" "$profile_home"
             return 0
+        fi
+
+        if [ "$activation_status" -ne 0 ] && [ "$SECONDS" -gt "$deadline" ]; then
+            break
         fi
 
         sleep 1
