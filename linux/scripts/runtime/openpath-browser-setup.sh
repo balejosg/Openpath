@@ -279,12 +279,12 @@ run_firefox_activation_probe() {
         && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "$activation_user" \
             env HOME="$profile_home" \
-            timeout 30 "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
+            timeout --kill-after=5s 30s "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
             >/dev/null 2>&1
         return $?
     fi
 
-    HOME="$profile_home" timeout 30 "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
+    HOME="$profile_home" timeout --kill-after=5s 30s "$firefox_binary" --headless --screenshot "$screenshot_path" about:blank \
         >/dev/null 2>&1
 }
 
