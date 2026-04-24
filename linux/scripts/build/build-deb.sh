@@ -77,10 +77,18 @@ stage_firefox_optional_extension_assets \
     "$ROOT_DIR/firefox-extension" \
     "$BUILD_DIR/usr/share/openpath/firefox-extension"
 
-if firefox_release_source="$(stage_firefox_release_artifacts "$ROOT_DIR" "$BUILD_DIR/usr/share/openpath/firefox-release")"; then
+firefox_release_destination="$BUILD_DIR/usr/share/openpath/firefox-release"
+if firefox_release_source="$(stage_firefox_release_artifacts "$ROOT_DIR" "$firefox_release_destination")"; then
     echo "  Included Firefox Release artifacts from $firefox_release_source"
 else
     echo "  Firefox Release artifacts not found; signed Firefox auto-install will fall back to unpacked bundle"
+fi
+
+if [ "${OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS:-0}" = "1" ]; then
+    if [ ! -f "$firefox_release_destination/metadata.json" ] || [ ! -f "$firefox_release_destination/openpath-firefox-extension.xpi" ]; then
+        echo "ERROR: OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS=1 but the Debian package is missing staged Firefox Release metadata or openpath-firefox-extension.xpi" >&2
+        exit 1
+    fi
 fi
 
 # Set correct permissions

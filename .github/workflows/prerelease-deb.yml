@@ -74,7 +74,16 @@ jobs:
           build-api: 'false'
           build-extension: 'true'
 
+      - name: Sign Firefox Release Extension
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          npm run sign:firefox-release --workspace=@openpath/firefox-extension -- --version "2.0.${{ github.run_number }}"
+
       - name: Build Debian package
+        env:
+          OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'
         run: |
           chmod +x linux/scripts/build/build-deb.sh
           ./linux/scripts/build/build-deb.sh ${{ steps.version.outputs.version }} 1

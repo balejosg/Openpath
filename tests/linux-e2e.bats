@@ -277,7 +277,24 @@ EOF
     run grep -nF 'source "$LINUX_DIR/lib/firefox-extension-assets.sh"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'stage_firefox_release_artifacts "$ROOT_DIR" "$BUILD_DIR/usr/share/openpath/firefox-release"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    run grep -nF 'stage_firefox_release_artifacts "$ROOT_DIR" "$firefox_release_destination"' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "linux deb publish workflows require staged Firefox release XPI artifacts" {
+    run grep -nF 'OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS=1' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'npm run sign:firefox-release --workspace=@openpath/firefox-extension' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'npm run sign:firefox-release --workspace=@openpath/firefox-extension' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 }
 

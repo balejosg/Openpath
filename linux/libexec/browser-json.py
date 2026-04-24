@@ -163,16 +163,7 @@ def cmd_resolve_firefox_release_policy(args: argparse.Namespace) -> int:
             source="staged-release",
         )
 
-    install_url = str(metadata.get("installUrl", "")).strip()
-    if not install_url:
-        return 3
-
-    return emit_firefox_policy_contract(
-        extension_id=extension_id,
-        install_entry=install_url,
-        install_url=install_url,
-        source="metadata-install-url",
-    )
+    return 3
 
 
 def cmd_mutate_firefox_policies(args: argparse.Namespace) -> int:

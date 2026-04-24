@@ -292,6 +292,26 @@ EOF
     [ "${policy_lines[2]}" = "install_url=https://school.example/api/extensions/firefox/openpath.xpi" ]
     [ "${policy_lines[3]}" = "source=managed-api" ]
 }
+
+@test "install_firefox_extension falls back to local unpacked bundle when release metadata lacks a staged XPI" {
+    local release_dir="$TEST_TMP_DIR/firefox-release"
+    mkdir -p "$release_dir"
+    cat > "$release_dir/metadata.json" <<'EOF'
+{"extensionId":"monitor-bloqueos@openpath","version":"2.0.0","installUrl":"https://school.example/api/extensions/firefox/openpath.xpi"}
+EOF
+
+    source "$PROJECT_DIR/linux/lib/browser.sh"
+
+    install_firefox_unpacked_extension() {
+        printf '%s\n' "$1" > "$TEST_TMP_DIR/unpacked-source"
+        return 0
+    }
+    export -f install_firefox_unpacked_extension
+
+    run install_firefox_extension "$TEST_TMP_DIR/firefox-extension" "$release_dir"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TEST_TMP_DIR/unpacked-source")" = "$TEST_TMP_DIR/firefox-extension" ]
+}
 #!/usr/bin/env bats
 ################################################################################
 # browser_firefox_extension.bats - Firefox extension installation tests
