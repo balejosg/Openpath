@@ -513,6 +513,30 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "postinst starts persistent dns timers only after initial whitelist update" {
+    local postinst_file="$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+    local initial_update_line
+    local dns_reset_failed_line
+    local dns_restart_line
+    local dns_timer_start_line
+    local watchdog_timer_start_line
+
+    initial_update_line=$(grep -n "Ejecutando primera actualización" "$postinst_file" | head -1 | cut -d: -f1)
+    dns_reset_failed_line=$(grep -n "systemctl reset-failed dnsmasq" "$postinst_file" | head -1 | cut -d: -f1)
+    dns_restart_line=$(grep -n "systemctl restart dnsmasq" "$postinst_file" | head -1 | cut -d: -f1)
+    dns_timer_start_line=$(grep -n "systemctl start openpath-dnsmasq.timer" "$postinst_file" | head -1 | cut -d: -f1)
+    watchdog_timer_start_line=$(grep -n "systemctl start dnsmasq-watchdog.timer" "$postinst_file" | head -1 | cut -d: -f1)
+
+    [ -n "$initial_update_line" ]
+    [ -n "$dns_reset_failed_line" ]
+    [ -n "$dns_restart_line" ]
+    [ -n "$dns_timer_start_line" ]
+    [ -n "$watchdog_timer_start_line" ]
+    [ "$dns_reset_failed_line" -lt "$dns_restart_line" ]
+    [ "$initial_update_line" -lt "$dns_timer_start_line" ]
+    [ "$initial_update_line" -lt "$watchdog_timer_start_line" ]
+}
+
 @test "postinst ignores debconf fallback error strings when canonical whitelist key is empty" {
     local helper_script="$TEST_TMP_DIR/run-postinst-safe-debconf.sh"
     local state_dir="$TEST_TMP_DIR/postinst-state"

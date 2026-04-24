@@ -147,25 +147,30 @@ EOF
             systemctl start apt-daily-upgrade.timer 2>/dev/null || true
         fi
         
-        # Step 11: Start services
+        # Step 11: Start dnsmasq before the initial whitelist update.  Do not
+        # start persistent DNS timers yet: on long-lived hosts, systemd may
+        # immediately fire missed timer events and race this first setup.
+        systemctl reset-failed dnsmasq 2>/dev/null || true
         systemctl restart dnsmasq
         sleep 2
-        
+
         if ! systemctl is-active --quiet dnsmasq; then
             echo "ERROR: dnsmasq no arrancó"
             journalctl -u dnsmasq -n 10 --no-pager
             exit 1
         fi
-        
+
+        # Step 12: Run initial whitelist update
+        echo "  Ejecutando primera actualización..."
+        /usr/local/bin/openpath-update.sh || echo "⚠ Primera actualización falló (el timer lo reintentará)"
+
+        # Step 13: Start timers and background services after the initial
+        # update settles to avoid concurrent dnsmasq restarts during install.
         systemctl start openpath-dnsmasq.timer
         systemctl start openpath-agent-update.timer
         systemctl start dnsmasq-watchdog.timer
         systemctl start captive-portal-detector.service
         systemctl start openpath-sse-listener.service
-        
-        # Step 12: Run initial whitelist update
-        echo "  Ejecutando primera actualización..."
-        /usr/local/bin/openpath-update.sh || echo "⚠ Primera actualización falló (el timer lo reintentará)"
         
         echo "✓ openpath-dnsmasq configurado correctamente"
         ;;
