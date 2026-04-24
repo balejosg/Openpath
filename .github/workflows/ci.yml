@@ -226,6 +226,48 @@ jobs:
           pwsh -NoProfile -ExecutionPolicy Bypass -File tests/e2e/ci/reset-self-hosted-windows-runner.ps1
 
   # ============================================
+  # Job 2b: Hosted Windows advisory sample
+  # ============================================
+  # This samples GitHub-hosted Windows capacity without replacing the required
+  # self-hosted lane. It must stay outside the CI Success gate until repeated
+  # evidence shows hosted teardown behavior is stable for this suite.
+  test-windows-hosted-advisory:
+    name: Windows Agent Tests (Pester, hosted advisory)
+    runs-on: windows-2025
+    timeout-minutes: 25
+    needs: detect-relevant-changes
+    if: needs.detect-relevant-changes.outputs.windows_bound == 'true'
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run Windows Unit Tests
+        id: run-windows-unit-tests
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tests/e2e/ci/run-windows-pester-isolated.ps1 `
+            -RepoRoot (Get-Location).Path `
+            -ResultsPath windows-hosted-advisory-results.xml `
+            -TimeoutSeconds 840
+
+      - name: Report hosted Windows advisory context
+        if: always()
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        shell: pwsh
+        run: |
+          "## Hosted Windows advisory sample" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Runner name: $env:RUNNER_NAME" >> $env:GITHUB_STEP_SUMMARY
+          "- Runner environment: $env:RUNNER_ENVIRONMENT" >> $env:GITHUB_STEP_SUMMARY
+          "- Runner OS: $env:RUNNER_OS" >> $env:GITHUB_STEP_SUMMARY
+          "- Pester outcome: ${{ steps.run-windows-unit-tests.outcome }}" >> $env:GITHUB_STEP_SUMMARY
+
+  # ============================================
   # Job 3: Firefox Delivery Contracts
   # ============================================
   test-delivery-contracts:
@@ -380,8 +422,8 @@ jobs:
                [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
               echo "Windows Agent Tests (Pester) passed"
             elif [[ "${{ needs.test-windows.outputs.tests_passed }}" == "true" ]]; then
-              echo "Windows Agent Tests (Pester) tests passed, but the hosted Windows job ended as ${{ needs.test-windows.result }}."
-              echo "Treat this as hosted-runner teardown or infrastructure failure, not a Pester assertion failure."
+              echo "Windows Agent Tests (Pester) tests passed, but the Windows job ended as ${{ needs.test-windows.result }}."
+              echo "Treat this as runner teardown or infrastructure failure, not a Pester assertion failure."
               exit 1
             else
               echo "Windows Agent Tests (Pester) failed before reporting successful Pester output"

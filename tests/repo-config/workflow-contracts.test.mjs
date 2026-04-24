@@ -319,6 +319,10 @@ test('required Windows CI runs Pester in an untracked child host without success
   const ciWorkflow = readText('.github/workflows/ci.yml');
   const linuxJobBlock = extractWorkflowJobBlock(ciWorkflow, 'test-linux-dnsmasq');
   const windowsJobBlock = extractWorkflowJobBlock(ciWorkflow, 'test-windows');
+  const windowsHostedAdvisoryJobBlock = extractWorkflowJobBlock(
+    ciWorkflow,
+    'test-windows-hosted-advisory'
+  );
   const windowsProcessReporter = readText('tests/e2e/ci/report-windows-processes.ps1');
   const windowsPesterRunnerPath = 'tests/e2e/ci/run-windows-pester-isolated.ps1';
   const windowsRunnerResetPath = 'tests/e2e/ci/reset-self-hosted-windows-runner.ps1';
@@ -381,8 +385,8 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should stop pinning the required Windows Pester lane to windows-2022'
   );
   assert.ok(
-    !ciWorkflow.includes('runs-on: windows-2025'),
-    'ci.yml should stop pinning the required Windows Pester lane to windows-2025 once the self-hosted runner is available'
+    !windowsJobBlock.includes('runs-on: windows-2025'),
+    'ci.yml should keep the required Windows Pester lane off windows-2025 once the self-hosted runner is available'
   );
   assert.ok(
     !ciWorkflow.includes('persist-credentials: true'),
@@ -421,7 +425,7 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should avoid windows-latest for the required Windows Pester lane'
   );
   assert.ok(
-    !ciWorkflow.includes('GITHUB_STEP_SUMMARY'),
+    !windowsJobBlock.includes('GITHUB_STEP_SUMMARY'),
     'ci.yml should avoid inline Windows step summary processing in the required Pester job'
   );
   assert.ok(
@@ -435,6 +439,44 @@ test('required Windows CI runs Pester in an untracked child host without success
   assert.ok(
     windowsJobBlock.includes('tests/e2e/ci/run-windows-pester-isolated.ps1'),
     'ci.yml should run Windows Pester through the isolated helper'
+  );
+  assert.ok(
+    windowsHostedAdvisoryJobBlock.includes('runs-on: windows-2025'),
+    'ci.yml should run the advisory Windows Pester sample on GitHub-hosted Windows capacity'
+  );
+  assert.ok(
+    windowsHostedAdvisoryJobBlock.includes('continue-on-error: true'),
+    'ci.yml should keep the hosted Windows Pester sample advisory until repeated evidence proves it can protect the gate'
+  );
+  assert.ok(
+    windowsHostedAdvisoryJobBlock.includes(
+      "if: needs.detect-relevant-changes.outputs.windows_bound == 'true'"
+    ),
+    'ci.yml should gate the advisory hosted Windows sample on the same Windows-bound change detection as the required lane'
+  );
+  assert.ok(
+    windowsHostedAdvisoryJobBlock.includes('tests/e2e/ci/run-windows-pester-isolated.ps1') &&
+      windowsHostedAdvisoryJobBlock.includes('-ResultsPath windows-hosted-advisory-results.xml'),
+    'ci.yml should run the same isolated Pester helper in hosted advisory mode with a distinct result path'
+  );
+  assert.ok(
+    !windowsHostedAdvisoryJobBlock.includes('reset-self-hosted-windows-runner.ps1') &&
+      !windowsHostedAdvisoryJobBlock.includes('Prepare self-hosted Windows runner state') &&
+      !windowsHostedAdvisoryJobBlock.includes('Restore self-hosted Windows runner state'),
+    'ci.yml should not run persistent self-hosted cleanup against the ephemeral hosted advisory runner'
+  );
+  assert.ok(
+    windowsHostedAdvisoryJobBlock.includes('name: Report hosted Windows advisory context') &&
+      windowsHostedAdvisoryJobBlock.includes('GITHUB_STEP_SUMMARY') &&
+      windowsHostedAdvisoryJobBlock.includes('RUNNER_NAME') &&
+      windowsHostedAdvisoryJobBlock.includes('RUNNER_ENVIRONMENT'),
+    'ci.yml should emit runner context for hosted Windows advisory timing samples'
+  );
+  const ciSuccessBlock = ciWorkflow.slice(ciWorkflow.indexOf('  ci-success:\n'));
+  assert.ok(
+    ciSuccessBlock.startsWith('  ci-success:\n') &&
+      !ciSuccessBlock.includes('test-windows-hosted-advisory'),
+    'CI Success should not require the hosted advisory Windows sample'
   );
   assert.ok(
     windowsJobBlock.includes('name: Prepare self-hosted Windows runner state') &&
@@ -649,8 +691,8 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should drive the CI summary gate from the recorded Windows lane output'
   );
   assert.ok(
-    ciWorkflow.includes('tests passed, but the hosted Windows job ended as'),
-    'ci.yml should report hosted-runner teardown or timeout separately when Pester passed but the job result failed'
+    ciWorkflow.includes('tests passed, but the Windows job ended as'),
+    'ci.yml should report runner teardown or timeout separately when Pester passed but the job result failed'
   );
   assert.ok(
     ciWorkflow.includes('[[ "${{ needs.test-windows.result }}" == "success" ]] && \\'),

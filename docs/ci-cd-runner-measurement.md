@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: OpenPath CI/E2E timing, artifact evidence, and controlled runner follow-up
-> Last verified: 2026-04-22
+> Last verified: 2026-04-24
 > Source of truth: `docs/ci-cd-runner-measurement.md`
 
 Use this runbook when continuing CI optimization work. It replaces temporary
@@ -23,6 +23,8 @@ For each representative push, record:
   - `Linux Student Policy`
   - release or package workflows when they are relevant to the change.
 - Whether the job waited in queue before starting.
+- Runner identity for Windows jobs (`RUNNER_NAME`, `RUNNER_ENVIRONMENT`,
+  `RUNNER_OS`) so queue pressure can be separated from test execution time.
 - Cache signals from logs, especially npm cache hits and pre-provisioned
   Windows dependency reuse.
 - Artifact evidence for diagnostic uploads when the workflow is meant to retain
@@ -47,6 +49,14 @@ Inspect one workflow run:
 ```bash
 gh run view <run-id> --repo balejosg/Openpath \
   --json name,headSha,status,conclusion,createdAt,updatedAt,jobs
+```
+
+Compare queued versus executing time for Windows jobs:
+
+```bash
+gh run view <run-id> --repo balejosg/Openpath --json jobs \
+  --jq '.jobs[] | select(.name | test("Windows")) |
+    [.name,.status,.conclusion,.startedAt,.completedAt] | @tsv'
 ```
 
 Inspect a specific job log for cache and artifact signals:
@@ -87,6 +97,30 @@ must run before `Upload Windows student-policy diagnostics`. The reset restores
 external DNS before `actions/upload-artifact` contacts GitHub artifact storage.
 `tests/repo-config/workflow-contracts.test.mjs` protects that ordering.
 
+## Current Constraint Decision
+
+The current bottleneck is Windows target-platform capacity, not local
+pre-commit. The latest measurement set that motivated this decision included:
+
+- OpenPath pre-commit with no staged files: `0.117s`.
+- OpenPath `E2E Tests` run `24905419191`: `15m45s` total, with
+  `Windows Student Policy` at `11m50s` and `Windows E2E` at `3m37s`.
+- OpenPath `CI` run `24905419192`: `16m41s` total, while the Windows Pester
+  execution itself was about `52s` and waited behind other Windows work.
+- OpenPath prerelease deb/APT run `24906133675`: `7m04s`.
+
+Do not register a second destructive Windows runner process on the same VM while
+the host has no spare RAM. That would increase contention on the current
+constraint and can corrupt target-platform evidence because the Windows lanes
+modify DNS, services, scheduled tasks, browser policy, and client install state.
+
+`test-windows` remains the required `CI Success` input and stays pinned to the
+self-hosted OpenPath Windows runner. `test-windows-hosted-advisory` samples
+GitHub-hosted `windows-2025` capacity with the same isolated Pester helper, but
+it uses `continue-on-error: true` and is intentionally outside `CI Success`.
+Promote hosted Windows from advisory to required only after repeated samples
+show stable green execution and no teardown or timeout pattern.
+
 ## Decision Rules
 
 - Optimize from repeated representative samples, not one isolated fast or slow
@@ -98,10 +132,17 @@ external DNS before `actions/upload-artifact` contacts GitHub artifact storage.
 - Treat endpoint install, DNS, policy, or self-update failures as product or
   client evidence unless runner health checks show the runner itself failed.
 - Keep self-hosted runner usage restricted to trusted repository workflows.
+- Treat hosted Windows advisory failures as capacity evidence unless the Pester
+  assertions themselves fail; they do not reduce the current release quality
+  gate.
+- Promote a hosted advisory lane only with repeated green samples from the same
+  workflow shape. A single fast hosted sample is not enough evidence to remove
+  target-platform self-hosted coverage.
 
 ## Remaining Optimization Questions
 
-- Measure sustained queue pressure before adding more Windows capacity.
+- Measure sustained queue pressure with the hosted advisory lane before adding
+  paid Windows capacity.
 - Split `windows-student-policy` into parallel SSE and fallback jobs only if
   repeated runs show that this lane remains the workflow bottleneck.
 - Consider browser-stack simplification separately from runner provisioning;
