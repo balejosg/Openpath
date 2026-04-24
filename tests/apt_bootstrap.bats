@@ -18,6 +18,24 @@ fi
 /usr/bin/id "$@"
 EOF
     chmod +x "$bin_dir/id"
+
+    cat > "$bin_dir/dpkg-query" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+    chmod +x "$bin_dir/dpkg-query"
+
+    cat > "$bin_dir/snap" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+    chmod +x "$bin_dir/snap"
+
+    cat > "$bin_dir/add-apt-repository" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+    chmod +x "$bin_dir/add-apt-repository"
 }
 
 write_mock_apt_get() {
@@ -58,6 +76,12 @@ write_mock_apt_cache() {
     cat > "$bin_dir/apt-cache" <<EOF
 #!/bin/bash
 echo "apt-cache:\$*" >> "$log_file"
+if [ "\${1:-}" = "policy" ] && [ "\${2:-}" = "firefox-esr" ]; then
+    echo "  Candidate: 115.0esr-1"
+fi
+if [ "\${1:-}" = "policy" ] && [ "\${2:-}" = "firefox" ]; then
+    echo "  Candidate: (none)"
+fi
 exit 0
 EOF
     chmod +x "$bin_dir/apt-cache"
@@ -217,9 +241,9 @@ EOF
     [[ "$output" == *"ERROR: Classroom setup failed."* ]]
     run grep -n "openpath:setup" "$log_file"
     [ "$status" -eq 0 ]
-    run grep -n "browser-setup:--install-firefox-only" "$log_file"
+    run grep -n "apt-get:install .*firefox-esr" "$log_file"
     [ "$status" -eq 0 ]
-    run grep -n "^browser-setup:$" "$log_file"
+    run grep -n "browser-setup:" "$log_file"
     [ "$status" -ne 0 ]
 }
 
@@ -252,9 +276,9 @@ EOF
 
     [ "$status" -ne 0 ]
     [[ "$output" == *"ERROR: Classroom setup incomplete."* ]]
-    run grep -n "browser-setup:--install-firefox-only" "$log_file"
+    run grep -n "apt-get:install .*firefox-esr" "$log_file"
     [ "$status" -eq 0 ]
-    run grep -n "^browser-setup:$" "$log_file"
+    run grep -n "browser-setup:" "$log_file"
     [ "$status" -ne 0 ]
 }
 
@@ -317,16 +341,52 @@ EOF
 
     [ "$status" -eq 0 ]
 
-    local firefox_only_line setup_line full_setup_line
-    firefox_only_line=$(grep -n "browser-setup:--install-firefox-only" "$log_file" | head -1 | cut -d: -f1)
+    local firefox_package_line setup_line full_setup_line
+    firefox_package_line=$(grep -n "apt-get:install .*firefox-esr" "$log_file" | head -1 | cut -d: -f1)
     setup_line=$(grep -n "openpath:setup" "$log_file" | head -1 | cut -d: -f1)
     full_setup_line=$(grep -n "^browser-setup:$" "$log_file" | head -1 | cut -d: -f1)
 
-    [ -n "$firefox_only_line" ]
+    [ -n "$firefox_package_line" ]
     [ -n "$setup_line" ]
     [ -n "$full_setup_line" ]
-    [ "$firefox_only_line" -lt "$setup_line" ]
+    [ "$firefox_package_line" -lt "$setup_line" ]
     [ "$setup_line" -lt "$full_setup_line" ]
+}
+
+@test "apt-bootstrap installs Firefox before the deb package can take over DNS" {
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local log_file="$TEST_TMP_DIR/apt-bootstrap.log"
+    local browser_setup_script="$TEST_TMP_DIR/openpath-browser-setup.sh"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+
+    mkdir -p "$bin_dir" "$etc_dir"
+
+    write_mock_id "$bin_dir"
+    write_mock_apt_get "$bin_dir" "$log_file"
+    write_mock_apt_cache "$bin_dir" "$log_file"
+    write_mock_curl "$bin_dir" "$log_file"
+    write_mock_openpath "$bin_dir" "$log_file" "0" "complete"
+    write_mock_browser_setup "$browser_setup_script" "$log_file"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        OPENPATH_APT_REPO_URL="http://repo.local/apt" \
+        OPENPATH_BROWSER_SETUP_SCRIPT="$browser_setup_script" \
+        OPENPATH_ETC_CONFIG_DIR="$etc_dir" \
+        bash "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh" \
+        --api-url "https://school.example" \
+        --classroom-id "cls_123" \
+        --enrollment-token "enroll-token"
+
+    [ "$status" -eq 0 ]
+
+    local firefox_package_line package_install_line
+    firefox_package_line=$(grep -n "apt-get:install .*firefox-esr" "$log_file" | head -1 | cut -d: -f1)
+    package_install_line=$(grep -n "apt-get:install .*openpath-dnsmasq" "$log_file" | head -1 | cut -d: -f1)
+
+    [ -n "$firefox_package_line" ]
+    [ -n "$package_install_line" ]
+    [ "$firefox_package_line" -lt "$package_install_line" ]
 }
 
 @test "apt-bootstrap fails hard when enrollment-token classroom setup fails" {
@@ -356,9 +416,9 @@ EOF
     [[ "$output" == *"ERROR: Classroom setup failed."* ]]
     run grep -n "openpath:setup" "$log_file"
     [ "$status" -eq 0 ]
-    run grep -n "browser-setup:--install-firefox-only" "$log_file"
+    run grep -n "apt-get:install .*firefox-esr" "$log_file"
     [ "$status" -eq 0 ]
-    run grep -n "^browser-setup:$" "$log_file"
+    run grep -n "browser-setup:" "$log_file"
     [ "$status" -ne 0 ]
 }
 

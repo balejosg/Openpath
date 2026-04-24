@@ -45,6 +45,7 @@ OPENPATH_APT_UPDATE_TIMEOUT_SECONDS="${OPENPATH_APT_UPDATE_TIMEOUT_SECONDS:-45}"
 OPENPATH_APT_INSTALL_TIMEOUT_SECONDS="${OPENPATH_APT_INSTALL_TIMEOUT_SECONDS:-180}"
 OPENPATH_APT_CONNECT_TIMEOUT_SECONDS="${OPENPATH_APT_CONNECT_TIMEOUT_SECONDS:-10}"
 OPENPATH_APT_CONF_FILE="${OPENPATH_APT_CONF_FILE:-/etc/apt/apt.conf.d/80openpath-network-retries}"
+OPENPATH_FIREFOX_APT_PREFERENCES_PATH="${OPENPATH_FIREFOX_APT_PREFERENCES_PATH:-/etc/apt/preferences.d/mozilla-firefox}"
 VERBOSE=false
 
 log_verbose() {
@@ -268,17 +269,104 @@ require_browser_setup_helper() {
     fi
 }
 
-run_firefox_package_setup_helper() {
-    show_progress 4 6 "Ensuring Firefox browser package"
+bootstrap_dpkg_is_installed() {
+    local pkg="$1"
+    dpkg-query -W -f='${Status}\n' "$pkg" 2>/dev/null | grep -q '^install ok installed$'
+}
 
-    require_browser_setup_helper
+bootstrap_apt_candidate_version() {
+    local pkg="$1"
+    apt-cache policy "$pkg" 2>/dev/null | awk '/Candidate:/ {print $2; exit}'
+}
 
-    if ! run_maybe_verbose "$BROWSER_SETUP_SCRIPT" --install-firefox-only; then
-        echo "ERROR: Firefox browser package did not complete successfully."
+bootstrap_apt_has_candidate() {
+    local pkg="$1"
+    local candidate
+    candidate="$(bootstrap_apt_candidate_version "$pkg")"
+    [ -n "$candidate" ] && [ "$candidate" != "(none)" ]
+}
+
+bootstrap_os_id() {
+    if [ -n "${OPENPATH_BOOTSTRAP_OS_ID:-}" ]; then
+        printf '%s\n' "$OPENPATH_BOOTSTRAP_OS_ID"
+        return 0
+    fi
+
+    if [ -r /etc/os-release ]; then
+        awk -F= '$1=="ID" {gsub(/"/, "", $2); print $2; exit}' /etc/os-release 2>/dev/null || true
+    fi
+}
+
+configure_ubuntu_firefox_apt_source() {
+    if ! command -v add-apt-repository >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive run_maybe_verbose apt_install_with_retry "software-properties-common" \
+            apt-get install -y software-properties-common || true
+    fi
+
+    if command -v add-apt-repository >/dev/null 2>&1; then
+        add-apt-repository -y ppa:mozillateam/ppa >/dev/null 2>&1 || true
+
+        mkdir -p "$(dirname "$OPENPATH_FIREFOX_APT_PREFERENCES_PATH")" 2>/dev/null || true
+        cat > "$OPENPATH_FIREFOX_APT_PREFERENCES_PATH" 2>/dev/null <<'EOF' || true
+Package: *
+Pin: release o=LP-PPA-mozillateam
+Pin-Priority: 1001
+
+Package: firefox
+Pin: version 1:1snap*
+Pin-Priority: -1
+EOF
+    fi
+}
+
+run_firefox_package_preinstall() {
+    show_progress 3 6 "Ensuring Firefox browser package"
+
+    if bootstrap_dpkg_is_installed firefox-esr || bootstrap_dpkg_is_installed firefox; then
+        log_verbose "  OK Firefox browser package already installed"
+        return 0
+    fi
+
+    if command -v snap >/dev/null 2>&1 && snap list firefox >/dev/null 2>&1; then
+        pkill -TERM -f firefox 2>/dev/null || true
+        snap remove --purge firefox >/dev/null 2>&1 || snap remove firefox >/dev/null 2>&1 || true
+    fi
+
+    local os_id
+    os_id="$(bootstrap_os_id)"
+    if [ "$os_id" = "ubuntu" ]; then
+        configure_ubuntu_firefox_apt_source
+    fi
+
+    if ! apt_update_with_retry; then
+        echo "ERROR: APT package indexes could not be refreshed before Firefox installation."
         exit 1
     fi
 
-    log_verbose "  OK Firefox browser package ready"
+    if bootstrap_apt_has_candidate firefox-esr; then
+        if run_maybe_verbose apt_install_with_retry "firefox-esr" apt-get install -y firefox-esr; then
+            log_verbose "  OK Firefox ESR package ready"
+            return 0
+        fi
+    fi
+
+    if bootstrap_apt_has_candidate firefox; then
+        local firefox_candidate
+        firefox_candidate="$(bootstrap_apt_candidate_version firefox)"
+        if [ "$os_id" = "ubuntu" ] && printf '%s' "$firefox_candidate" | grep -qi 'snap'; then
+            echo "ERROR: Firefox APT candidate appears to be the Ubuntu Snap wrapper ($firefox_candidate)."
+            echo "  The OpenPath Firefox extension requires a deb-packaged Firefox."
+            exit 1
+        fi
+
+        if run_maybe_verbose apt_install_with_retry "firefox" apt-get install -y firefox; then
+            log_verbose "  OK Firefox package ready"
+            return 0
+        fi
+    fi
+
+    echo "ERROR: No installable Firefox APT package found."
+    exit 1
 }
 
 run_browser_setup_helper() {
@@ -442,7 +530,9 @@ fi
 run_maybe_verbose bash "$setup_script" "--$TRACK"
 log_verbose "  OK Repository configured"
 
-show_progress 3 6 "Validating and installing openpath-dnsmasq"
+run_firefox_package_preinstall
+
+show_progress 4 6 "Validating and installing openpath-dnsmasq"
 if ! apt-cache show openpath-dnsmasq >/dev/null 2>&1; then
     echo "ERROR: APT repository metadata does not advertise openpath-dnsmasq."
     if [ "$TRACK" = "stable" ] && apt-cache show whitelist-dnsmasq >/dev/null 2>&1; then
@@ -470,7 +560,6 @@ fi
 log_verbose "  OK Package installed"
 
 if [ "$SKIP_SETUP" = true ]; then
-    show_progress 4 6 "Firefox browser package skipped"
     show_progress 5 6 "Classroom setup skipped"
     log_verbose "Classroom setup skipped (--skip-setup)"
     show_progress 6 6 "Browser request setup skipped"
@@ -487,8 +576,6 @@ if [ -n "$ENROLLMENT_TOKEN" ] && { [ -n "$TOKEN_FILE" ] || [ "$TOKEN_STDIN" = tr
     echo "ERROR: --enrollment-token cannot be combined with --token-file or --token-stdin"
     exit 1
 fi
-
-run_firefox_package_setup_helper
 
 show_progress 5 6 "Running classroom setup"
 setup_cmd=(openpath setup)
