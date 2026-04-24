@@ -537,6 +537,29 @@ EOF
     [ "$initial_update_line" -lt "$watchdog_timer_start_line" ]
 }
 
+@test "setup dnsmasq restarts clear systemd start-limit state first" {
+    local dns_lib="$PROJECT_DIR/linux/lib/dns-dnsmasq.sh"
+    local install_steps="$PROJECT_DIR/linux/lib/install-core-steps.sh"
+
+    run awk '
+        /systemctl reset-failed dnsmasq/ { reset_line = NR }
+        /timeout 30 systemctl restart dnsmasq/ {
+            if (reset_line && reset_line < NR) found = 1
+        }
+        END { exit found ? 0 : 1 }
+    ' "$dns_lib"
+    [ "$status" -eq 0 ]
+
+    run awk '
+        /systemctl reset-failed dnsmasq/ { reset_line = NR }
+        /systemctl restart dnsmasq/ {
+            if (reset_line && reset_line < NR) found = 1
+        }
+        END { exit found ? 0 : 1 }
+    ' "$install_steps"
+    [ "$status" -eq 0 ]
+}
+
 @test "postinst ignores debconf fallback error strings when canonical whitelist key is empty" {
     local helper_script="$TEST_TMP_DIR/run-postinst-safe-debconf.sh"
     local state_dir="$TEST_TMP_DIR/postinst-state"

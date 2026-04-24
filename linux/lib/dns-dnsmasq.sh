@@ -164,6 +164,7 @@ restart_dnsmasq() {
         return 1
     fi
 
+    systemctl reset-failed dnsmasq 2>/dev/null || true
     if timeout 30 systemctl restart dnsmasq; then
         for _ in $(seq 1 5); do
             if systemctl is-active --quiet dnsmasq; then

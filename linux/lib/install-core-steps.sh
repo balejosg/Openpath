@@ -289,6 +289,7 @@ cache-size=1000
 server=$PRIMARY_DNS
 EOF
 
+    systemctl reset-failed dnsmasq 2>/dev/null || true
     systemctl restart dnsmasq
 
     echo "  Esperando a que dnsmasq esté activo..."
