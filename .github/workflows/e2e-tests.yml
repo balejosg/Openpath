@@ -8,6 +8,7 @@ on:
       - 'shared/**'
       - 'linux/install.sh'
       - 'linux/uninstall.sh'
+      - 'linux/debian-package/**'
       - 'linux/lib/**'
       - 'linux/scripts/**'
       - 'windows/**'

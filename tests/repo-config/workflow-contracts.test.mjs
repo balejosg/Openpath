@@ -835,6 +835,10 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
     'linux-e2e should run only for Linux E2E relevant changes'
   );
   assert.ok(
+    e2eWorkflow.includes("'linux/debian-package/**'"),
+    'Debian package maintainer script changes should trigger E2E before prerelease package publishing'
+  );
+  assert.ok(
     windowsE2eBlock.includes("needs.detect-relevant-changes.outputs.windows_e2e == 'true'"),
     'windows-e2e should run only for Windows E2E relevant changes'
   );
