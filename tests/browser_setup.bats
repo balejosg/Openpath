@@ -383,6 +383,40 @@ EOF
     fi
 }
 
+@test "openpath-browser-setup can install only Firefox before request setup exists" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "success"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/home" \
+        OPENPATH_FIREFOX_PROFILE_HOME="$TEST_TMP_DIR/home" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh" --install-firefox-only
+
+    [ "$status" -eq 0 ]
+    run cat "$calls_file"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"install_firefox_esr"* ]]
+    [[ "$output" != *"install_browser_integrations:"* ]]
+    [[ "$output" != *"apply_search_engine_policies"* ]]
+}
+
 @test "openpath-browser-setup accepts managed api firefox policy payload" {
     local fake_install="$TEST_TMP_DIR/install"
     local fake_scripts="$TEST_TMP_DIR/scripts"

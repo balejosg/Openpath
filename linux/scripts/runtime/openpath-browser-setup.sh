@@ -30,6 +30,26 @@ FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="${OPENPATH_FIREFOX_EXTENSION_REG
 FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES="${OPENPATH_FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES:-3}"
 # First-run managed extension downloads can land near the end of the probe on slow runners.
 FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS="${OPENPATH_FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS:-60}"
+INSTALL_FIREFOX_ONLY=false
+
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --install-firefox-only)
+                INSTALL_FIREFOX_ONLY=true
+                ;;
+            --help|-h)
+                echo "Usage: $0 [--install-firefox-only]"
+                exit 0
+                ;;
+            *)
+                echo "ERROR: unknown option: $1" >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
 
 load_common_runtime() {
     if [ -f "$INSTALL_DIR/lib/common.sh" ]; then
@@ -529,18 +549,25 @@ verify_firefox_setup() {
 }
 
 main() {
+    parse_args "$@"
     load_common_runtime
     if ! load_libraries; then
         load_browser_runtime
     fi
     require_root
-    require_openpath_request_setup_complete "browser request setup"
 
     log "Ensuring Firefox is installed..."
     if ! install_firefox_esr; then
         log_error "Failed to install Firefox"
         exit 1
     fi
+
+    if [ "$INSTALL_FIREFOX_ONLY" = true ]; then
+        log "Firefox installation is ready"
+        exit 0
+    fi
+
+    require_openpath_request_setup_complete "browser request setup"
 
     log "Ensuring browser integrations are configured..."
     if ! install_browser_integrations \

@@ -261,13 +261,30 @@ usage() {
     echo "  --help               Show this help"
 }
 
-run_browser_setup_helper() {
-    show_progress 5 5 "Ensuring Firefox browser setup"
-
+require_browser_setup_helper() {
     if [ ! -x "$BROWSER_SETUP_SCRIPT" ]; then
         echo "ERROR: Browser setup helper not found at $BROWSER_SETUP_SCRIPT"
         exit 1
     fi
+}
+
+run_firefox_package_setup_helper() {
+    show_progress 4 6 "Ensuring Firefox browser package"
+
+    require_browser_setup_helper
+
+    if ! run_maybe_verbose "$BROWSER_SETUP_SCRIPT" --install-firefox-only; then
+        echo "ERROR: Firefox browser package did not complete successfully."
+        exit 1
+    fi
+
+    log_verbose "  OK Firefox browser package ready"
+}
+
+run_browser_setup_helper() {
+    show_progress 6 6 "Ensuring Firefox browser setup"
+
+    require_browser_setup_helper
 
     if ! run_maybe_verbose "$BROWSER_SETUP_SCRIPT"; then
         echo "ERROR: Firefox browser setup did not complete successfully."
@@ -408,13 +425,13 @@ if ! command -v apt-get >/dev/null 2>&1; then
     exit 1
 fi
 
-show_progress 1 5 "Installing bootstrap dependencies"
+show_progress 1 6 "Installing bootstrap dependencies"
 export DEBIAN_FRONTEND=noninteractive
 remove_legacy_openpath_apt_source
 run_maybe_verbose apt_install_with_retry "bootstrap dependencies" apt-get install -y -qq ca-certificates curl gnupg
 log_verbose "  OK Dependencies ready"
 
-show_progress 2 5 "Configuring OpenPath APT repository ($TRACK)"
+show_progress 2 6 "Configuring OpenPath APT repository ($TRACK)"
 setup_script="$(mktemp)"
 trap 'rm -f "$setup_script"' EXIT
 if [[ "$APT_SETUP_URL" == https://* ]]; then
@@ -425,7 +442,7 @@ fi
 run_maybe_verbose bash "$setup_script" "--$TRACK"
 log_verbose "  OK Repository configured"
 
-show_progress 3 5 "Validating and installing openpath-dnsmasq"
+show_progress 3 6 "Validating and installing openpath-dnsmasq"
 if ! apt-cache show openpath-dnsmasq >/dev/null 2>&1; then
     echo "ERROR: APT repository metadata does not advertise openpath-dnsmasq."
     if [ "$TRACK" = "stable" ] && apt-cache show whitelist-dnsmasq >/dev/null 2>&1; then
@@ -453,9 +470,10 @@ fi
 log_verbose "  OK Package installed"
 
 if [ "$SKIP_SETUP" = true ]; then
-    show_progress 4 5 "Classroom setup skipped"
+    show_progress 4 6 "Firefox browser package skipped"
+    show_progress 5 6 "Classroom setup skipped"
     log_verbose "Classroom setup skipped (--skip-setup)"
-    show_progress 5 5 "Browser request setup skipped"
+    show_progress 6 6 "Browser request setup skipped"
     echo "Run manually later: sudo openpath setup"
     exit 0
 fi
@@ -470,7 +488,9 @@ if [ -n "$ENROLLMENT_TOKEN" ] && { [ -n "$TOKEN_FILE" ] || [ "$TOKEN_STDIN" = tr
     exit 1
 fi
 
-show_progress 4 5 "Running classroom setup"
+run_firefox_package_setup_helper
+
+show_progress 5 6 "Running classroom setup"
 setup_cmd=(openpath setup)
 
 if [ -n "$API_URL" ]; then
