@@ -117,9 +117,14 @@ dns_probe_result_is_blocked() {
     return 0
 }
 
-# Free port 53 (stop systemd-resolved)
+# Free port 53 (stop services that can bind the local DNS socket)
 free_port_53() {
     log "Freeing port 53..."
+
+    # The Debian dnsmasq package can auto-start during dependency installation.
+    # Stop it before disabling systemd-resolved so postinst does not leave DNS down
+    # while waiting for a port still held by the default dnsmasq daemon.
+    systemctl stop dnsmasq 2>/dev/null || true
 
     # Stop systemd-resolved socket and service
     systemctl stop systemd-resolved.socket 2>/dev/null || true

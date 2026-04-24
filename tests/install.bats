@@ -147,6 +147,57 @@ load 'test_helper'
     [ "$postinst_detect_line" -lt "$postinst_free_line" ]
 }
 
+@test "free_port_53 stops distro dnsmasq before disabling systemd-resolved" {
+    local helper_script="$TEST_TMP_DIR/run-free-port-53.sh"
+    local state_dir="$TEST_TMP_DIR/free-port-53-state"
+
+    mkdir -p "$state_dir"
+
+    cat > "$helper_script" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+project_dir="$1"
+state_dir="$2"
+log_file="$state_dir/calls.log"
+: > "$log_file"
+
+log() {
+    printf 'log %s\n' "$*" >> "$log_file"
+}
+
+systemctl() {
+    printf 'systemctl %s\n' "$*" >> "$log_file"
+    return 0
+}
+
+ss() {
+    return 0
+}
+
+sleep() {
+    printf 'sleep %s\n' "$*" >> "$log_file"
+}
+
+source "$project_dir/linux/lib/dns-runtime.sh"
+free_port_53
+
+dnsmasq_stop_line="$(grep -n '^systemctl stop dnsmasq$' "$log_file" | head -1 | cut -d: -f1)"
+resolved_stop_line="$(grep -n '^systemctl stop systemd-resolved.socket$' "$log_file" | head -1 | cut -d: -f1)"
+
+cat "$log_file"
+
+[ -n "$dnsmasq_stop_line" ]
+[ -n "$resolved_stop_line" ]
+[ "$dnsmasq_stop_line" -lt "$resolved_stop_line" ]
+EOF
+    chmod +x "$helper_script"
+
+    run "$helper_script" "$PROJECT_DIR" "$state_dir"
+
+    [ "$status" -eq 0 ]
+}
+
 @test "apt bootstrap script keeps browser setup gated behind request setup validation" {
     run grep -n "OPENPATH_BROWSER_SETUP_SCRIPT" "$PROJECT_DIR/linux/scripts/build/apt-bootstrap.sh"
     [ "$status" -eq 0 ]
