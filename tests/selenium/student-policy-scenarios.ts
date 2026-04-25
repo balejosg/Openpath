@@ -335,17 +335,6 @@ async function runAllowedOriginAjaxAutoAllowScenarios(
   const firstFetch = await driver.runCrossOriginFetchProbe(targets.ajaxDependencyFetchUrl);
   assert.strictEqual(firstFetch, 'blocked');
 
-  const ajaxAutoRequest = await client.submitAutoRequest(
-    targets.hosts.ajaxDependency,
-    'Whitelisted origin AJAX dependency should be auto-approved',
-    {
-      originPage: targets.siteOkUrl,
-      targetUrl: targets.ajaxDependencyFetchUrl,
-    }
-  );
-  assert.strictEqual(ajaxAutoRequest.success, true);
-  assert.strictEqual(ajaxAutoRequest.autoApproved, true);
-
   await settlePolicyChange(
     driver,
     mode,

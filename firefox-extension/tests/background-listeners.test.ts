@@ -545,4 +545,33 @@ void describe('background listeners blocked-screen routing', () => {
       },
     ]);
   });
+
+  void test('uses the current tab URL as ajax origin when Firefox omits request origins', async () => {
+    const harness = createListenerHarness({
+      confirmBlockedScreenNavigation: () => Promise.resolve(true),
+      currentTabUrl: 'https://allowed.example/app',
+    });
+    assert.ok(harness.webRequestError);
+
+    harness.webRequestError({
+      error: 'NS_ERROR_NET_TIMEOUT',
+      tabId: 13,
+      type: 'fetch',
+      url: 'https://api.blocked.example/data.json',
+    } as unknown as WebRequest.OnErrorOccurredDetailsType);
+
+    await waitForAsyncListeners();
+
+    assert.deepEqual(harness.confirmCalls, []);
+    assert.deepEqual(harness.redirects, []);
+    assert.deepEqual(harness.autoAllowCalls, [
+      {
+        tabId: 13,
+        hostname: 'api.blocked.example',
+        origin: 'https://allowed.example/app',
+        requestType: 'fetch',
+        targetUrl: 'https://api.blocked.example/data.json',
+      },
+    ]);
+  });
 });

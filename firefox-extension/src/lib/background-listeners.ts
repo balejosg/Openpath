@@ -144,6 +144,17 @@ function buildRedirectKey(context: ConfirmBlockedScreenContext): string {
   return [context.tabId.toString(), context.hostname, context.error, context.url].join(':');
 }
 
+function normalizeAutoAllowOriginCandidate(
+  candidateUrl: string | undefined,
+  targetUrl: string
+): string | null {
+  if (!candidateUrl || candidateUrl === targetUrl || isExtensionUrl(candidateUrl)) {
+    return null;
+  }
+
+  return extractHostname(candidateUrl) ? candidateUrl : null;
+}
+
 function buildDisplayedRedirectKey(context: ConfirmBlockedScreenContext): string {
   return [context.tabId.toString(), context.hostname, context.url].join(':');
 }
@@ -327,6 +338,32 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     }
   }
 
+  async function resolveAutoAllowOriginPage(details: {
+    documentUrl?: string;
+    originUrl?: string;
+    tabId: number;
+    url: string;
+  }): Promise<string | null> {
+    const explicitOrigin = normalizeAutoAllowOriginCandidate(
+      details.originUrl ?? details.documentUrl,
+      details.url
+    );
+    if (explicitOrigin) {
+      return explicitOrigin;
+    }
+
+    if (details.tabId < 0) {
+      return null;
+    }
+
+    try {
+      const tab = await options.browser.tabs.get(details.tabId);
+      return normalizeAutoAllowOriginCandidate(tab.url, details.url);
+    } catch {
+      return null;
+    }
+  }
+
   options.browser.webRequest.onBeforeRequest.addListener(
     (details: WebRequest.OnBeforeRequestDetailsType) => {
       const result = options.evaluateBlockedPath(details);
@@ -362,20 +399,20 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
         return;
       }
 
-      const originPage = details.originUrl ?? details.documentUrl ?? null;
-
       handleBlockedScreenNavigationError(details, {
         recordBlockedDomain: true,
         requestType: details.type,
       });
 
       if (isAutoAllowRequestType(details.type)) {
-        void options.autoAllowBlockedDomain(
-          details.tabId,
-          hostname,
-          originPage,
-          details.type,
-          details.url
+        void resolveAutoAllowOriginPage(details).then((originPage) =>
+          options.autoAllowBlockedDomain(
+            details.tabId,
+            hostname,
+            originPage,
+            details.type,
+            details.url
+          )
         );
       }
     },
