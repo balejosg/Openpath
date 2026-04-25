@@ -1016,6 +1016,49 @@ function Assert-WindowsDnsPolicyReady {
     Write-DiagnosticNote 'Windows DNS policy readiness verified through local Acrylic.'
 }
 
+function Wait-WindowsDnsPolicyReady {
+    $maxAttempts = 12
+    if ($env:OPENPATH_WINDOWS_DNS_READINESS_ATTEMPTS) {
+        $parsedAttempts = 0
+        if (
+            [int]::TryParse($env:OPENPATH_WINDOWS_DNS_READINESS_ATTEMPTS, [ref]$parsedAttempts) -and
+            $parsedAttempts -gt 0
+        ) {
+            $maxAttempts = $parsedAttempts
+        }
+    }
+
+    $delaySeconds = 5
+    if ($env:OPENPATH_WINDOWS_DNS_READINESS_DELAY_SECONDS) {
+        $parsedDelay = 0
+        if (
+            [int]::TryParse($env:OPENPATH_WINDOWS_DNS_READINESS_DELAY_SECONDS, [ref]$parsedDelay) -and
+            $parsedDelay -gt 0
+        ) {
+            $delaySeconds = $parsedDelay
+        }
+    }
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Write-DiagnosticNote "Windows DNS policy readiness attempt $attempt/$maxAttempts"
+            Assert-WindowsDnsPolicyReady
+            return
+        }
+        catch {
+            $lastError = $_
+            Write-DiagnosticNote "Windows DNS policy readiness attempt $attempt/$maxAttempts failed: $($_.Exception.Message)"
+            if ($attempt -lt $maxAttempts) {
+                Start-Sleep -Seconds $delaySeconds
+            }
+        }
+    }
+
+    Invoke-DebugDump
+    throw "Windows DNS policy readiness did not converge after $maxAttempts attempts: $($lastError.Exception.Message)"
+}
+
 function Install-AndEnrollClient {
     param(
         [Parameter(Mandatory = $true)][pscustomobject]$Scenario,
@@ -1058,7 +1101,7 @@ function Install-AndEnrollClient {
     }
 
     Assert-InstalledAcrylicRuntime
-    Assert-WindowsDnsPolicyReady
+    Wait-WindowsDnsPolicyReady
 
     $scenarioPath = Join-Path $script:ArtifactsRoot 'student-scenario.json'
     if (-not (Test-Path $scenarioPath)) {

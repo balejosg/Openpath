@@ -963,6 +963,40 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('Windows student-policy runner waits for DNS policy readiness before Selenium', () => {
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+    const waitFunction = windowsRunner.match(
+      /function Wait-WindowsDnsPolicyReady \{[\s\S]*?\n\}\n\nfunction Install-AndEnrollClient/
+    )?.[0];
+
+    assert.ok(waitFunction, 'Windows student-policy runner should poll DNS readiness');
+    assert.match(
+      waitFunction,
+      /OPENPATH_WINDOWS_DNS_READINESS_ATTEMPTS/,
+      'Windows DNS readiness polling should have an environment override for CI tuning'
+    );
+    assert.match(
+      waitFunction,
+      /Assert-WindowsDnsPolicyReady/,
+      'Windows DNS readiness polling should reuse the focused readiness assertion'
+    );
+    assert.match(
+      waitFunction,
+      /Start-Sleep -Seconds/,
+      'Windows DNS readiness polling should wait between attempts instead of racing Selenium'
+    );
+    assert.match(
+      waitFunction,
+      /Invoke-DebugDump/,
+      'Windows DNS readiness polling should emit full diagnostics before failing'
+    );
+    assert.match(
+      windowsRunner,
+      /Assert-InstalledAcrylicRuntime[\s\S]*Wait-WindowsDnsPolicyReady/,
+      'Windows student-policy runner should wait for DNS readiness after Acrylic runtime validation'
+    );
+  });
+
   test('Linux student-policy readiness fails before Selenium when blocked fixture DNS resolves upstream', () => {
     const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
     const readinessFunction = linuxRunner.match(
@@ -1002,6 +1036,45 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('Linux student-policy runner waits for DNS policy readiness before Selenium', () => {
+    const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
+    const waitFunction = linuxRunner.match(
+      /wait_for_linux_dns_policy_ready\(\) \{[\s\S]*?\n\}\n\nassert_linux_firefox_extension_ready/
+    )?.[0];
+
+    assert.ok(waitFunction, 'Linux student-policy runner should poll DNS readiness');
+    assert.match(
+      waitFunction,
+      /OPENPATH_LINUX_DNS_READINESS_ATTEMPTS/,
+      'Linux DNS readiness polling should have an environment override for CI tuning'
+    );
+    assert.match(
+      waitFunction,
+      /assert_linux_dns_policy_ready/,
+      'Linux DNS readiness polling should reuse the focused readiness assertion'
+    );
+    assert.match(
+      waitFunction,
+      /sleep "\$delay_seconds"/,
+      'Linux DNS readiness polling should wait between attempts instead of racing Selenium'
+    );
+    assert.match(
+      waitFunction,
+      /debug_state/,
+      'Linux DNS readiness polling should emit full diagnostics before failing'
+    );
+    assert.match(
+      linuxRunner,
+      /Verify SSE DNS policy readiness" wait_for_linux_dns_policy_ready/,
+      'Linux SSE student-policy runner should wait for DNS readiness before Selenium'
+    );
+    assert.match(
+      linuxRunner,
+      /Verify fallback DNS policy readiness" wait_for_linux_dns_policy_ready/,
+      'Linux fallback student-policy runner should wait for DNS readiness before Selenium'
+    );
+  });
+
   test('Linux student-policy runner gates Selenium on dnsmasq and Firefox native-host readiness', () => {
     const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
 
@@ -1026,12 +1099,12 @@ describe('repository verification contract', () => {
     );
     assert.match(
       linuxRunner,
-      /configure_client true[\s\S]*?assert_linux_dns_policy_ready[\s\S]*?assert_linux_firefox_extension_ready[\s\S]*?run_student_suite sse/,
+      /configure_client true[\s\S]*?wait_for_linux_dns_policy_ready[\s\S]*?assert_linux_firefox_extension_ready[\s\S]*?run_student_suite sse/,
       'Linux student-policy runner should gate the SSE Selenium phase after install/enroll/update'
     );
     assert.match(
       linuxRunner,
-      /configure_client false[\s\S]*?assert_linux_dns_policy_ready[\s\S]*?assert_linux_firefox_extension_ready[\s\S]*?run_student_suite fallback/,
+      /configure_client false[\s\S]*?wait_for_linux_dns_policy_ready[\s\S]*?assert_linux_firefox_extension_ready[\s\S]*?run_student_suite fallback/,
       'Linux student-policy runner should gate the fallback Selenium phase after reconfiguration/update'
     );
   });

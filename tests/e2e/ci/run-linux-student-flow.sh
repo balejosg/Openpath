@@ -707,6 +707,38 @@ fi
     rm -f "$readiness_log"
 }
 
+wait_for_linux_dns_policy_ready() {
+    local max_attempts="${OPENPATH_LINUX_DNS_READINESS_ATTEMPTS:-12}"
+    local delay_seconds="${OPENPATH_LINUX_DNS_READINESS_DELAY_SECONDS:-5}"
+    local attempt=1
+    local last_status=0
+
+    if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || ((max_attempts < 1)); then
+        max_attempts=12
+    fi
+
+    if ! [[ "$delay_seconds" =~ ^[0-9]+$ ]] || ((delay_seconds < 1)); then
+        delay_seconds=5
+    fi
+
+    while ((attempt <= max_attempts)); do
+        echo "Linux DNS policy readiness attempt $attempt/$max_attempts"
+        if assert_linux_dns_policy_ready; then
+            return 0
+        fi
+
+        last_status=$?
+        if ((attempt < max_attempts)); then
+            sleep "$delay_seconds"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    echo "Linux DNS policy readiness did not converge after $max_attempts attempts" >&2
+    debug_state
+    return "$last_status"
+}
+
 assert_linux_firefox_extension_ready() {
     echo "Verifying Linux Firefox extension readiness..."
     local readiness_log="$ARTIFACTS_DIR/linux-firefox-readiness.err.log"
@@ -797,13 +829,13 @@ main() {
     run_timed_step "Start student-policy container" start_container
     run_timed_step "Start fixture server" start_container_fixture_server
     run_timed_step "Install/enroll/update client" configure_client true
-    run_timed_step "Verify SSE DNS policy readiness" assert_linux_dns_policy_ready
+    run_timed_step "Verify SSE DNS policy readiness" wait_for_linux_dns_policy_ready
     run_timed_step "Verify SSE Firefox readiness" assert_linux_firefox_extension_ready
     run_timed_step "Run Selenium student suite (sse)" run_student_suite sse full
     run_timed_step "Bootstrap fallback scenario" bootstrap_scenario "Linux Student Policy Fallback"
     run_timed_step "Seed fallback baseline policy" seed_initial_baseline_policy
     run_timed_step "Reconfigure/update client" configure_client false
-    run_timed_step "Verify fallback DNS policy readiness" assert_linux_dns_policy_ready
+    run_timed_step "Verify fallback DNS policy readiness" wait_for_linux_dns_policy_ready
     run_timed_step "Verify fallback Firefox readiness" assert_linux_firefox_extension_ready
     run_timed_step "Run Selenium student suite (fallback, fallback-propagation)" run_student_suite fallback fallback-propagation
 
