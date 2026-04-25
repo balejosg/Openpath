@@ -117,7 +117,11 @@ modify DNS, services, scheduled tasks, browser policy, and client install state.
 `test-windows` remains the required `CI Success` input and stays pinned to the
 self-hosted OpenPath Windows runner. `test-windows-hosted-advisory` samples
 GitHub-hosted `windows-2025` capacity with the same isolated Pester helper, but
-it uses `continue-on-error: true` and is intentionally outside `CI Success`.
+it uses `continue-on-error: true`, a short `6m` job timeout, and is
+intentionally outside `CI Success`. The first sample on run `24910078474`
+completed the Pester and summary steps, then remained `in_progress` during
+hosted runner finalization while `CI Success` was already green; treat that as
+hosted teardown evidence, not as a reason to extend the advisory timeout.
 Promote hosted Windows from advisory to required only after repeated samples
 show stable green execution and no teardown or timeout pattern.
 

@@ -449,6 +449,10 @@ test('required Windows CI runs Pester in an untracked child host without success
     'ci.yml should keep the hosted Windows Pester sample advisory until repeated evidence proves it can protect the gate'
   );
   assert.ok(
+    windowsHostedAdvisoryJobBlock.includes('timeout-minutes: 6'),
+    'ci.yml should keep the hosted Windows advisory sample from becoming a new workflow bottleneck when hosted teardown stalls'
+  );
+  assert.ok(
     windowsHostedAdvisoryJobBlock.includes(
       "if: needs.detect-relevant-changes.outputs.windows_bound == 'true'"
     ),
@@ -456,7 +460,8 @@ test('required Windows CI runs Pester in an untracked child host without success
   );
   assert.ok(
     windowsHostedAdvisoryJobBlock.includes('tests/e2e/ci/run-windows-pester-isolated.ps1') &&
-      windowsHostedAdvisoryJobBlock.includes('-ResultsPath windows-hosted-advisory-results.xml'),
+      windowsHostedAdvisoryJobBlock.includes('-ResultsPath windows-hosted-advisory-results.xml') &&
+      windowsHostedAdvisoryJobBlock.includes('-TimeoutSeconds 180'),
     'ci.yml should run the same isolated Pester helper in hosted advisory mode with a distinct result path'
   );
   assert.ok(
