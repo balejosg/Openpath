@@ -1082,6 +1082,7 @@ test('release scripts workflow triggers for every packaged installer input', () 
     'runtime/**',
     'firefox-extension/**',
     'tests/e2e/**',
+    'tests/selenium/**',
     '.github/workflows/release-scripts.yml',
   ]) {
     assert.ok(

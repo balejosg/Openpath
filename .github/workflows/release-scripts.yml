@@ -11,6 +11,7 @@ on:
       - 'runtime/**'
       - 'firefox-extension/**'
       - 'tests/e2e/**'
+      - 'tests/selenium/**'
       - 'windows/**'
       - '.github/workflows/release-scripts.yml'
   workflow_dispatch:
