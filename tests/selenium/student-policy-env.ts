@@ -3,7 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { exec as execCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { PolicyMode, StudentScenario } from './student-policy-types';
+import type {
+  PolicyMode,
+  StudentPolicyCoverageProfile,
+  StudentScenario,
+} from './student-policy-types';
 
 const exec = promisify(execCallback);
 
@@ -177,6 +181,21 @@ export function buildScenarioHost(scenario: StudentScenario, label: string): str
 export function getPolicyMode(): PolicyMode {
   const mode = optionalEnv('OPENPATH_STUDENT_MODE');
   return mode === 'fallback' ? 'fallback' : 'sse';
+}
+
+export function getStudentPolicyCoverageProfile(): StudentPolicyCoverageProfile {
+  const profile = optionalEnv('OPENPATH_STUDENT_COVERAGE_PROFILE');
+  if (profile === undefined) {
+    return 'full';
+  }
+
+  if (profile === 'full' || profile === 'fallback-propagation') {
+    return profile;
+  }
+
+  throw new Error(
+    `OPENPATH_STUDENT_COVERAGE_PROFILE must be "full" or "fallback-propagation", received "${profile}"`
+  );
 }
 
 export function isRuleAlreadyPresent(errorMessage: string): boolean {

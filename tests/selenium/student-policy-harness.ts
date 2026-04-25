@@ -3,11 +3,47 @@ import { StudentPolicyDriver } from './student-policy-driver';
 import {
   getDiagnosticsDir,
   getPolicyMode,
+  getStudentPolicyCoverageProfile,
   loadScenarioFromEnv,
   optionalEnv,
 } from './student-policy-env';
-import { runStudentPolicyMatrix, runStudentPolicyMatrixPhaseTwo } from './student-policy-scenarios';
-import type { RunResult, StudentPolicyDriverOptions } from './student-policy-types';
+import {
+  runFallbackPropagationProbe,
+  runStudentPolicyMatrix,
+  runStudentPolicyMatrixPhaseTwo,
+} from './student-policy-scenarios';
+import type {
+  PolicyMode,
+  RunResult,
+  StudentPolicyCoverageProfile,
+  StudentPolicyDriverOptions,
+} from './student-policy-types';
+
+type StudentPolicySuite = 'matrix' | 'matrix-phase-two' | 'fallback-propagation';
+
+interface StudentPolicyPhasePlan {
+  name: string;
+  suite: StudentPolicySuite;
+  useBrowser: boolean;
+}
+
+export function getStudentPolicyPhasePlan(
+  mode: PolicyMode,
+  coverageProfile: StudentPolicyCoverageProfile
+): StudentPolicyPhasePlan[] {
+  if (coverageProfile === 'fallback-propagation') {
+    if (mode !== 'fallback') {
+      throw new Error('The fallback-propagation coverage profile requires fallback mode');
+    }
+
+    return [{ name: 'fallback-propagation', suite: 'fallback-propagation', useBrowser: true }];
+  }
+
+  return [
+    { name: 'phase-one', suite: 'matrix', useBrowser: true },
+    { name: 'phase-two', suite: 'matrix-phase-two', useBrowser: false },
+  ];
+}
 
 export async function runStudentPolicySuite(
   options: StudentPolicyDriverOptions = {}
@@ -15,6 +51,7 @@ export async function runStudentPolicySuite(
   const scenario = await loadScenarioFromEnv();
   const client = new StudentPolicyServerClient(scenario);
   const mode = getPolicyMode();
+  const coverageProfile = getStudentPolicyCoverageProfile();
   const diagnosticsDir =
     options.diagnosticsDir ??
     optionalEnv('OPENPATH_STUDENT_DIAGNOSTICS_DIR') ??
@@ -53,16 +90,25 @@ export async function runStudentPolicySuite(
     }
   };
 
-  await runPhase('phase-one', async (driver) => {
-    await runStudentPolicyMatrix(client, driver, mode);
-  });
-  await runPhase(
-    'phase-two',
-    async (driver) => {
-      await runStudentPolicyMatrixPhaseTwo(client, driver, mode);
-    },
-    { useBrowser: false }
-  );
+  for (const phase of getStudentPolicyPhasePlan(mode, coverageProfile)) {
+    await runPhase(
+      phase.name,
+      async (driver) => {
+        if (phase.suite === 'matrix') {
+          await runStudentPolicyMatrix(client, driver, mode);
+          return;
+        }
+
+        if (phase.suite === 'matrix-phase-two') {
+          await runStudentPolicyMatrixPhaseTwo(client, driver, mode);
+          return;
+        }
+
+        await runFallbackPropagationProbe(client, driver, mode);
+      },
+      { useBrowser: phase.useBrowser }
+    );
+  }
 
   return { success: true, diagnosticsDir };
 }

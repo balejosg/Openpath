@@ -104,6 +104,8 @@ export interface RunResult {
 
 export type PolicyMode = 'sse' | 'fallback';
 
+export type StudentPolicyCoverageProfile = 'full' | 'fallback-propagation';
+
 export interface RequestSubmissionResult {
   success: boolean;
   id?: string;

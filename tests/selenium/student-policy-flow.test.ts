@@ -11,6 +11,7 @@ import {
   type StudentScenario,
 } from './student-policy-flow.e2e';
 import { openAndExpectBlocked, submitBlockedScreenRequest } from './student-policy-driver-browser';
+import { getStudentPolicyPhasePlan } from './student-policy-harness';
 import { buildBaselineWhitelistHosts } from './student-policy-scenarios';
 
 function createScenario(): StudentScenario {
@@ -148,6 +149,31 @@ test('buildWindowsHttpProbeCommand avoids exposing raw URLs to cmd quoting and e
   );
   assert.match(decodedCommand, /-UseBasicParsing/);
   assert.match(decodedCommand, /\| Out-Null/);
+});
+
+test('student policy coverage plan keeps full SSE coverage and narrows fallback to propagation proof', () => {
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full').map(({ name, suite, useBrowser }) => ({
+      name,
+      suite,
+      useBrowser,
+    })),
+    [
+      { name: 'phase-one', suite: 'matrix', useBrowser: true },
+      { name: 'phase-two', suite: 'matrix-phase-two', useBrowser: false },
+    ]
+  );
+
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('fallback', 'fallback-propagation').map(
+      ({ name, suite, useBrowser }) => ({
+        name,
+        suite,
+        useBrowser,
+      })
+    ),
+    [{ name: 'fallback-propagation', suite: 'fallback-propagation', useBrowser: true }]
+  );
 });
 
 test('student policy baseline whitelists the native API hostname when it is policy-routable', () => {

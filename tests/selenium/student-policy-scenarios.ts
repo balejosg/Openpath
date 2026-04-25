@@ -694,3 +694,81 @@ export async function runStudentPolicyMatrixPhaseTwo(
   await runActiveGroupAndScheduleScenarios(client, driver, mode, targets);
   await runAutoApproveProbe(client, driver, mode, targets);
 }
+
+export async function runFallbackPropagationProbe(
+  client: StudentPolicyServerClient,
+  driver: StudentPolicyDriver,
+  mode: PolicyMode
+): Promise<void> {
+  const targets = buildTargets(driver.scenario);
+
+  await seedBaselineWhitelist(client, driver, mode, targets);
+
+  logScenarioStep('SP-FB-001 fallback request approval propagation');
+  await driver.assertDnsBlocked(targets.hosts.request);
+  const requestStatusText = await driver.openBlockedScreenAndSubmitRequest(
+    targets.requestDomainUrl,
+    {
+      reason: 'Fallback propagation request approval proof',
+      timeoutMs: 30_000,
+    }
+  );
+  assert.match(requestStatusText, /Solicitud enviada/);
+
+  const pending = await client.findPendingRequestByDomain(targets.hosts.request);
+  await client.approveRequest(pending.id, driver.scenario.groups.restricted.id);
+  await settlePolicyChange(
+    driver,
+    mode,
+    async () => {
+      await driver.assertDnsAllowed(targets.hosts.request);
+      await driver.assertWhitelistContains(targets.hosts.request);
+      await driver.openAndExpectLoaded({
+        url: targets.requestDomainUrl,
+        title: 'OpenPath Site Fixture',
+        selector: '#page-status',
+      });
+    },
+    { timeoutMs: 45_000 }
+  );
+
+  logScenarioStep('SP-FB-002 fallback blocked-path propagation');
+  const rule = await client.createGroupRule(
+    driver.scenario.groups.restricted.id,
+    'blocked_path',
+    `${driver.scenario.fixtures.site}/*private*`,
+    'Fallback blocked-path propagation proof'
+  );
+
+  try {
+    await driver.forceLocalUpdate();
+    await driver.refreshBlockedPathRules();
+    await settlePolicyChange(
+      driver,
+      mode,
+      async () => {
+        assert.deepStrictEqual(
+          await driver.evaluateBlockedPathDebug(targets.sitePrivateUrl, 'main_frame'),
+          {
+            cancel: true,
+            reason: `BLOCKED_PATH_POLICY:${driver.scenario.fixtures.site}/*private*`,
+          }
+        );
+        await driver.openAndExpectBlockedScreen(targets.sitePrivateUrl, {
+          reasonPrefix: 'BLOCKED_PATH_POLICY:',
+        });
+      },
+      { refreshBlockedPaths: true, timeoutMs: 20_000 }
+    );
+  } finally {
+    await client.deleteGroupRule(rule.id, driver.scenario.groups.restricted.id);
+    await driver.forceLocalUpdate();
+    try {
+      await driver.refreshBlockedPathRules();
+    } catch (error) {
+      logScenarioStep(
+        `fallback blocked-path cleanup refresh error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+}

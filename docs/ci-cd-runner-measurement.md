@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: OpenPath CI/E2E timing, artifact evidence, and controlled runner follow-up
-> Last verified: 2026-04-24
+> Last verified: 2026-04-25
 > Source of truth: `docs/ci-cd-runner-measurement.md`
 
 Use this runbook when continuing CI optimization work. It replaces temporary
@@ -108,6 +108,12 @@ pre-commit. The latest measurement set that motivated this decision included:
 - OpenPath `CI` run `24905419192`: `16m41s` total, while the Windows Pester
   execution itself was about `52s` and waited behind other Windows work.
 - OpenPath prerelease deb/APT run `24906133675`: `7m04s`.
+- OpenPath `E2E Tests` run `24923049151` published
+  `windows-student-policy-timings.json`; the expensive work was not setup:
+  `Build workspaces` was `4.329s`, `Install Selenium dependencies` was
+  `1.790s`, and `Ensure test PostgreSQL` was `4.414s`. The two browser passes
+  dominated the lane: `Run Selenium student suite (sse)` was `294.908s` and
+  `Run Selenium student suite (fallback)` was `266.407s`.
 
 Do not register a second destructive Windows runner process on the same VM while
 the host has no spare RAM. That would increase contention on the current
@@ -126,6 +132,14 @@ even with the shorter timeout. Treat this as hosted teardown evidence, not as a
 reason to put hosted Windows on the automatic push path. Promote hosted Windows
 from advisory to required only after repeated manual samples show stable green
 execution and no teardown or timeout pattern.
+
+Windows Student Policy keeps full target-platform evidence on the self-hosted
+runner, but only the SSE pass runs the full Selenium matrix. The fallback pass
+uses the `fallback-propagation` profile to prove the behavior that differs from
+SSE: blocked-page request submission, backend approval, manual/update-based
+propagation, and blocked-path enforcement in the installed Windows client. This
+exploits the current constraint by removing duplicate browser-matrix work while
+preserving a required Windows gate.
 
 ## Decision Rules
 
@@ -149,8 +163,8 @@ execution and no teardown or timeout pattern.
 
 - Measure sustained queue pressure with the hosted advisory lane before adding
   paid Windows capacity.
-- Split `windows-student-policy` into parallel SSE and fallback jobs only if
-  repeated runs show that this lane remains the workflow bottleneck.
+- Split `windows-student-policy` into parallel SSE and fallback jobs only if the
+  reduced fallback profile still leaves this lane as the workflow bottleneck.
 - Consider browser-stack simplification separately from runner provisioning;
   replacing Selenium with Playwright is a larger product-test change, not a
   runner setup task.

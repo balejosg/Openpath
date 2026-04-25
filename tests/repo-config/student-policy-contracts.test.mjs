@@ -400,14 +400,51 @@ describe('repository verification contract', () => {
       'Start fixture server',
       'Package Firefox extension',
       'Ensure Firefox and geckodriver',
-      'Run Selenium student suite (sse)',
-      'Run Selenium student suite (fallback)',
+      'Run Selenium student suite (sse, full)',
+      'Run Selenium student suite (fallback, fallback-propagation)',
     ]) {
       assert.ok(
         windowsRunner.includes(`Invoke-TimedStep -Name '${phase}'`),
         `Windows student-policy runner should time phase: ${phase}`
       );
     }
+  });
+
+  test('windows student policy runner keeps full SSE coverage and narrows fallback to propagation proof', () => {
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+    const seleniumScenarios = readText('tests/selenium/student-policy-scenarios.ts');
+    const harness = readText('tests/selenium/student-policy-harness.ts');
+
+    assert.match(
+      windowsRunner,
+      /param\([\s\S]*\[ValidateSet\('full', 'fallback-propagation'\)\]\[string\]\$CoverageProfile/s,
+      'Windows student-policy runner should pass an explicit Selenium coverage profile per mode'
+    );
+    assert.match(
+      windowsRunner,
+      /Run Selenium student suite \(sse, full\)[\s\S]*Invoke-SeleniumStudentSuite[\s\S]*-Mode 'sse'[\s\S]*-CoverageProfile 'full'/s,
+      'Windows student-policy runner should keep the SSE pass on the full Selenium matrix'
+    );
+    assert.match(
+      windowsRunner,
+      /Run Selenium student suite \(fallback, fallback-propagation\)[\s\S]*Invoke-SeleniumStudentSuite[\s\S]*-Mode 'fallback'[\s\S]*-CoverageProfile 'fallback-propagation'/s,
+      'Windows student-policy runner should run fallback as a targeted propagation proof'
+    );
+    assert.match(
+      windowsRunner,
+      /\$env:OPENPATH_STUDENT_COVERAGE_PROFILE = \$CoverageProfile/,
+      'Windows student-policy runner should expose the selected profile to the Selenium harness'
+    );
+    assert.match(
+      seleniumScenarios,
+      /export async function runFallbackPropagationProbe/,
+      'Selenium scenarios should expose a dedicated fallback propagation probe'
+    );
+    assert.match(
+      harness,
+      /fallback-propagation[\s\S]*runFallbackPropagationProbe/s,
+      'Selenium harness should map the fallback-propagation profile to the targeted probe'
+    );
   });
 
   test('Linux student policy runner emits per-phase timing evidence', () => {

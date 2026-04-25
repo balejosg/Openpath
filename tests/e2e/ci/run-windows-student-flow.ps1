@@ -1091,12 +1091,14 @@ function Invoke-SeleniumStudentSuite {
     param(
         [Parameter(Mandatory = $true)][string]$ScenarioPath,
         [Parameter(Mandatory = $true)][string]$ExtensionArchivePath,
-        [Parameter(Mandatory = $true)][string]$Mode
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][ValidateSet('full', 'fallback-propagation')][string]$CoverageProfile
     )
 
     Push-Location (Join-Path $script:RepoRoot 'tests\selenium')
     try {
         $originalFirefoxBinary = $env:OPENPATH_FIREFOX_BINARY
+        $originalCoverageProfile = $env:OPENPATH_STUDENT_COVERAGE_PROFILE
         $env:OPENPATH_STUDENT_SCENARIO_FILE = $ScenarioPath
         $env:OPENPATH_FIXTURE_PORT = [string]$script:FixturePort
         $env:OPENPATH_EXTENSION_PATH = $ExtensionArchivePath
@@ -1106,12 +1108,13 @@ function Invoke-SeleniumStudentSuite {
         $env:OPENPATH_ENABLE_SSE_COMMAND = 'powershell -NoLogo -Command "Enable-ScheduledTask -TaskName ''OpenPath-SSE'' -ErrorAction SilentlyContinue; Start-ScheduledTask -TaskName ''OpenPath-SSE'' -ErrorAction SilentlyContinue"'
         $env:CI = 'true'
         $env:OPENPATH_STUDENT_MODE = $Mode
+        $env:OPENPATH_STUDENT_COVERAGE_PROFILE = $CoverageProfile
         $env:OPENPATH_FIREFOX_BINARY = Get-FirefoxBinaryPath
         if (-not $env:OPENPATH_FIREFOX_BINARY) {
             throw 'Firefox executable not found before Selenium startup.'
         }
 
-        Write-DiagnosticNote "Starting Selenium student-policy suite mode=$Mode scenarioPath=$ScenarioPath extensionPath=$ExtensionArchivePath"
+        Write-DiagnosticNote "Starting Selenium student-policy suite mode=$Mode coverageProfile=$CoverageProfile scenarioPath=$ScenarioPath extensionPath=$ExtensionArchivePath"
         Write-DiagnosticNote "Scenario payload at Selenium handoff: $(Get-Content $ScenarioPath -Raw)"
 
         $npmCommand = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
@@ -1166,6 +1169,12 @@ function Invoke-SeleniumStudentSuite {
         Remove-Item Env:\OPENPATH_DISABLE_SSE_COMMAND -ErrorAction SilentlyContinue
         Remove-Item Env:\OPENPATH_ENABLE_SSE_COMMAND -ErrorAction SilentlyContinue
         Remove-Item Env:\OPENPATH_STUDENT_MODE -ErrorAction SilentlyContinue
+        if ($null -ne $originalCoverageProfile) {
+            $env:OPENPATH_STUDENT_COVERAGE_PROFILE = $originalCoverageProfile
+        }
+        else {
+            Remove-Item Env:\OPENPATH_STUDENT_COVERAGE_PROFILE -ErrorAction SilentlyContinue
+        }
         if ($null -ne $originalFirefoxBinary) {
             $env:OPENPATH_FIREFOX_BINARY = $originalFirefoxBinary
         }
@@ -1386,10 +1395,10 @@ try {
     Invoke-TimedStep -Name 'Ensure Firefox and geckodriver' -ScriptBlock { Ensure-FirefoxAndGeckodriver }
     Invoke-TimedStep -Name 'Enable Firefox unsigned addon support' -ScriptBlock { Enable-FirefoxUnsignedAddonSupport }
     Invoke-TimedStep -Name 'Install and enroll client (sse)' -ScriptBlock { Install-AndEnrollClient -Scenario $scenario -InstallClient $true }
-    Invoke-TimedStep -Name 'Run Selenium student suite (sse)' -ScriptBlock { Invoke-SeleniumStudentSuite -ScenarioPath $scenarioPath -ExtensionArchivePath $extensionArchivePath -Mode 'sse' }
+    Invoke-TimedStep -Name 'Run Selenium student suite (sse, full)' -ScriptBlock { Invoke-SeleniumStudentSuite -ScenarioPath $scenarioPath -ExtensionArchivePath $extensionArchivePath -Mode 'sse' -CoverageProfile 'full' }
     $scenario = Invoke-TimedStep -Name 'Bootstrap scenario (fallback)' -ScriptBlock { Invoke-BackendHarnessBootstrap -ScenarioName 'Windows Student Policy Fallback' }
     Invoke-TimedStep -Name 'Install and enroll client (fallback)' -ScriptBlock { Install-AndEnrollClient -Scenario $scenario -InstallClient $false }
-    Invoke-TimedStep -Name 'Run Selenium student suite (fallback)' -ScriptBlock { Invoke-SeleniumStudentSuite -ScenarioPath $scenarioPath -ExtensionArchivePath $extensionArchivePath -Mode 'fallback' }
+    Invoke-TimedStep -Name 'Run Selenium student suite (fallback, fallback-propagation)' -ScriptBlock { Invoke-SeleniumStudentSuite -ScenarioPath $scenarioPath -ExtensionArchivePath $extensionArchivePath -Mode 'fallback' -CoverageProfile 'fallback-propagation' }
     Invoke-TimedStep -Name 'Collect Windows diagnostics' -ScriptBlock { Write-WindowsDiagnostics }
     $script:RunSucceeded = $true
 }
