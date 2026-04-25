@@ -236,7 +236,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 6
     needs: detect-relevant-changes
-    if: needs.detect-relevant-changes.outputs.windows_bound == 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.detect-relevant-changes.outputs.windows_bound == 'true'
     continue-on-error: true
 
     steps:

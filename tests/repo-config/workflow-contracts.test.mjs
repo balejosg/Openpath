@@ -454,9 +454,9 @@ test('required Windows CI runs Pester in an untracked child host without success
   );
   assert.ok(
     windowsHostedAdvisoryJobBlock.includes(
-      "if: needs.detect-relevant-changes.outputs.windows_bound == 'true'"
+      "if: github.event_name == 'workflow_dispatch' && needs.detect-relevant-changes.outputs.windows_bound == 'true'"
     ),
-    'ci.yml should gate the advisory hosted Windows sample on the same Windows-bound change detection as the required lane'
+    'ci.yml should keep the hosted Windows sample manual-only while still honoring Windows-bound change detection'
   );
   assert.ok(
     windowsHostedAdvisoryJobBlock.includes('tests/e2e/ci/run-windows-pester-isolated.ps1') &&
