@@ -581,6 +581,63 @@ void describe('background listeners blocked-screen routing', () => {
     }
   });
 
+  void test('starts auto-allow when Firefox omits a usable tab id for a page subresource', async () => {
+    const harness = createListenerHarness({
+      confirmBlockedScreenNavigation: () => Promise.resolve(true),
+    });
+    assert.ok(harness.webRequestBefore);
+
+    const result = harness.webRequestBefore({
+      documentUrl: 'https://allowed.example/app',
+      tabId: -1,
+      type: 'script',
+      url: 'https://cdn.blocked.example/asset.js',
+    } as WebRequest.OnBeforeRequestDetailsType);
+
+    await waitForAsyncListeners();
+
+    assert.equal(result, undefined);
+    assert.deepEqual(harness.confirmCalls, []);
+    assert.deepEqual(harness.redirects, []);
+    assert.deepEqual(harness.autoAllowCalls, [
+      {
+        tabId: -1,
+        hostname: 'cdn.blocked.example',
+        origin: 'https://allowed.example/app',
+        requestType: 'script',
+        targetUrl: 'https://cdn.blocked.example/asset.js',
+      },
+    ]);
+  });
+
+  void test('treats missing Firefox request type with page context as a generic page resource', async () => {
+    const harness = createListenerHarness({
+      confirmBlockedScreenNavigation: () => Promise.resolve(true),
+    });
+    assert.ok(harness.webRequestBefore);
+
+    const result = harness.webRequestBefore({
+      originUrl: 'https://allowed.example/app',
+      tabId: 37,
+      url: 'https://api.blocked.example/data.json',
+    } as WebRequest.OnBeforeRequestDetailsType);
+
+    await waitForAsyncListeners();
+
+    assert.equal(result, undefined);
+    assert.deepEqual(harness.confirmCalls, []);
+    assert.deepEqual(harness.redirects, []);
+    assert.deepEqual(harness.autoAllowCalls, [
+      {
+        tabId: 37,
+        hostname: 'api.blocked.example',
+        origin: 'https://allowed.example/app',
+        requestType: 'other',
+        targetUrl: 'https://api.blocked.example/data.json',
+      },
+    ]);
+  });
+
   void test('does not auto-allow requests cancelled by blocked path policy', async () => {
     const harness = createListenerHarness({
       evaluateBlockedPath: () => ({ cancel: true, reason: 'BLOCKED_PATH_POLICY:test' }),

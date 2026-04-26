@@ -363,6 +363,25 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     }
   }
 
+  function resolveAutoAllowRequestType(details: {
+    documentUrl?: string;
+    originUrl?: string;
+    type?: WebRequest.ResourceType;
+    url: string;
+  }): WebRequest.ResourceType | null {
+    const requestType =
+      details.type ??
+      (normalizeAutoAllowOriginCandidate(details.originUrl ?? details.documentUrl, details.url)
+        ? 'other'
+        : undefined);
+
+    if (!requestType || !isAutoAllowRequestType(requestType)) {
+      return null;
+    }
+
+    return requestType;
+  }
+
   function triggerAutoAllowForEligibleRequest(details: {
     documentUrl?: string;
     originUrl?: string;
@@ -371,19 +390,24 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     url: string;
   }): void {
     const hostname = extractHostname(details.url);
-    const requestType = details.type;
-    if (
-      !hostname ||
-      details.tabId < 0 ||
-      requestType === undefined ||
-      !isAutoAllowRequestType(requestType)
-    ) {
+    const requestType = resolveAutoAllowRequestType(details);
+    if (!hostname || !requestType) {
       return;
     }
 
-    void resolveAutoAllowOriginPage(details).then((originPage) =>
-      options.autoAllowBlockedDomain(details.tabId, hostname, originPage, requestType, details.url)
-    );
+    void resolveAutoAllowOriginPage(details).then((originPage) => {
+      if (details.tabId < 0 && !originPage) {
+        return;
+      }
+
+      return options.autoAllowBlockedDomain(
+        details.tabId,
+        hostname,
+        originPage,
+        requestType,
+        details.url
+      );
+    });
   }
 
   options.browser.webRequest.onBeforeRequest.addListener(
@@ -418,14 +442,16 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
   options.browser.webRequest.onErrorOccurred.addListener(
     (details: WebRequest.OnErrorOccurredDetailsType) => {
       const hostname = extractHostname(details.url);
-      if (!hostname || details.tabId < 0) {
+      if (!hostname) {
         return;
       }
 
-      handleBlockedScreenNavigationError(details, {
-        recordBlockedDomain: true,
-        requestType: details.type,
-      });
+      if (details.tabId >= 0) {
+        handleBlockedScreenNavigationError(details, {
+          recordBlockedDomain: true,
+          requestType: details.type,
+        });
+      }
 
       triggerAutoAllowForEligibleRequest(details);
     },
