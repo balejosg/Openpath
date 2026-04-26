@@ -1,4 +1,48 @@
+function Get-NativeHostValidDomains {
+    param(
+        [AllowNull()]
+        [object[]]$Domains = @()
+    )
+
+    return @($Domains) |
+        Where-Object { $_ -is [string] } |
+        ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+        Where-Object { $_ -match '^[a-z0-9.-]+$' } |
+        Select-Object -First $script:MaxDomains
+}
+
+function Test-NativeWhitelistContainsDomains {
+    param(
+        [string[]]$Domains = @()
+    )
+
+    if (@($Domains).Count -eq 0) {
+        return $true
+    }
+
+    $sections = Get-WhitelistSections
+    $whitelistSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($domain in @($sections.Whitelist)) {
+        if ($domain) {
+            $null = $whitelistSet.Add([string]$domain)
+        }
+    }
+
+    foreach ($domain in @($Domains)) {
+        if (-not $whitelistSet.Contains($domain)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Invoke-UpdateTask {
+    param(
+        [string[]]$Domains = @(),
+        [int]$TimeoutSeconds = 45
+    )
+
     try {
         $null = & schtasks.exe /Run /TN $script:UpdateTaskName 2>$null
         if ($LASTEXITCODE -ne 0) {
@@ -9,10 +53,33 @@ function Invoke-UpdateTask {
             }
         }
 
+        if (-not (Test-NativeWhitelistContainsDomains -Domains $Domains)) {
+            $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+            while ((Get-Date) -lt $deadline) {
+                Start-Sleep -Milliseconds 1000
+                if (Test-NativeWhitelistContainsDomains -Domains $Domains) {
+                    return @{
+                        success = $true
+                        action = 'update-whitelist'
+                        message = 'OpenPath update task wrote expected domains'
+                        domains = @($Domains)
+                    }
+                }
+            }
+
+            return @{
+                success = $false
+                action = 'update-whitelist'
+                error = "OpenPath update task did not write expected domains: $(@($Domains) -join ', ')"
+                domains = @($Domains)
+            }
+        }
+
         return @{
             success = $true
             action = 'update-whitelist'
             message = 'OpenPath update task triggered'
+            domains = @($Domains)
         }
     }
     catch {
@@ -98,12 +165,7 @@ function Invoke-NativeHostCheckAction {
         [PSCustomObject]$Sections
     )
 
-    $domains = @($Message.domains)
-    $validDomains = $domains |
-        Where-Object { $_ -is [string] } |
-        ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
-        Where-Object { $_ -match '^[a-z0-9.-]+$' } |
-        Select-Object -First $script:MaxDomains
+    $validDomains = Get-NativeHostValidDomains -Domains @($Message.domains)
 
     $whitelistSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($domain in @($Sections.Whitelist)) {
@@ -211,7 +273,8 @@ function Handle-Message {
         }
 
         'update-whitelist' {
-            return (Invoke-UpdateTask)
+            $domains = Get-NativeHostValidDomains -Domains @($Message.domains)
+            return (Invoke-UpdateTask -Domains $domains)
         }
 
         default {

@@ -272,5 +272,20 @@ Describe "Browser Module - Native Host" {
                 '-TaskName "$TaskPrefix-Update"'
             )
         }
+
+        It "Waits for requested update-whitelist domains to reach the native whitelist mirror" {
+            $nativeHostActionsPath = Join-Path $PSScriptRoot ".." "lib" "internal" "NativeHost.Actions.ps1"
+            $nativeHostActionsContent = Get-Content $nativeHostActionsPath -Raw
+
+            Assert-ContentContainsAll -Content $nativeHostActionsContent -Needles @(
+                'function Get-NativeHostValidDomains',
+                'function Test-NativeWhitelistContainsDomains',
+                '$Message.domains',
+                'Invoke-UpdateTask -Domains $domains',
+                'Get-WhitelistSections',
+                'Start-Sleep -Milliseconds 1000',
+                'OpenPath update task did not write expected domains'
+            )
+        }
     }
 }

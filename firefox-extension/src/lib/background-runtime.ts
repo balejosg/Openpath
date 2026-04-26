@@ -196,7 +196,8 @@ export function createBackgroundRuntime(
     inFlightAutoRequests,
     loadRequestConfig,
     refreshBlockedPathRules: () => blockedPathRulesController.refresh(true),
-    requestLocalWhitelistUpdate: () => nativeMessagingClient.requestLocalWhitelistUpdate(),
+    requestLocalWhitelistUpdate: (hostname) =>
+      nativeMessagingClient.requestLocalWhitelistUpdate([hostname]),
     sendNativeMessage: (message) => nativeMessagingClient.sendMessage(message),
     setDomainStatus,
   });

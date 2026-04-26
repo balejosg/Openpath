@@ -1,0 +1,515 @@
+[
+  {
+    "name": "Build workspaces",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:19Z",
+    "endedAt": "2026-04-26T10:56:21Z",
+    "durationMs": 2100,
+    "durationSeconds": 2.1,
+    "error": null
+  },
+  {
+    "name": "Ensure test PostgreSQL",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:21Z",
+    "endedAt": "2026-04-26T10:56:23Z",
+    "durationMs": 1563,
+    "durationSeconds": 1.563,
+    "error": null
+  },
+  {
+    "name": "Initialize test database",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:23Z",
+    "endedAt": "2026-04-26T10:56:25Z",
+    "durationMs": 2096,
+    "durationSeconds": 2.096,
+    "error": null
+  },
+  {
+    "name": "Start API server",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:25Z",
+    "endedAt": "2026-04-26T10:56:26Z",
+    "durationMs": 1037,
+    "durationSeconds": 1.037,
+    "error": null
+  },
+  {
+    "name": "Bootstrap SSE scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:26Z",
+    "endedAt": "2026-04-26T10:56:27Z",
+    "durationMs": 405,
+    "durationSeconds": 0.405,
+    "error": null
+  },
+  {
+    "name": "Seed SSE baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:27Z",
+    "endedAt": "2026-04-26T10:56:28Z",
+    "durationMs": 1751,
+    "durationSeconds": 1.751,
+    "error": null
+  },
+  {
+    "name": "Build Linux student-policy image",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:28Z",
+    "endedAt": "2026-04-26T10:56:35Z",
+    "durationMs": 6206,
+    "durationSeconds": 6.206,
+    "error": null
+  },
+  {
+    "name": "Start student-policy container",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:35Z",
+    "endedAt": "2026-04-26T10:56:36Z",
+    "durationMs": 1326,
+    "durationSeconds": 1.326,
+    "error": null
+  },
+  {
+    "name": "Start fixture server",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:36Z",
+    "endedAt": "2026-04-26T10:56:38Z",
+    "durationMs": 2087,
+    "durationSeconds": 2.087,
+    "error": null
+  },
+  {
+    "name": "Install/enroll/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T10:56:38Z",
+    "endedAt": "2026-04-26T10:57:04Z",
+    "durationMs": 26345,
+    "durationSeconds": 26.345,
+    "error": null
+  },
+  {
+    "name": "Verify SSE DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T10:57:04Z",
+    "endedAt": "2026-04-26T10:57:04Z",
+    "durationMs": 117,
+    "durationSeconds": 0.117,
+    "error": null
+  },
+  {
+    "name": "Verify SSE Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T10:57:04Z",
+    "endedAt": "2026-04-26T10:57:05Z",
+    "durationMs": 100,
+    "durationSeconds": 0.1,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (sse)",
+    "status": "success",
+    "startedAt": "2026-04-26T10:57:05Z",
+    "endedAt": "2026-04-26T11:00:01Z",
+    "durationMs": 175907,
+    "durationSeconds": 175.907,
+    "error": null
+  },
+  {
+    "name": "Bootstrap fallback scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:01Z",
+    "endedAt": "2026-04-26T11:00:01Z",
+    "durationMs": 388,
+    "durationSeconds": 0.388,
+    "error": null
+  },
+  {
+    "name": "Seed fallback baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:01Z",
+    "endedAt": "2026-04-26T11:00:03Z",
+    "durationMs": 1842,
+    "durationSeconds": 1.842,
+    "error": null
+  },
+  {
+    "name": "Reconfigure/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:03Z",
+    "endedAt": "2026-04-26T11:00:05Z",
+    "durationMs": 2310,
+    "durationSeconds": 2.31,
+    "error": null
+  },
+  {
+    "name": "Verify fallback DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:05Z",
+    "endedAt": "2026-04-26T11:00:05Z",
+    "durationMs": 136,
+    "durationSeconds": 0.136,
+    "error": null
+  },
+  {
+    "name": "Verify fallback Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:05Z",
+    "endedAt": "2026-04-26T11:00:05Z",
+    "durationMs": 124,
+    "durationSeconds": 0.124,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (fallback, fallback-propagation)",
+    "status": "success",
+    "startedAt": "2026-04-26T11:00:05Z",
+    "endedAt": "2026-04-26T11:00:17Z",
+    "durationMs": 11474,
+    "durationSeconds": 11.474,
+    "error": null
+  },
+  {
+    "name": "Build workspaces",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:17Z",
+    "endedAt": "2026-04-26T11:43:19Z",
+    "durationMs": 2078,
+    "durationSeconds": 2.078,
+    "error": null
+  },
+  {
+    "name": "Ensure test PostgreSQL",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:19Z",
+    "endedAt": "2026-04-26T11:43:21Z",
+    "durationMs": 1746,
+    "durationSeconds": 1.746,
+    "error": null
+  },
+  {
+    "name": "Initialize test database",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:21Z",
+    "endedAt": "2026-04-26T11:43:23Z",
+    "durationMs": 2129,
+    "durationSeconds": 2.129,
+    "error": null
+  },
+  {
+    "name": "Start API server",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:23Z",
+    "endedAt": "2026-04-26T11:43:25Z",
+    "durationMs": 2059,
+    "durationSeconds": 2.059,
+    "error": null
+  },
+  {
+    "name": "Bootstrap SSE scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:25Z",
+    "endedAt": "2026-04-26T11:43:25Z",
+    "durationMs": 407,
+    "durationSeconds": 0.407,
+    "error": null
+  },
+  {
+    "name": "Seed SSE baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:25Z",
+    "endedAt": "2026-04-26T11:43:27Z",
+    "durationMs": 1745,
+    "durationSeconds": 1.745,
+    "error": null
+  },
+  {
+    "name": "Build Linux student-policy image",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:27Z",
+    "endedAt": "2026-04-26T11:43:33Z",
+    "durationMs": 6164,
+    "durationSeconds": 6.164,
+    "error": null
+  },
+  {
+    "name": "Start student-policy container",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:33Z",
+    "endedAt": "2026-04-26T11:43:35Z",
+    "durationMs": 1379,
+    "durationSeconds": 1.379,
+    "error": null
+  },
+  {
+    "name": "Start fixture server",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:35Z",
+    "endedAt": "2026-04-26T11:43:37Z",
+    "durationMs": 2071,
+    "durationSeconds": 2.071,
+    "error": null
+  },
+  {
+    "name": "Install/enroll/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T11:43:37Z",
+    "endedAt": "2026-04-26T11:44:03Z",
+    "durationMs": 26474,
+    "durationSeconds": 26.474,
+    "error": null
+  },
+  {
+    "name": "Verify SSE DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:44:03Z",
+    "endedAt": "2026-04-26T11:44:03Z",
+    "durationMs": 158,
+    "durationSeconds": 0.158,
+    "error": null
+  },
+  {
+    "name": "Verify SSE Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:44:03Z",
+    "endedAt": "2026-04-26T11:44:04Z",
+    "durationMs": 95,
+    "durationSeconds": 0.095,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (sse)",
+    "status": "success",
+    "startedAt": "2026-04-26T11:44:04Z",
+    "endedAt": "2026-04-26T11:46:59Z",
+    "durationMs": 175055,
+    "durationSeconds": 175.055,
+    "error": null
+  },
+  {
+    "name": "Bootstrap fallback scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T11:46:59Z",
+    "endedAt": "2026-04-26T11:46:59Z",
+    "durationMs": 381,
+    "durationSeconds": 0.381,
+    "error": null
+  },
+  {
+    "name": "Seed fallback baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T11:46:59Z",
+    "endedAt": "2026-04-26T11:47:01Z",
+    "durationMs": 1754,
+    "durationSeconds": 1.754,
+    "error": null
+  },
+  {
+    "name": "Reconfigure/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T11:47:01Z",
+    "endedAt": "2026-04-26T11:47:05Z",
+    "durationMs": 4022,
+    "durationSeconds": 4.022,
+    "error": null
+  },
+  {
+    "name": "Verify fallback DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:47:05Z",
+    "endedAt": "2026-04-26T11:47:05Z",
+    "durationMs": 161,
+    "durationSeconds": 0.161,
+    "error": null
+  },
+  {
+    "name": "Verify fallback Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T11:47:05Z",
+    "endedAt": "2026-04-26T11:47:05Z",
+    "durationMs": 105,
+    "durationSeconds": 0.105,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (fallback, fallback-propagation)",
+    "status": "success",
+    "startedAt": "2026-04-26T11:47:05Z",
+    "endedAt": "2026-04-26T11:47:16Z",
+    "durationMs": 11010,
+    "durationSeconds": 11.01,
+    "error": null
+  },
+  {
+    "name": "Build workspaces",
+    "status": "success",
+    "startedAt": "2026-04-26T12:24:58Z",
+    "endedAt": "2026-04-26T12:25:00Z",
+    "durationMs": 2090,
+    "durationSeconds": 2.09,
+    "error": null
+  },
+  {
+    "name": "Ensure test PostgreSQL",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:00Z",
+    "endedAt": "2026-04-26T12:25:02Z",
+    "durationMs": 1536,
+    "durationSeconds": 1.536,
+    "error": null
+  },
+  {
+    "name": "Initialize test database",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:02Z",
+    "endedAt": "2026-04-26T12:25:04Z",
+    "durationMs": 2106,
+    "durationSeconds": 2.106,
+    "error": null
+  },
+  {
+    "name": "Start API server",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:04Z",
+    "endedAt": "2026-04-26T12:25:05Z",
+    "durationMs": 1031,
+    "durationSeconds": 1.031,
+    "error": null
+  },
+  {
+    "name": "Bootstrap SSE scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:05Z",
+    "endedAt": "2026-04-26T12:25:06Z",
+    "durationMs": 416,
+    "durationSeconds": 0.416,
+    "error": null
+  },
+  {
+    "name": "Seed SSE baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:06Z",
+    "endedAt": "2026-04-26T12:25:07Z",
+    "durationMs": 1768,
+    "durationSeconds": 1.768,
+    "error": null
+  },
+  {
+    "name": "Build Linux student-policy image",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:07Z",
+    "endedAt": "2026-04-26T12:25:13Z",
+    "durationMs": 6081,
+    "durationSeconds": 6.081,
+    "error": null
+  },
+  {
+    "name": "Start student-policy container",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:13Z",
+    "endedAt": "2026-04-26T12:25:15Z",
+    "durationMs": 1335,
+    "durationSeconds": 1.335,
+    "error": null
+  },
+  {
+    "name": "Start fixture server",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:15Z",
+    "endedAt": "2026-04-26T12:25:17Z",
+    "durationMs": 2079,
+    "durationSeconds": 2.079,
+    "error": null
+  },
+  {
+    "name": "Install/enroll/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:17Z",
+    "endedAt": "2026-04-26T12:25:43Z",
+    "durationMs": 25848,
+    "durationSeconds": 25.848,
+    "error": null
+  },
+  {
+    "name": "Verify SSE DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:43Z",
+    "endedAt": "2026-04-26T12:25:43Z",
+    "durationMs": 153,
+    "durationSeconds": 0.153,
+    "error": null
+  },
+  {
+    "name": "Verify SSE Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:43Z",
+    "endedAt": "2026-04-26T12:25:43Z",
+    "durationMs": 118,
+    "durationSeconds": 0.118,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (sse)",
+    "status": "success",
+    "startedAt": "2026-04-26T12:25:43Z",
+    "endedAt": "2026-04-26T12:28:39Z",
+    "durationMs": 175910,
+    "durationSeconds": 175.91,
+    "error": null
+  },
+  {
+    "name": "Bootstrap fallback scenario",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:39Z",
+    "endedAt": "2026-04-26T12:28:39Z",
+    "durationMs": 385,
+    "durationSeconds": 0.385,
+    "error": null
+  },
+  {
+    "name": "Seed fallback baseline policy",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:39Z",
+    "endedAt": "2026-04-26T12:28:41Z",
+    "durationMs": 1755,
+    "durationSeconds": 1.755,
+    "error": null
+  },
+  {
+    "name": "Reconfigure/update client",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:41Z",
+    "endedAt": "2026-04-26T12:28:44Z",
+    "durationMs": 3133,
+    "durationSeconds": 3.133,
+    "error": null
+  },
+  {
+    "name": "Verify fallback DNS policy readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:44Z",
+    "endedAt": "2026-04-26T12:28:44Z",
+    "durationMs": 115,
+    "durationSeconds": 0.115,
+    "error": null
+  },
+  {
+    "name": "Verify fallback Firefox readiness",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:44Z",
+    "endedAt": "2026-04-26T12:28:45Z",
+    "durationMs": 105,
+    "durationSeconds": 0.105,
+    "error": null
+  },
+  {
+    "name": "Run Selenium student suite (fallback, fallback-propagation)",
+    "status": "success",
+    "startedAt": "2026-04-26T12:28:45Z",
+    "endedAt": "2026-04-26T12:28:55Z",
+    "durationMs": 10395,
+    "durationSeconds": 10.395,
+    "error": null
+  }
+]

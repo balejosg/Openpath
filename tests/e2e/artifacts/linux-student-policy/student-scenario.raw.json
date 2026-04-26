@@ -1,0 +1,70 @@
+{
+  "scenarioName": "Linux Student Policy Fallback",
+  "apiUrl": "http://127.0.0.1:3101",
+  "auth": {
+    "admin": {
+      "email": "admin@openpath.local",
+      "accessToken": "[redacted]",
+      "userId": "7984189e-274a-4a34-a8d9-2a8d01c2f473"
+    },
+    "teacher": {
+      "email": "teacher@openpath.local",
+      "accessToken": "[redacted]",
+      "userId": "53e545ed-2451-4d24-87d4-cb20e8d5bfbf"
+    }
+  },
+  "groups": {
+    "restricted": {
+      "id": "b4cf0fbf-2f0f-4bf1-9538-18a4fdb7236c",
+      "name": "linux-student-policy-fallback-restricted"
+    },
+    "alternate": {
+      "id": "49451430-6d1e-4c30-922d-fba2e711235b",
+      "name": "linux-student-policy-fallback-alternate"
+    }
+  },
+  "classroom": {
+    "id": "room_48506a43",
+    "name": "linux-student-policy-fallback-room",
+    "displayName": "Linux Student Policy Fallback Classroom",
+    "defaultGroupId": "b4cf0fbf-2f0f-4bf1-9538-18a4fdb7236c"
+  },
+  "schedules": {
+    "activeRestriction": {
+      "id": "de454ba5-23ed-4a1a-a993-c2a01dd87408",
+      "classroomId": "room_48506a43",
+      "startAt": "2026-04-26T12:00:00.000Z",
+      "endAt": "2026-04-26T15:00:00.000Z",
+      "groupId": "b4cf0fbf-2f0f-4bf1-9538-18a4fdb7236c",
+      "teacherId": "53e545ed-2451-4d24-87d4-cb20e8d5bfbf",
+      "recurrence": "one_off",
+      "createdAt": "2026-04-26T12:28:39.852Z",
+      "updatedAt": "2026-04-26T12:28:39.852Z"
+    },
+    "futureAlternate": {
+      "id": "4c95a1e6-c986-41d1-be36-e6eb6df1aa50",
+      "classroomId": "room_48506a43",
+      "startAt": "2026-04-26T16:15:00.000Z",
+      "endAt": "2026-04-26T16:45:00.000Z",
+      "groupId": "49451430-6d1e-4c30-922d-fba2e711235b",
+      "teacherId": "53e545ed-2451-4d24-87d4-cb20e8d5bfbf",
+      "recurrence": "one_off",
+      "createdAt": "2026-04-26T12:28:39.860Z",
+      "updatedAt": "2026-04-26T12:28:39.860Z"
+    }
+  },
+  "machine": {
+    "id": "machine_25fa729a",
+    "classroomId": "room_48506a43",
+    "machineHostname": "linux-student-e2e--a31e9f917704",
+    "reportedHostname": "linux-student-e2e",
+    "machineToken": "[redacted]",
+    "whitelistUrl": "http://host.docker.internal:3101/w/[redacted]/whitelist.txt"
+  },
+  "fixtures": {
+    "portal": "portal.127.0.0.1.sslip.io",
+    "cdnPortal": "cdn.portal.127.0.0.1.sslip.io",
+    "site": "site.127.0.0.1.sslip.io",
+    "apiSite": "api.site.127.0.0.1.sslip.io"
+  }
+}

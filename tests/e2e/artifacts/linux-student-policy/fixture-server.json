@@ -1,0 +1,19 @@
+{
+  "host": "0.0.0.0",
+  "port": 18081,
+  "fixtures": {
+    "portal": "portal.127.0.0.1.sslip.io",
+    "cdnPortal": "cdn.portal.127.0.0.1.sslip.io",
+    "site": "site.127.0.0.1.sslip.io",
+    "apiSite": "api.site.127.0.0.1.sslip.io"
+  },
+  "urls": {
+    "portalOk": "http://portal.127.0.0.1.sslip.io:18081/ok",
+    "portalSubdomainScript": "http://cdn.portal.127.0.0.1.sslip.io:18081/asset.js",
+    "siteOk": "http://site.127.0.0.1.sslip.io:18081/ok",
+    "sitePrivate": "http://site.127.0.0.1.sslip.io:18081/private",
+    "siteIframePrivate": "http://site.127.0.0.1.sslip.io:18081/iframe/private",
+    "siteXhrPrivate": "http://site.127.0.0.1.sslip.io:18081/xhr/private.json",
+    "siteFetchPrivate": "http://site.127.0.0.1.sslip.io:18081/fetch/private.json"
+  }
+}

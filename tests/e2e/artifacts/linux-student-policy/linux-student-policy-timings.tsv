@@ -1,0 +1,57 @@
+Build workspaces	success	2026-04-26T10:56:19Z	2026-04-26T10:56:21Z	2100	2.100	
+Ensure test PostgreSQL	success	2026-04-26T10:56:21Z	2026-04-26T10:56:23Z	1563	1.563	
+Initialize test database	success	2026-04-26T10:56:23Z	2026-04-26T10:56:25Z	2096	2.096	
+Start API server	success	2026-04-26T10:56:25Z	2026-04-26T10:56:26Z	1037	1.037	
+Bootstrap SSE scenario	success	2026-04-26T10:56:26Z	2026-04-26T10:56:27Z	405	0.405	
+Seed SSE baseline policy	success	2026-04-26T10:56:27Z	2026-04-26T10:56:28Z	1751	1.751	
+Build Linux student-policy image	success	2026-04-26T10:56:28Z	2026-04-26T10:56:35Z	6206	6.206	
+Start student-policy container	success	2026-04-26T10:56:35Z	2026-04-26T10:56:36Z	1326	1.326	
+Start fixture server	success	2026-04-26T10:56:36Z	2026-04-26T10:56:38Z	2087	2.087	
+Install/enroll/update client	success	2026-04-26T10:56:38Z	2026-04-26T10:57:04Z	26345	26.345	
+Verify SSE DNS policy readiness	success	2026-04-26T10:57:04Z	2026-04-26T10:57:04Z	117	0.117	
+Verify SSE Firefox readiness	success	2026-04-26T10:57:04Z	2026-04-26T10:57:05Z	100	0.100	
+Run Selenium student suite (sse)	success	2026-04-26T10:57:05Z	2026-04-26T11:00:01Z	175907	175.907	
+Bootstrap fallback scenario	success	2026-04-26T11:00:01Z	2026-04-26T11:00:01Z	388	0.388	
+Seed fallback baseline policy	success	2026-04-26T11:00:01Z	2026-04-26T11:00:03Z	1842	1.842	
+Reconfigure/update client	success	2026-04-26T11:00:03Z	2026-04-26T11:00:05Z	2310	2.310	
+Verify fallback DNS policy readiness	success	2026-04-26T11:00:05Z	2026-04-26T11:00:05Z	136	0.136	
+Verify fallback Firefox readiness	success	2026-04-26T11:00:05Z	2026-04-26T11:00:05Z	124	0.124	
+Run Selenium student suite (fallback, fallback-propagation)	success	2026-04-26T11:00:05Z	2026-04-26T11:00:17Z	11474	11.474	
+Build workspaces	success	2026-04-26T11:43:17Z	2026-04-26T11:43:19Z	2078	2.078	
+Ensure test PostgreSQL	success	2026-04-26T11:43:19Z	2026-04-26T11:43:21Z	1746	1.746	
+Initialize test database	success	2026-04-26T11:43:21Z	2026-04-26T11:43:23Z	2129	2.129	
+Start API server	success	2026-04-26T11:43:23Z	2026-04-26T11:43:25Z	2059	2.059	
+Bootstrap SSE scenario	success	2026-04-26T11:43:25Z	2026-04-26T11:43:25Z	407	0.407	
+Seed SSE baseline policy	success	2026-04-26T11:43:25Z	2026-04-26T11:43:27Z	1745	1.745	
+Build Linux student-policy image	success	2026-04-26T11:43:27Z	2026-04-26T11:43:33Z	6164	6.164	
+Start student-policy container	success	2026-04-26T11:43:33Z	2026-04-26T11:43:35Z	1379	1.379	
+Start fixture server	success	2026-04-26T11:43:35Z	2026-04-26T11:43:37Z	2071	2.071	
+Install/enroll/update client	success	2026-04-26T11:43:37Z	2026-04-26T11:44:03Z	26474	26.474	
+Verify SSE DNS policy readiness	success	2026-04-26T11:44:03Z	2026-04-26T11:44:03Z	158	0.158	
+Verify SSE Firefox readiness	success	2026-04-26T11:44:03Z	2026-04-26T11:44:04Z	95	0.095	
+Run Selenium student suite (sse)	success	2026-04-26T11:44:04Z	2026-04-26T11:46:59Z	175055	175.055	
+Bootstrap fallback scenario	success	2026-04-26T11:46:59Z	2026-04-26T11:46:59Z	381	0.381	
+Seed fallback baseline policy	success	2026-04-26T11:46:59Z	2026-04-26T11:47:01Z	1754	1.754	
+Reconfigure/update client	success	2026-04-26T11:47:01Z	2026-04-26T11:47:05Z	4022	4.022	
+Verify fallback DNS policy readiness	success	2026-04-26T11:47:05Z	2026-04-26T11:47:05Z	161	0.161	
+Verify fallback Firefox readiness	success	2026-04-26T11:47:05Z	2026-04-26T11:47:05Z	105	0.105	
+Run Selenium student suite (fallback, fallback-propagation)	success	2026-04-26T11:47:05Z	2026-04-26T11:47:16Z	11010	11.010	
+Build workspaces	success	2026-04-26T12:24:58Z	2026-04-26T12:25:00Z	2090	2.090	
+Ensure test PostgreSQL	success	2026-04-26T12:25:00Z	2026-04-26T12:25:02Z	1536	1.536	
+Initialize test database	success	2026-04-26T12:25:02Z	2026-04-26T12:25:04Z	2106	2.106	
+Start API server	success	2026-04-26T12:25:04Z	2026-04-26T12:25:05Z	1031	1.031	
+Bootstrap SSE scenario	success	2026-04-26T12:25:05Z	2026-04-26T12:25:06Z	416	0.416	
+Seed SSE baseline policy	success	2026-04-26T12:25:06Z	2026-04-26T12:25:07Z	1768	1.768	
+Build Linux student-policy image	success	2026-04-26T12:25:07Z	2026-04-26T12:25:13Z	6081	6.081	
+Start student-policy container	success	2026-04-26T12:25:13Z	2026-04-26T12:25:15Z	1335	1.335	
+Start fixture server	success	2026-04-26T12:25:15Z	2026-04-26T12:25:17Z	2079	2.079	
+Install/enroll/update client	success	2026-04-26T12:25:17Z	2026-04-26T12:25:43Z	25848	25.848	
+Verify SSE DNS policy readiness	success	2026-04-26T12:25:43Z	2026-04-26T12:25:43Z	153	0.153	
+Verify SSE Firefox readiness	success	2026-04-26T12:25:43Z	2026-04-26T12:25:43Z	118	0.118	
+Run Selenium student suite (sse)	success	2026-04-26T12:25:43Z	2026-04-26T12:28:39Z	175910	175.910	
+Bootstrap fallback scenario	success	2026-04-26T12:28:39Z	2026-04-26T12:28:39Z	385	0.385	
+Seed fallback baseline policy	success	2026-04-26T12:28:39Z	2026-04-26T12:28:41Z	1755	1.755	
+Reconfigure/update client	success	2026-04-26T12:28:41Z	2026-04-26T12:28:44Z	3133	3.133	
+Verify fallback DNS policy readiness	success	2026-04-26T12:28:44Z	2026-04-26T12:28:44Z	115	0.115	
+Verify fallback Firefox readiness	success	2026-04-26T12:28:44Z	2026-04-26T12:28:45Z	105	0.105	
+Run Selenium student suite (fallback, fallback-propagation)	success	2026-04-26T12:28:45Z	2026-04-26T12:28:55Z	10395	10.395	

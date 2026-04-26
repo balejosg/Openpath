@@ -43,7 +43,7 @@ export interface NativeMessagingClient {
   checkDomains: (domains: string[]) => Promise<VerifyResponse>;
   connect: () => Promise<boolean>;
   isAvailable: () => Promise<boolean>;
-  requestLocalWhitelistUpdate: () => Promise<boolean>;
+  requestLocalWhitelistUpdate: (domains?: string[]) => Promise<boolean>;
   sendMessage: (message: unknown) => Promise<unknown>;
 }
 
@@ -156,9 +156,12 @@ export function createNativeMessagingClient(options: {
     }
   }
 
-  async function requestLocalWhitelistUpdate(): Promise<boolean> {
+  async function requestLocalWhitelistUpdate(domains: string[] = []): Promise<boolean> {
     try {
-      const response = (await sendMessage({ action: 'update-whitelist' })) as NativeResponse;
+      const response = (await sendMessage({
+        action: 'update-whitelist',
+        ...(domains.length > 0 ? { domains } : {}),
+      })) as NativeResponse;
       return response.success;
     } catch {
       return false;

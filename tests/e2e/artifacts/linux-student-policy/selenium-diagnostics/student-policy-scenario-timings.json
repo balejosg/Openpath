@@ -1,0 +1,16 @@
+[
+  {
+    "name": "SP-FB-001 fallback request approval propagation",
+    "startedAt": "2026-04-26T12:28:49.509Z",
+    "endedAt": "2026-04-26T12:28:52.749Z",
+    "durationMs": 3240,
+    "durationSeconds": 3.24
+  },
+  {
+    "name": "SP-FB-002 fallback blocked-path propagation",
+    "startedAt": "2026-04-26T12:28:52.749Z",
+    "endedAt": "2026-04-26T12:28:55.487Z",
+    "durationMs": 2738,
+    "durationSeconds": 2.738
+  }
+]

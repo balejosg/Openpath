@@ -22,7 +22,7 @@ export interface AutoAllowWorkflowDeps {
   loadRequestConfig: () => Promise<RequestApiRuntimeConfig>;
   now?: () => number;
   refreshBlockedPathRules: () => Promise<boolean>;
-  requestLocalWhitelistUpdate: () => Promise<boolean>;
+  requestLocalWhitelistUpdate: (hostname: string) => Promise<boolean>;
   sendNativeMessage: (message: unknown) => Promise<unknown>;
   setDomainStatus: (tabId: number, hostname: string, status: DomainStatus) => void;
 }
@@ -71,8 +71,8 @@ export function createAutoAllowWorkflow(deps: AutoAllowWorkflowDeps): {
 } {
   const now = deps.now ?? ((): number => Date.now());
 
-  async function triggerLocalWhitelistUpdate(): Promise<boolean> {
-    const success = await deps.requestLocalWhitelistUpdate();
+  async function triggerLocalWhitelistUpdate(hostname: string): Promise<boolean> {
+    const success = await deps.requestLocalWhitelistUpdate(hostname);
     if (success) {
       await deps.refreshBlockedPathRules();
     }
@@ -192,7 +192,7 @@ export function createAutoAllowWorkflow(deps: AutoAllowWorkflowDeps): {
         return;
       }
 
-      const updateOk = await triggerLocalWhitelistUpdate();
+      const updateOk = await triggerLocalWhitelistUpdate(hostname);
       const resolvedState = resolveAutoAllowState({
         apiSuccess: true,
         duplicate: payload.status === 'duplicate' || payload.duplicate === true,
@@ -234,7 +234,7 @@ export function createAutoAllowWorkflow(deps: AutoAllowWorkflowDeps): {
       ...requestTypePatch,
     });
 
-    const success = await triggerLocalWhitelistUpdate();
+    const success = await triggerLocalWhitelistUpdate(hostname);
     deps.setDomainStatus(tabId, hostname, {
       state: success ? 'autoApproved' : 'localUpdateError',
       updatedAt: now(),
