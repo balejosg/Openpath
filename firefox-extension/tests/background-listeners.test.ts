@@ -217,6 +217,103 @@ void describe('background listeners blocked-screen routing', () => {
     assert.deepEqual(responses, [{ success: true, id: 'request-1' }]);
   });
 
+  void test('auto-allows page resource candidates reported by the content script', async () => {
+    const harness = createListenerHarness();
+    assert.ok(harness.runtimeMessage);
+
+    const responses: unknown[] = [];
+    const keepAlive = harness.runtimeMessage(
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'fetch',
+        pageUrl: 'http://allowed.example/app',
+        resourceUrl: 'http://api.allowed-cdn.example/data.json',
+        tabId: 1,
+      },
+      { tab: { id: 9, url: 'http://allowed.example/fallback' } },
+      (response) => {
+        responses.push(response);
+      }
+    );
+
+    assert.equal(keepAlive, true);
+    await waitForAsyncListeners();
+    assert.deepEqual(responses, [{ success: true }]);
+    assert.deepEqual(harness.autoAllowCalls, [
+      {
+        tabId: 9,
+        hostname: 'api.allowed-cdn.example',
+        origin: 'http://allowed.example/app',
+        requestType: 'xmlhttprequest',
+        targetUrl: 'http://api.allowed-cdn.example/data.json',
+      },
+    ]);
+  });
+
+  void test('maps page subresource candidate kinds to auto-allow request types', async () => {
+    const harness = createListenerHarness();
+    assert.ok(harness.runtimeMessage);
+
+    const candidates = [
+      ['image', 'http://image.example/pixel.png', 'image'],
+      ['script', 'http://script.example/asset.js', 'script'],
+      ['stylesheet', 'http://style.example/site.css', 'stylesheet'],
+      ['xmlhttprequest', 'http://xhr.example/data.json', 'xmlhttprequest'],
+      ['unknown', 'http://other.example/resource', 'other'],
+    ] as const;
+
+    for (const [kind, resourceUrl] of candidates) {
+      harness.runtimeMessage(
+        {
+          action: 'openpathPageResourceCandidate',
+          kind,
+          pageUrl: 'http://allowed.example/app',
+          resourceUrl,
+          tabId: 3,
+        },
+        {},
+        () => undefined
+      );
+    }
+
+    await waitForAsyncListeners();
+    assert.deepEqual(
+      harness.autoAllowCalls.map((call) => ({
+        hostname: call.hostname,
+        requestType: call.requestType,
+      })),
+      [
+        { hostname: 'image.example', requestType: 'image' },
+        { hostname: 'script.example', requestType: 'script' },
+        { hostname: 'style.example', requestType: 'stylesheet' },
+        { hostname: 'xhr.example', requestType: 'xmlhttprequest' },
+        { hostname: 'other.example', requestType: 'other' },
+      ]
+    );
+  });
+
+  void test('rejects malformed page resource candidates without delegating', async () => {
+    const harness = createListenerHarness();
+    assert.ok(harness.runtimeMessage);
+
+    const responses: unknown[] = [];
+    harness.runtimeMessage(
+      {
+        action: 'openpathPageResourceCandidate',
+        pageUrl: 'http://allowed.example/app',
+        tabId: 1,
+      },
+      { tab: { id: 1 } },
+      (response) => {
+        responses.push(response);
+      }
+    );
+
+    await waitForAsyncListeners();
+    assert.deepEqual(responses, [{ success: false, error: 'resourceUrl is required' }]);
+    assert.deepEqual(harness.autoAllowCalls, []);
+  });
+
   void test('registers request interception for all page resource types', () => {
     const harness = createListenerHarness();
 

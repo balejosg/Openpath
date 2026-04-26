@@ -421,7 +421,7 @@ await describe('background message handler', async () => {
   await test('does not cache failed or expired blocked-domain submission statuses', async () => {
     const realNow = Date.now;
     let now = 1_000;
-    Date.now = () => now;
+    Date.now = (): number => now;
     try {
       const handler = createHandlerFixture({
         submitBlockedDomainRequest: () =>

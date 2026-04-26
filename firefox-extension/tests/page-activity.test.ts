@@ -3,7 +3,11 @@ import { describe, test } from 'node:test';
 
 import {
   buildPageActivityMessage,
+  buildPageResourceCandidateMessage,
+  buildPageResourceObserverScript,
+  installPageResourceObserver,
   notifyPageActivity,
+  notifyPageResourceCandidate,
   type PageActivityRuntime,
 } from '../src/page-activity.js';
 
@@ -31,6 +35,122 @@ void describe('page activity content script', () => {
       {
         action: 'openpathPageActivity',
         url: 'https://allowed.example/app',
+      },
+    ]);
+  });
+
+  void test('builds page resource candidate messages for proactive auto-allow', () => {
+    assert.deepEqual(
+      buildPageResourceCandidateMessage(
+        'https://allowed.example/app',
+        'https://cdn.example/app.js',
+        'script'
+      ),
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'script',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/app.js',
+      }
+    );
+  });
+
+  void test('sends page resource candidates without surfacing runtime failures', async () => {
+    const sentMessages: unknown[] = [];
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message) => {
+        sentMessages.push(message);
+        return Promise.reject(new Error('background not ready yet'));
+      },
+    };
+
+    notifyPageResourceCandidate(
+      runtime,
+      'https://api.example/data.json',
+      'fetch',
+      'https://allowed.example/app'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'fetch',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://api.example/data.json',
+      },
+    ]);
+  });
+
+  void test('injects page observers for async and subresource URL candidates', () => {
+    const script = buildPageResourceObserverScript();
+
+    assert.match(script, /window\.fetch/);
+    assert.match(script, /XMLHttpRequest/);
+    assert.match(script, /HTMLImageElement/);
+    assert.match(script, /HTMLScriptElement/);
+    assert.match(script, /HTMLLinkElement/);
+    assert.match(script, /openpath-page-resource-candidate/);
+  });
+
+  void test('relays page observer messages to the background runtime', () => {
+    const sentMessages: unknown[] = [];
+    let listener: ((event: { data?: unknown; source?: unknown }) => void) | undefined;
+    const scriptElement = {
+      removeCalls: 0,
+      textContent: '',
+      remove(): void {
+        this.removeCalls += 1;
+      },
+    };
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message): void => {
+        sentMessages.push(message);
+      },
+    };
+    const pageWindow = {};
+    const runtimeGlobal = {
+      addEventListener(
+        type: string,
+        callback: (event: { data?: unknown; source?: unknown }) => void
+      ): void {
+        assert.equal(type, 'message');
+        listener = callback;
+      },
+      document: {
+        createElement(tagName: string): typeof scriptElement {
+          assert.equal(tagName, 'script');
+          return scriptElement;
+        },
+        documentElement: {
+          appended: [] as unknown[],
+          appendChild(node: unknown): void {
+            this.appended.push(node);
+          },
+        },
+      },
+      location: { href: 'https://allowed.example/app' },
+      window: pageWindow,
+    };
+
+    installPageResourceObserver(runtime, runtimeGlobal);
+    listener?.({
+      data: {
+        source: 'openpath-page-resource-candidate',
+        kind: 'image',
+        url: 'https://cdn.example/pixel.png',
+      },
+      source: pageWindow,
+    });
+
+    assert.match(scriptElement.textContent, /window\.fetch/);
+    assert.equal(scriptElement.removeCalls, 1);
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'image',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/pixel.png',
       },
     ]);
   });

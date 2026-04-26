@@ -63,15 +63,79 @@ interface BackgroundListenersOptions {
   redirectToBlockedScreen: (context: BlockedScreenContext) => Promise<void>;
 }
 
+function pageResourceKindToRequestType(kind: string): WebRequest.ResourceType {
+  switch (kind) {
+    case 'fetch':
+    case 'xmlhttprequest':
+      return 'xmlhttprequest';
+    case 'image':
+    case 'script':
+    case 'stylesheet':
+      return kind;
+    default:
+      return 'other';
+  }
+}
+
+function isPageResourceCandidateMessage(message: unknown): message is {
+  action: 'openpathPageResourceCandidate';
+  kind?: unknown;
+  pageUrl?: unknown;
+  resourceUrl?: unknown;
+  tabId?: unknown;
+} {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    (message as { action?: unknown }).action === 'openpathPageResourceCandidate'
+  );
+}
+
+async function handlePageResourceCandidate(
+  message: unknown,
+  sender: Runtime.MessageSender,
+  autoAllowBlockedDomain: BackgroundListenersOptions['autoAllowBlockedDomain']
+): Promise<{ error?: string; success: boolean }> {
+  if (!isPageResourceCandidateMessage(message) || typeof message.resourceUrl !== 'string') {
+    return { success: false, error: 'resourceUrl is required' };
+  }
+
+  const hostname = extractHostname(message.resourceUrl);
+  if (!hostname) {
+    return { success: false, error: 'resourceUrl is required' };
+  }
+
+  const senderTabId = sender.tab?.id;
+  const tabId =
+    typeof senderTabId === 'number'
+      ? senderTabId
+      : typeof message.tabId === 'number'
+        ? message.tabId
+        : -1;
+  const pageUrl =
+    typeof message.pageUrl === 'string' && message.pageUrl.length > 0
+      ? message.pageUrl
+      : (sender.tab?.url ?? null);
+  const requestType =
+    typeof message.kind === 'string' ? pageResourceKindToRequestType(message.kind) : 'other';
+
+  await autoAllowBlockedDomain(tabId, hostname, pageUrl, requestType, message.resourceUrl);
+  return { success: true };
+}
+
 function createRuntimeMessageResponder(
-  handleRuntimeMessage: BackgroundListenersOptions['handleRuntimeMessage']
+  options: Pick<BackgroundListenersOptions, 'autoAllowBlockedDomain' | 'handleRuntimeMessage'>
 ): (
   message: unknown,
   sender: Runtime.MessageSender,
   sendResponse: (response: unknown) => void
 ) => true {
   return (message, sender, sendResponse) => {
-    void Promise.resolve(handleRuntimeMessage(message, sender)).then(
+    const responsePromise = isPageResourceCandidateMessage(message)
+      ? handlePageResourceCandidate(message, sender, options.autoAllowBlockedDomain)
+      : options.handleRuntimeMessage(message, sender);
+
+    void Promise.resolve(responsePromise).then(
       (response) => {
         sendResponse(response);
       },
@@ -507,6 +571,9 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
   });
 
   options.browser.runtime.onMessage.addListener(
-    createRuntimeMessageResponder(options.handleRuntimeMessage)
+    createRuntimeMessageResponder({
+      autoAllowBlockedDomain: options.autoAllowBlockedDomain,
+      handleRuntimeMessage: options.handleRuntimeMessage,
+    })
   );
 }
