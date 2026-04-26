@@ -95,7 +95,9 @@ void describe('page activity content script', () => {
 
   void test('relays page observer messages to the background runtime', () => {
     const sentMessages: unknown[] = [];
-    let listener: ((event: { data?: unknown; source?: unknown }) => void) | undefined;
+    let listener:
+      | ((event: { data?: unknown; origin?: string; source?: unknown }) => void)
+      | undefined;
     const scriptElement = {
       removeCalls: 0,
       textContent: '',
@@ -112,7 +114,7 @@ void describe('page activity content script', () => {
     const runtimeGlobal = {
       addEventListener(
         type: string,
-        callback: (event: { data?: unknown; source?: unknown }) => void
+        callback: (event: { data?: unknown; origin?: string; source?: unknown }) => void
       ): void {
         assert.equal(type, 'message');
         listener = callback;
@@ -140,6 +142,7 @@ void describe('page activity content script', () => {
         kind: 'image',
         url: 'https://cdn.example/pixel.png',
       },
+      origin: 'https://allowed.example',
       source: pageWindow,
     });
 
@@ -151,6 +154,77 @@ void describe('page activity content script', () => {
         kind: 'image',
         pageUrl: 'https://allowed.example/app',
         resourceUrl: 'https://cdn.example/pixel.png',
+      },
+    ]);
+  });
+
+  void test('relays page observer messages when Firefox omits postMessage source', () => {
+    const sentMessages: unknown[] = [];
+    let appendCalls = 0;
+    let removeCalls = 0;
+    let listener:
+      | ((event: { data?: unknown; origin?: string; source?: unknown }) => void)
+      | undefined;
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message): void => {
+        sentMessages.push(message);
+      },
+    };
+    const runtimeGlobal = {
+      addEventListener(
+        type: string,
+        callback: (event: { data?: unknown; origin?: string; source?: unknown }) => void
+      ): void {
+        assert.equal(type, 'message');
+        listener = callback;
+      },
+      document: {
+        createElement(): { remove(): void; textContent: string } {
+          return {
+            textContent: '',
+            remove(): void {
+              removeCalls += 1;
+            },
+          };
+        },
+        documentElement: {
+          appendChild(): void {
+            appendCalls += 1;
+          },
+        },
+      },
+      location: { href: 'https://allowed.example/app' },
+      window: {},
+    };
+
+    installPageResourceObserver(runtime, runtimeGlobal);
+    assert.equal(appendCalls, 1);
+    assert.equal(removeCalls, 1);
+    listener?.({
+      data: {
+        source: 'openpath-page-resource-candidate',
+        kind: 'fetch',
+        url: 'https://api.example/data.json',
+      },
+      origin: 'https://allowed.example',
+      source: null,
+    });
+    listener?.({
+      data: {
+        source: 'openpath-page-resource-candidate',
+        kind: 'script',
+        url: 'https://evil.example/app.js',
+      },
+      origin: 'https://evil.example',
+      source: null,
+    });
+
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'fetch',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://api.example/data.json',
       },
     ]);
   });

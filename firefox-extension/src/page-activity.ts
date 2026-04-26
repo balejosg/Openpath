@@ -9,7 +9,7 @@ interface RuntimeGlobal {
   chrome?: { runtime?: Partial<PageActivityRuntime> };
   addEventListener?: (
     type: string,
-    listener: (event: { data?: unknown; source?: unknown }) => void
+    listener: (event: { data?: unknown; origin?: string; source?: unknown }) => void
   ) => void;
   document?: {
     createElement?: (tagName: string) => {
@@ -152,7 +152,8 @@ export function installPageResourceObserver(
 ): void {
   const source = 'openpath-page-resource-candidate';
   runtimeGlobal.addEventListener?.('message', (event) => {
-    if (event.source !== (runtimeGlobal.window ?? globalThis)) {
+    const currentOrigin = getCurrentOrigin(runtimeGlobal);
+    if (typeof event.origin === 'string' && currentOrigin && event.origin !== currentOrigin) {
       return;
     }
 
@@ -192,6 +193,19 @@ function getRuntime(): PageActivityRuntime | null {
 
 function getCurrentUrl(runtimeGlobal: RuntimeGlobal = globalThis as RuntimeGlobal): string {
   return typeof runtimeGlobal.location?.href === 'string' ? runtimeGlobal.location.href : '';
+}
+
+function getCurrentOrigin(runtimeGlobal: RuntimeGlobal = globalThis as RuntimeGlobal): string {
+  const currentUrl = getCurrentUrl(runtimeGlobal);
+  if (!currentUrl) {
+    return '';
+  }
+
+  try {
+    return new URL(currentUrl).origin;
+  } catch {
+    return '';
+  }
 }
 
 notifyPageActivity();
