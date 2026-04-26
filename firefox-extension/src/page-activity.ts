@@ -21,6 +21,12 @@ interface RuntimeGlobal {
     head?: { appendChild?: (node: unknown) => void } | undefined;
   };
   location?: { href?: string };
+  MutationObserver?: new (
+    callback: (
+      records: { addedNodes?: Iterable<unknown>; attributeName?: string | null; target?: unknown }[]
+    ) => void
+  ) => { observe?: (target: unknown, options: unknown) => void };
+  setTimeout?: (callback: () => void, delay: number) => unknown;
   window?: unknown;
 }
 
@@ -89,6 +95,13 @@ export function notifyPageResourceCandidate(
 
 export function buildPageResourceObserverScript(): string {
   return `(() => {
+  const INSTALLED_KEY = '__openpathPageResourceObserverInstalled';
+  if (window[INSTALLED_KEY]) return;
+  try {
+    Object.defineProperty(window, INSTALLED_KEY, { value: true });
+  } catch {
+    window[INSTALLED_KEY] = true;
+  }
   const SOURCE = 'openpath-page-resource-candidate';
   const notify = (url, kind) => {
     if (!url) return;
@@ -147,9 +160,77 @@ export function buildPageResourceObserverScript(): string {
 })();`;
 }
 
+function getDomResourceCandidate(node: unknown): {
+  kind: Exclude<PageResourceKind, 'fetch' | 'xmlhttprequest' | 'other'>;
+  url: string;
+} | null {
+  const element = node as { href?: unknown; rel?: unknown; src?: unknown; tagName?: unknown };
+  const tagName = typeof element.tagName === 'string' ? element.tagName.toLowerCase() : '';
+  if (tagName === 'img' && typeof element.src === 'string' && element.src.length > 0) {
+    return { kind: 'image', url: element.src };
+  }
+
+  if (tagName === 'script' && typeof element.src === 'string' && element.src.length > 0) {
+    return { kind: 'script', url: element.src };
+  }
+
+  if (
+    tagName === 'link' &&
+    typeof element.rel === 'string' &&
+    element.rel.toLowerCase() === 'stylesheet' &&
+    typeof element.href === 'string' &&
+    element.href.length > 0
+  ) {
+    return { kind: 'stylesheet', url: element.href };
+  }
+
+  return null;
+}
+
+function reportDomResourceCandidate(
+  runtime: PageActivityRuntime | null | undefined,
+  runtimeGlobal: RuntimeGlobal,
+  node: unknown
+): void {
+  const candidate = getDomResourceCandidate(node);
+  if (!candidate) {
+    return;
+  }
+
+  notifyPageResourceCandidate(runtime, candidate.url, candidate.kind, getCurrentUrl(runtimeGlobal));
+}
+
+function installDomResourceObserver(
+  runtime: PageActivityRuntime | null | undefined,
+  runtimeGlobal: RuntimeGlobal
+): void {
+  if (!runtimeGlobal.document || typeof runtimeGlobal.MutationObserver !== 'function') {
+    return;
+  }
+
+  const observer = new runtimeGlobal.MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes ?? []) {
+        reportDomResourceCandidate(runtime, runtimeGlobal, node);
+      }
+
+      if (record.attributeName === 'src' || record.attributeName === 'href') {
+        reportDomResourceCandidate(runtime, runtimeGlobal, record.target);
+      }
+    }
+  });
+
+  observer.observe?.(runtimeGlobal.document, {
+    attributeFilter: ['src', 'href'],
+    attributes: true,
+    childList: true,
+    subtree: true,
+  });
+}
+
 export function installPageResourceObserver(
   runtime: PageActivityRuntime | null | undefined = getRuntime(),
-  runtimeGlobal: RuntimeGlobal = globalThis as RuntimeGlobal
+  runtimeGlobal: RuntimeGlobal = globalThis as unknown as RuntimeGlobal
 ): void {
   const source = 'openpath-page-resource-candidate';
   runtimeGlobal.addEventListener?.('message', (event) => {
@@ -174,13 +255,9 @@ export function installPageResourceObserver(
 
     notifyPageResourceCandidate(runtime, data.url, kind, getCurrentUrl(runtimeGlobal));
   });
+  installDomResourceObserver(runtime, runtimeGlobal);
 
-  let observerInjected = false;
   const injectObserver = (): boolean => {
-    if (observerInjected) {
-      return true;
-    }
-
     const script = runtimeGlobal.document?.createElement?.('script');
     const appendTarget = runtimeGlobal.document?.documentElement ?? runtimeGlobal.document?.head;
     if (!script || !appendTarget?.appendChild) {
@@ -190,26 +267,33 @@ export function installPageResourceObserver(
     script.textContent = buildPageResourceObserverScript();
     appendTarget.appendChild(script);
     script.remove?.();
-    observerInjected = true;
     return true;
   };
 
-  if (!injectObserver()) {
-    runtimeGlobal.addEventListener?.('DOMContentLoaded', injectObserver, { once: true });
+  const injectedImmediately = injectObserver();
+  if (!injectedImmediately) {
+    for (const delay of [0, 5, 25, 100, 500]) {
+      runtimeGlobal.setTimeout?.(injectObserver, delay);
+    }
   }
+  runtimeGlobal.addEventListener?.('DOMContentLoaded', injectObserver, { once: true });
 }
 
 function getRuntime(): PageActivityRuntime | null {
-  const runtimeGlobal = globalThis as RuntimeGlobal;
+  const runtimeGlobal = globalThis as unknown as RuntimeGlobal;
   const runtime = runtimeGlobal.browser?.runtime ?? runtimeGlobal.chrome?.runtime;
   return typeof runtime?.sendMessage === 'function' ? (runtime as PageActivityRuntime) : null;
 }
 
-function getCurrentUrl(runtimeGlobal: RuntimeGlobal = globalThis as RuntimeGlobal): string {
+function getCurrentUrl(
+  runtimeGlobal: RuntimeGlobal = globalThis as unknown as RuntimeGlobal
+): string {
   return typeof runtimeGlobal.location?.href === 'string' ? runtimeGlobal.location.href : '';
 }
 
-function getCurrentOrigin(runtimeGlobal: RuntimeGlobal = globalThis as RuntimeGlobal): string {
+function getCurrentOrigin(
+  runtimeGlobal: RuntimeGlobal = globalThis as unknown as RuntimeGlobal
+): string {
   const currentUrl = getCurrentUrl(runtimeGlobal);
   if (!currentUrl) {
     return '';

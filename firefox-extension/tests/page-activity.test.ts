@@ -91,6 +91,7 @@ void describe('page activity content script', () => {
     assert.match(script, /HTMLScriptElement/);
     assert.match(script, /HTMLLinkElement/);
     assert.match(script, /openpath-page-resource-candidate/);
+    assert.match(script, /__openpathPageResourceObserverInstalled/);
   });
 
   void test('relays page observer messages to the background runtime', () => {
@@ -116,8 +117,9 @@ void describe('page activity content script', () => {
         type: string,
         callback: (event: { data?: unknown; origin?: string; source?: unknown }) => void
       ): void {
-        assert.equal(type, 'message');
-        listener = callback;
+        if (type === 'message') {
+          listener = callback;
+        }
       },
       document: {
         createElement(tagName: string): typeof scriptElement {
@@ -175,8 +177,9 @@ void describe('page activity content script', () => {
         type: string,
         callback: (event: { data?: unknown; origin?: string; source?: unknown }) => void
       ): void {
-        assert.equal(type, 'message');
-        listener = callback;
+        if (type === 'message') {
+          listener = callback;
+        }
       },
       document: {
         createElement(): { remove(): void; textContent: string } {
@@ -279,5 +282,161 @@ void describe('page activity content script', () => {
     assert.deepEqual(appended, [scriptElement]);
     assert.match(scriptElement.textContent, /window\.fetch/);
     assert.equal(scriptElement.removeCalls, 1);
+  });
+
+  void test('retries page observer injection before DOMContentLoaded when an append target appears', () => {
+    interface PageMessageEvent {
+      data?: unknown;
+      origin?: string;
+      source?: unknown;
+    }
+    const listeners = new Map<string, (event: PageMessageEvent) => void>();
+    const scheduled: { delay: number; callback: () => void }[] = [];
+    const scriptElement = {
+      removeCalls: 0,
+      textContent: '',
+      remove(): void {
+        this.removeCalls += 1;
+      },
+    };
+    const appended: unknown[] = [];
+    const runtimeGlobal = {
+      addEventListener(type: string, callback: (event: PageMessageEvent) => void): void {
+        listeners.set(type, callback);
+      },
+      document: {
+        createElement(): typeof scriptElement {
+          return scriptElement;
+        },
+        documentElement: undefined as undefined | { appendChild(node: unknown): void },
+        head: undefined as undefined | { appendChild(node: unknown): void },
+      },
+      location: { href: 'https://allowed.example/app' },
+      setTimeout(callback: () => void, delay: number): void {
+        scheduled.push({ callback, delay });
+      },
+      window: {},
+    };
+
+    installPageResourceObserver(undefined, runtimeGlobal);
+    assert.deepEqual(
+      scheduled.map((timer) => timer.delay),
+      [0, 5, 25, 100, 500]
+    );
+    assert.equal(appended.length, 0);
+
+    runtimeGlobal.document.documentElement = {
+      appendChild(node: unknown): void {
+        appended.push(node);
+      },
+    };
+    scheduled[0]?.callback();
+
+    assert.deepEqual(appended, [scriptElement]);
+    assert.match(scriptElement.textContent, /window\.fetch/);
+    assert.equal(scriptElement.removeCalls, 1);
+    assert.ok(listeners.has('DOMContentLoaded'));
+  });
+
+  void test('reports DOM subresource candidates from added and changed nodes', () => {
+    const sentMessages: unknown[] = [];
+    const ignoredEvents: string[] = [];
+    let appendCalls = 0;
+    let removeCalls = 0;
+    let mutationCallback:
+      | ((records: { addedNodes?: unknown[]; attributeName?: string; target?: unknown }[]) => void)
+      | undefined;
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message): void => {
+        sentMessages.push(message);
+      },
+    };
+    class FakeMutationObserver {
+      constructor(
+        callback: (
+          records: { addedNodes?: unknown[]; attributeName?: string; target?: unknown }[]
+        ) => void
+      ) {
+        mutationCallback = callback;
+      }
+
+      observe(target: unknown, options: unknown): void {
+        assert.equal(target, runtimeGlobal.document);
+        assert.deepEqual(options, {
+          attributeFilter: ['src', 'href'],
+          attributes: true,
+          childList: true,
+          subtree: true,
+        });
+      }
+    }
+    const runtimeGlobal = {
+      addEventListener(type: string): void {
+        ignoredEvents.push(type);
+      },
+      document: {
+        createElement(): { remove(): void; textContent: string } {
+          return {
+            textContent: '',
+            remove(): void {
+              removeCalls += 1;
+            },
+          };
+        },
+        documentElement: {
+          appendChild(): void {
+            appendCalls += 1;
+          },
+        },
+      },
+      location: { href: 'https://allowed.example/app' },
+      MutationObserver: FakeMutationObserver,
+      window: {},
+    };
+
+    installPageResourceObserver(runtime, runtimeGlobal);
+    assert.equal(appendCalls, 1);
+    assert.equal(removeCalls, 1);
+    assert.deepEqual(ignoredEvents, ['message', 'DOMContentLoaded']);
+    mutationCallback?.([
+      {
+        addedNodes: [
+          { tagName: 'IMG', src: 'https://cdn.example/pixel.png' },
+          { tagName: 'SCRIPT', src: 'https://cdn.example/app.js' },
+          { href: 'https://cdn.example/app.css', rel: 'stylesheet', tagName: 'LINK' },
+        ],
+      },
+      {
+        attributeName: 'src',
+        target: { tagName: 'IMG', src: 'https://cdn.example/changed.png' },
+      },
+    ]);
+
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'image',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/pixel.png',
+      },
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'script',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/app.js',
+      },
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'stylesheet',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/app.css',
+      },
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'image',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://cdn.example/changed.png',
+      },
+    ]);
   });
 });
