@@ -134,6 +134,7 @@ Describe "SSE Listener" {
                 '[System.Diagnostics.Process]::Start($processInfo)',
                 '$processInfo.UseShellExecute = $false',
                 '$processInfo.CreateNoWindow = $true',
+                '$processInfo.Arguments =',
                 '-NoProfile',
                 '-ExecutionPolicy',
                 'Bypass',
@@ -141,6 +142,7 @@ Describe "SSE Listener" {
                 'Update.ScriptPath'
             )
 
+            $content | Should -Not -Match '\.ArgumentList\.Add'
             $content | Should -Not -Match 'Start-Job\s+-ScriptBlock'
             $content | Should -Not -Match 'Get-Job\s+-Name'
         }

@@ -158,13 +158,7 @@ function Start-OpenPathSseUpdateProcess {
             $processInfo.FileName = 'PowerShell.exe'
             $processInfo.UseShellExecute = $false
             $processInfo.CreateNoWindow = $true
-            $null = $processInfo.ArgumentList.Add('-NoProfile')
-            $null = $processInfo.ArgumentList.Add('-ExecutionPolicy')
-            $null = $processInfo.ArgumentList.Add('Bypass')
-            $null = $processInfo.ArgumentList.Add('-WindowStyle')
-            $null = $processInfo.ArgumentList.Add('Hidden')
-            $null = $processInfo.ArgumentList.Add('-EncodedCommand')
-            $null = $processInfo.ArgumentList.Add($encodedCommand)
+            $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encodedCommand"
 
             Write-OpenPathLog "SSE: Starting detached update process (delay ${DelaySeconds}s, Update.ScriptPath=$($script:UpdateScript))"
             $process = [System.Diagnostics.Process]::Start($processInfo)
