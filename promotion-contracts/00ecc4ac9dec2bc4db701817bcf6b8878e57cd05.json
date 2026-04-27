@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "openpathSha": "00ecc4ac9dec2bc4db701817bcf6b8878e57cd05",
+  "packageVersion": "0.0.20260427120654",
+  "linuxAgentVersion": "0.0.20260427120654",
+  "aptSuite": "unstable",
+  "firefoxExtensionVersion": "2.0.0",
+  "browserPolicySpecSha256": "983a469b52e35cea1223f546d4cb0eda55be6ff29b7938f1c50fd230ea20a708"
+}
