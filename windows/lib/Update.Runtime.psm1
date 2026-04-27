@@ -51,7 +51,9 @@ function Invoke-OpenPathUpdateCycle {
     param(
         [string]$OpenPathRoot = 'C:\OpenPath',
 
-        [string]$UpdateMutexName = 'Global\OpenPathUpdateLock'
+        [string]$UpdateMutexName = 'Global\OpenPathUpdateLock',
+
+        [int]$LockWaitTimeoutSeconds = 45
     )
 
     Initialize-OpenPathUpdateRuntimeSession -OpenPathRoot $OpenPathRoot
@@ -72,6 +74,11 @@ function Invoke-OpenPathUpdateCycle {
         $mutex = [System.Threading.Mutex]::new($false, $UpdateMutexName)
         try {
             $lockAcquired = $mutex.WaitOne(0)
+            if (-not $lockAcquired -and $LockWaitTimeoutSeconds -gt 0) {
+                $lockWaitTimeoutMs = [Math]::Max(0, $LockWaitTimeoutSeconds * 1000)
+                Write-OpenPathLog "Waiting up to $LockWaitTimeoutSeconds seconds for the existing OpenPath update to finish" -Level WARN
+                $lockAcquired = $mutex.WaitOne($lockWaitTimeoutMs)
+            }
         }
         catch [System.Threading.AbandonedMutexException] {
             $lockAcquired = $true

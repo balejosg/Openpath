@@ -7,7 +7,11 @@ Describe "Update Script" {
             Assert-ContentContainsAll -Content $content -Needles @(
                 'System.Threading.Mutex',
                 'Global\OpenPathUpdateLock',
-                'WaitOne(0)'
+                'WaitOne(0)',
+                '[int]$LockWaitTimeoutSeconds = 45',
+                '$mutex.WaitOne($lockWaitTimeoutMs)',
+                'Waiting up to $LockWaitTimeoutSeconds seconds for the existing OpenPath update to finish',
+                'Another OpenPath update is already running - skipping this cycle'
             )
         }
     }
