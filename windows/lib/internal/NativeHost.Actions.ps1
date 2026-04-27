@@ -271,27 +271,28 @@ function Invoke-NativeHostCheckAction {
     }
 }
 
-function Handle-Message {
+function Invoke-NativeHostMessageAction {
     param(
-        [AllowNull()]
-        [object]$Message
+        [Parameter(Mandatory = $true)]
+        [object]$Message,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$State,
+
+        [Parameter(Mandatory = $true)]
+        [object]$Sections,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Action
     )
 
-    if (-not ($Message -is [System.Collections.IDictionary]) -and -not $Message.PSObject) {
-        return @{ success = $false; error = 'Invalid message format' }
-    }
-
-    $state = Read-NativeState
-    $sections = Get-WhitelistSections
-    $action = [string]$Message.action
-
-    switch ($action) {
+    switch ($Action) {
         'ping' {
             return @{
                 success = $true
                 action = 'ping'
                 message = 'pong'
-                version = if ($state.PSObject.Properties['version']) { [string]$state.version } else { '' }
+                version = if ($State.PSObject.Properties['version']) { [string]$State.version } else { '' }
             }
         }
 
@@ -299,12 +300,12 @@ function Handle-Message {
             return @{
                 success = $true
                 action = 'get-hostname'
-                hostname = (Get-NativeHostMachineName -State $state)
+                hostname = (Get-NativeHostMachineName -State $State)
             }
         }
 
         'get-machine-token' {
-            $whitelistUrl = if ($state.PSObject.Properties['whitelistUrl']) { [string]$state.whitelistUrl } else { '' }
+            $whitelistUrl = if ($State.PSObject.Properties['whitelistUrl']) { [string]$State.whitelistUrl } else { '' }
             $token = Get-MachineTokenFromWhitelistUrl -WhitelistUrl $whitelistUrl
             if (-not $token) {
                 return @{
@@ -322,8 +323,8 @@ function Handle-Message {
         }
 
         'get-config' {
-            $apiUrl = Get-NativeHostApiUrl -State $state
-            $whitelistUrl = if ($state.PSObject.Properties['whitelistUrl']) { [string]$state.whitelistUrl } else { '' }
+            $apiUrl = Get-NativeHostApiUrl -State $State
+            $whitelistUrl = if ($State.PSObject.Properties['whitelistUrl']) { [string]$State.whitelistUrl } else { '' }
             $machineToken = Get-MachineTokenFromWhitelistUrl -WhitelistUrl $whitelistUrl
 
             if (-not $apiUrl) {
@@ -340,7 +341,7 @@ function Handle-Message {
                 apiUrl = $apiUrl
                 requestApiUrl = $apiUrl
                 fallbackApiUrls = @()
-                hostname = (Get-NativeHostMachineName -State $state)
+                hostname = (Get-NativeHostMachineName -State $State)
                 machineToken = if ($machineToken) { $machineToken } else { '' }
                 whitelistUrl = $whitelistUrl
             }
@@ -366,4 +367,59 @@ function Handle-Message {
             }
         }
     }
+}
+
+function Handle-Message {
+    param(
+        [AllowNull()]
+        [object]$Message
+    )
+
+    if (-not ($Message -is [System.Collections.IDictionary]) -and -not $Message.PSObject) {
+        return @{ success = $false; error = 'Invalid message format' }
+    }
+
+    $state = Read-NativeState
+    $sections = Get-WhitelistSections
+    $action = [string]$Message.action
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $result = $null
+
+    try {
+        $result = Invoke-NativeHostMessageAction -Message $Message -State $state -Sections $sections -Action $action
+    }
+    catch {
+        $result = @{
+            success = $false
+            action = $action
+            error = [string]$_
+        }
+    }
+    finally {
+        $stopwatch.Stop()
+    }
+
+    if ($action -ne 'update-whitelist') {
+        $logMessage = ''
+        if ($result -is [System.Collections.IDictionary] -and $result.ContainsKey('message')) {
+            $logMessage = [string]$result.message
+        }
+        $logError = ''
+        if ($result -is [System.Collections.IDictionary] -and $result.ContainsKey('error')) {
+            $logError = [string]$result.error
+        }
+        $domains = @()
+        if ($action -eq 'check') {
+            $domains = @(Get-NativeHostValidDomains -Domains @($Message.domains))
+        }
+
+        Write-NativeHostActionLog -Action $action `
+            -Domains $domains `
+            -Success ($result.success -eq $true) `
+            -Message $logMessage `
+            -ErrorMessage $logError `
+            -ElapsedMs $stopwatch.ElapsedMilliseconds
+    }
+
+    return $result
 }

@@ -288,16 +288,19 @@ Describe "Browser Module - Native Host" {
             )
         }
 
-        It "Logs update-whitelist action evidence without depending on downstream wrappers" {
+        It "Logs native action evidence without depending on downstream wrappers" {
             $nativeHostActionsPath = Join-Path $PSScriptRoot ".." "lib" "internal" "NativeHost.Actions.ps1"
             $nativeHostActionsContent = Get-Content $nativeHostActionsPath -Raw
 
             Assert-ContentContainsAll -Content $nativeHostActionsContent -Needles @(
                 'function Write-NativeHostActionLog',
+                'function Invoke-NativeHostMessageAction',
                 'Get-Command Write-NativeHostLog -ErrorAction SilentlyContinue',
                 'action=$Action',
                 'elapsedMs=',
                 'domains=',
+                "if (`$action -ne 'update-whitelist')",
+                "Write-NativeHostActionLog -Action `$action",
                 'Write-NativeHostActionLog -Action ''update-whitelist'''
             )
 
