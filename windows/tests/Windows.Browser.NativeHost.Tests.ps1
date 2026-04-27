@@ -280,6 +280,8 @@ Describe "Browser Module - Native Host" {
             Assert-ContentContainsAll -Content $nativeHostActionsContent -Needles @(
                 'function Get-NativeHostValidDomains',
                 'function Test-NativeWhitelistContainsDomains',
+                'function Invoke-NativeHostSharedUpdateTrigger',
+                'Global\OpenPathNativeWhitelistUpdateTrigger',
                 '$Message.domains',
                 'Invoke-UpdateTask -Domains $domains',
                 'Get-WhitelistSections',

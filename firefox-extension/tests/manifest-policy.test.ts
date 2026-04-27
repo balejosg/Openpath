@@ -13,6 +13,7 @@ interface FirefoxManifest {
     js?: string[];
     matches?: string[];
     run_at?: string;
+    world?: string;
   }[];
   host_permissions?: string[];
 }
@@ -44,7 +45,7 @@ void describe('Firefox extension manifest policy', () => {
     assert.deepEqual(manifest.content_scripts, [
       {
         matches: ['http://*/*', 'https://*/*'],
-        js: ['dist/page-activity.js'],
+        js: ['dist/page-activity-content.js'],
         run_at: 'document_start',
       },
     ]);

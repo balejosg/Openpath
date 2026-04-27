@@ -1,5 +1,158 @@
 # OpenPath Windows update runtime helpers
 
+$script:OpenPathUpdateRuntimeSessionInitialized = $false
+$script:OpenPathUpdateRuntimeRoot = ''
+
+function Initialize-OpenPathUpdateRuntimeSession {
+    [CmdletBinding()]
+    param(
+        [string]$OpenPathRoot = 'C:\OpenPath'
+    )
+
+    if (
+        $script:OpenPathUpdateRuntimeSessionInitialized -and
+        $script:OpenPathUpdateRuntimeRoot -eq $OpenPathRoot
+    ) {
+        return
+    }
+
+    Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force
+    Initialize-OpenPathScriptSession `
+        -OpenPathRoot $OpenPathRoot `
+        -DependentModules @('DNS', 'Firewall', 'Browser') `
+        -RequiredCommands @(
+        'Write-OpenPathLog',
+        'Get-OpenPathConfig',
+        'Get-OpenPathFileAgeHours',
+        'Get-HostFromUrl',
+        'Get-OpenPathFromUrl',
+        'Get-OpenPathRuntimeHealth',
+        'Get-ValidWhitelistDomainsFromFile',
+        'ConvertTo-OpenPathWhitelistFileContent',
+        'Restore-OpenPathLatestCheckpoint',
+        'Restore-OpenPathProtectedMode',
+        'Save-OpenPathWhitelistCheckpoint',
+        'Send-OpenPathHealthReport',
+        'Sync-OpenPathFirefoxNativeHostState',
+        'Update-AcrylicHost',
+        'Restore-OriginalDNS',
+        'Remove-OpenPathFirewall',
+        'Remove-BrowserPolicy',
+        'Set-AllBrowserPolicy'
+    ) `
+        -ScriptName 'Update-OpenPath.ps1' | Out-Null
+
+    $script:OpenPathUpdateRuntimeSessionInitialized = $true
+    $script:OpenPathUpdateRuntimeRoot = $OpenPathRoot
+}
+
+function Invoke-OpenPathUpdateCycle {
+    [CmdletBinding()]
+    param(
+        [string]$OpenPathRoot = 'C:\OpenPath',
+
+        [string]$UpdateMutexName = 'Global\OpenPathUpdateLock'
+    )
+
+    Initialize-OpenPathUpdateRuntimeSession -OpenPathRoot $OpenPathRoot
+    . (Join-Path $OpenPathRoot 'lib\internal\Update.Script.Config.ps1')
+    . (Join-Path $OpenPathRoot 'lib\internal\Update.Script.Apply.ps1')
+    . (Join-Path $OpenPathRoot 'lib\internal\Update.Script.Rollback.ps1')
+
+    $mutex = $null
+    $lockAcquired = $false
+    $shouldRunUpdate = $true
+    $exitCode = 0
+    $config = $null
+    $whitelistPath = Join-Path $OpenPathRoot 'data\whitelist.txt'
+    $backupPath = Join-Path $OpenPathRoot 'data\whitelist.backup.txt'
+    $staleFailsafeStatePath = Join-Path $OpenPathRoot 'data\stale-failsafe-state.json'
+
+    try {
+        $mutex = [System.Threading.Mutex]::new($false, $UpdateMutexName)
+        try {
+            $lockAcquired = $mutex.WaitOne(0)
+        }
+        catch [System.Threading.AbandonedMutexException] {
+            $lockAcquired = $true
+            Write-OpenPathLog "OpenPath update lock was abandoned by a previous process - continuing" -Level WARN
+        }
+
+        if (-not $lockAcquired) {
+            Write-OpenPathLog "Another OpenPath update is already running - skipping this cycle" -Level WARN
+            $shouldRunUpdate = $false
+        }
+
+        if ($shouldRunUpdate) {
+            Write-OpenPathLog "=== Starting openpath update ==="
+
+            $config = Get-OpenPathConfig
+            $updateSettings = Get-OpenPathUpdatePolicySettings -Config $config
+            $null = Backup-OpenPathWhitelistState `
+                -WhitelistPath $whitelistPath `
+                -BackupPath $backupPath `
+                -EnableCheckpointRollback $updateSettings.EnableCheckpointRollback `
+                -MaxCheckpoints $updateSettings.MaxCheckpoints
+
+            $downloadResult = Get-OpenPathWhitelistDownloadResult -Config $config
+
+            if ($downloadResult.DownloadFailed) {
+                $null = Handle-OpenPathDownloadFailure `
+                    -Config $config `
+                    -WhitelistPath $whitelistPath `
+                    -StaleFailsafeStatePath $staleFailsafeStatePath `
+                    -StaleWhitelistMaxAgeHours $updateSettings.StaleWhitelistMaxAgeHours `
+                    -EnableStaleFailsafe $updateSettings.EnableStaleFailsafe
+            }
+            elseif ($downloadResult.Whitelist.PSObject.Properties['NotModified'] -and $downloadResult.Whitelist.NotModified) {
+                $null = Handle-OpenPathNotModified -Config $config -WhitelistPath $whitelistPath
+            }
+            elseif ($downloadResult.Whitelist.IsDisabled) {
+                $null = Handle-OpenPathDisabledWhitelist `
+                    -Config $config `
+                    -WhitelistPath $whitelistPath `
+                    -StaleFailsafeStatePath $staleFailsafeStatePath
+            }
+            else {
+                $null = Handle-OpenPathWhitelistApply `
+                    -Config $config `
+                    -Whitelist $downloadResult.Whitelist `
+                    -WhitelistPath $whitelistPath `
+                    -StaleFailsafeStatePath $staleFailsafeStatePath
+            }
+        }
+    }
+    catch {
+        Write-UpdateCatchLog "Update failed: $_" -Level ERROR
+        $rollbackResult = Invoke-OpenPathUpdateRollback `
+            -Config $config `
+            -WhitelistPath $whitelistPath `
+            -BackupPath $backupPath `
+            -StaleFailsafeStatePath $staleFailsafeStatePath
+        $null = Send-OpenPathUpdateFailureHealth `
+            -RollbackSucceeded $rollbackResult.RollbackSucceeded `
+            -RollbackMethod $rollbackResult.RollbackMethod
+
+        $exitCode = 1
+    }
+    finally {
+        if ($lockAcquired -and $mutex) {
+            try {
+                $mutex.ReleaseMutex()
+            }
+            catch [System.ApplicationException] {
+                # Ignore if mutex ownership was not held at release time
+            }
+        }
+
+        if ($mutex) {
+            $mutex.Dispose()
+        }
+    }
+
+    return [int]$exitCode
+}
+
 function Clear-StaleFailsafeState {
     [CmdletBinding()]
     param(
@@ -128,6 +281,8 @@ function Sync-FirefoxNativeHostMirror {
 }
 
 Export-ModuleMember -Function @(
+    'Initialize-OpenPathUpdateRuntimeSession',
+    'Invoke-OpenPathUpdateCycle',
     'Clear-StaleFailsafeState',
     'Enter-StaleWhitelistFailsafe',
     'Restore-OpenPathCheckpoint',

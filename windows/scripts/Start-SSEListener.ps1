@@ -39,13 +39,14 @@ Initialize-OpenPathScriptSession `
     'Get-OpenPathConfig'
 ) `
     -ScriptName 'Start-SSEListener.ps1' | Out-Null
+Import-Module "$OpenPathRoot\lib\Update.Runtime.psm1" -Force
+Initialize-OpenPathUpdateRuntimeSession -OpenPathRoot $OpenPathRoot
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
 $script:LastUpdateTime = [datetime]::MinValue
-$script:UpdateScript = "$OpenPathRoot\scripts\Update-OpenPath.ps1"
 $script:DelayedUpdateDueAt = [datetime]::MinValue
 
 function Get-SSEConfig {
@@ -145,49 +146,25 @@ function Start-OpenPathSseUpdateProcess {
         [int]$DelaySeconds = 0
     )
 
-    $taskName = 'OpenPath-Update'
     if ($DelaySeconds -gt 0) {
-        Write-OpenPathLog "SSE: Waiting ${DelaySeconds}s before starting OpenPath-Update scheduled task"
+        Write-OpenPathLog "SSE: Waiting ${DelaySeconds}s before starting in-process OpenPath update"
         Start-Sleep -Seconds $DelaySeconds
     }
 
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        Write-OpenPathLog "SSE: Starting OpenPath-Update scheduled task"
-        Start-ScheduledTask -TaskName 'OpenPath-Update' -ErrorAction Stop
-        Write-OpenPathLog "SSE: OpenPath-Update scheduled task started"
-        return
+        Write-OpenPathLog "SSE: Starting in-process OpenPath update"
+        [int]$exitCode = Invoke-OpenPathUpdateCycle -OpenPathRoot $OpenPathRoot
+        $stopwatch.Stop()
+        if ($exitCode -ne 0) {
+            Write-OpenPathLog "SSE: In-process OpenPath update failed with exit code $exitCode after $($stopwatch.ElapsedMilliseconds)ms" -Level WARN
+            return
+        }
+        Write-OpenPathLog "SSE: In-process OpenPath update completed in $($stopwatch.ElapsedMilliseconds)ms"
     }
     catch {
-        Write-OpenPathLog "SSE: Failed to start $taskName scheduled task, falling back to direct update process: $_" -Level WARN
-    }
-
-    if (Test-Path $script:UpdateScript) {
-        try {
-            $escapedScriptPath = $script:UpdateScript.Replace("'", "''")
-            $command = "& '$escapedScriptPath'"
-
-            $encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
-            $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
-            $processInfo.FileName = 'PowerShell.exe'
-            $processInfo.UseShellExecute = $false
-            $processInfo.CreateNoWindow = $true
-            $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encodedCommand"
-
-            Write-OpenPathLog "SSE: Starting detached update process (delay ${DelaySeconds}s, Update.ScriptPath=$($script:UpdateScript))"
-            $process = [System.Diagnostics.Process]::Start($processInfo)
-            if (-not $process) {
-                throw 'Process.Start returned no process handle'
-            }
-
-            Write-OpenPathLog "SSE: Detached update process started (pid=$($process.Id), delay ${DelaySeconds}s)"
-        }
-        catch {
-            Write-OpenPathLog "SSE: Failed to start detached update process: $_" -Level WARN
-        }
-    }
-    else {
-        Write-OpenPathLog "SSE: Update script not found at $($script:UpdateScript)" -Level WARN
-        return
+        $stopwatch.Stop()
+        Write-OpenPathLog "SSE: In-process OpenPath update failed after $($stopwatch.ElapsedMilliseconds)ms: $_" -Level WARN
     }
 }
 

@@ -93,6 +93,55 @@ function Write-NativeHostActionLog {
     }
 }
 
+function Invoke-NativeHostSharedUpdateTrigger {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$TriggerAction,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$WaitAction
+    )
+
+    $mutex = $null
+    $lockAcquired = $false
+    try {
+        $mutex = [System.Threading.Mutex]::new($false, 'Global\OpenPathNativeWhitelistUpdateTrigger')
+        try {
+            $lockAcquired = $mutex.WaitOne(0)
+        }
+        catch [System.Threading.AbandonedMutexException] {
+            $lockAcquired = $true
+        }
+
+        if ($lockAcquired) {
+            $triggerResult = & $TriggerAction
+            if (
+                $triggerResult -is [System.Collections.IDictionary] -and
+                $triggerResult.ContainsKey('success') -and
+                $triggerResult.success -ne $true
+            ) {
+                return $triggerResult
+            }
+        }
+
+        return (& $WaitAction)
+    }
+    finally {
+        if ($lockAcquired -and $mutex) {
+            try {
+                $mutex.ReleaseMutex()
+            }
+            catch [System.ApplicationException] {
+                # Ignore if mutex ownership was already released by the runtime.
+            }
+        }
+
+        if ($mutex) {
+            $mutex.Dispose()
+        }
+    }
+}
+
 function Invoke-UpdateTask {
     param(
         [string[]]$Domains = @(),
@@ -102,46 +151,55 @@ function Invoke-UpdateTask {
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $result = $null
     try {
-        $null = & schtasks.exe /Run /TN $script:UpdateTaskName 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            $result = @{
-                success = $false
-                action = 'update-whitelist'
-                error = "schtasks exit code $LASTEXITCODE"
-                domains = @($Domains)
-            }
-        }
-        elseif (-not (Test-NativeWhitelistContainsDomains -Domains $Domains)) {
-            $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-            while ((Get-Date) -lt $deadline) {
-                Start-Sleep -Milliseconds 1000
-                if (Test-NativeWhitelistContainsDomains -Domains $Domains) {
-                    $result = @{
-                        success = $true
-                        action = 'update-whitelist'
-                        message = 'OpenPath update task wrote expected domains'
-                        domains = @($Domains)
-                    }
-                    break
-                }
-            }
-
-            if (-not $result) {
-                $result = @{
-                    success = $false
-                    action = 'update-whitelist'
-                    error = "OpenPath update task did not write expected domains: $(@($Domains) -join ', ')"
-                    domains = @($Domains)
-                }
-            }
-        }
-        else {
+        if (Test-NativeWhitelistContainsDomains -Domains $Domains) {
             $result = @{
                 success = $true
                 action = 'update-whitelist'
                 message = 'OpenPath update task triggered'
                 domains = @($Domains)
             }
+        }
+        else {
+            $result = Invoke-NativeHostSharedUpdateTrigger `
+                -TriggerAction {
+                    $null = & schtasks.exe /Run /TN $script:UpdateTaskName 2>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        return @{
+                            success = $false
+                            action = 'update-whitelist'
+                            error = "schtasks exit code $LASTEXITCODE"
+                            domains = @($Domains)
+                        }
+                    }
+
+                    return @{
+                        success = $true
+                        action = 'update-whitelist'
+                        message = 'OpenPath update task triggered'
+                        domains = @($Domains)
+                    }
+                } `
+                -WaitAction {
+                    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+                    while ((Get-Date) -lt $deadline) {
+                        Start-Sleep -Milliseconds 1000
+                        if (Test-NativeWhitelistContainsDomains -Domains $Domains) {
+                            return @{
+                                success = $true
+                                action = 'update-whitelist'
+                                message = 'OpenPath update task wrote expected domains'
+                                domains = @($Domains)
+                            }
+                        }
+                    }
+
+                    return @{
+                        success = $false
+                        action = 'update-whitelist'
+                        error = "OpenPath update task did not write expected domains: $(@($Domains) -join ', ')"
+                        domains = @($Domains)
+                    }
+                }
         }
     }
     catch {

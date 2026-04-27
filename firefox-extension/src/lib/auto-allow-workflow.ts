@@ -87,7 +87,7 @@ export function createAutoAllowWorkflow(deps: AutoAllowWorkflowDeps): {
     requestType: string,
     targetUrl?: string
   ): Promise<void> {
-    const requestKey = `${tabId.toString()}:${hostname}:${origin ?? 'unknown'}:${targetUrl ?? hostname}`;
+    const requestKey = `${tabId.toString()}:${hostname}:${origin ?? 'unknown'}`;
     if (deps.inFlightAutoRequests.has(requestKey)) {
       return;
     }

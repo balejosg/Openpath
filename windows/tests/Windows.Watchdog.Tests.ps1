@@ -103,6 +103,16 @@ Describe "Watchdog Script" {
                 'TAMPERED'
             )
         }
+
+        It "Protects runtime and native update helpers in the integrity baseline" {
+            $helperPath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Integrity.ps1"
+            $content = Get-Content $helperPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                '$script:OpenPathRoot\lib\Update.Runtime.psm1',
+                '$script:OpenPathRoot\lib\internal\NativeHost.Actions.ps1'
+            )
+        }
     }
 
     Context "Watchdog health states" {

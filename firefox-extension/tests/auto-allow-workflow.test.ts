@@ -182,6 +182,55 @@ await describe('auto allow workflow', async () => {
     assert.equal(fixture.refreshBlockedPathRulesCalls, 1);
   });
 
+  await test('deduplicates concurrent auto-allow requests by page origin and hostname', async () => {
+    let resolveLocalUpdate: ((value: boolean) => void) | undefined;
+    const requestBodies: unknown[] = [];
+    const updatedHosts: string[] = [];
+    const { fixture, workflow } = createWorkflowFixture({
+      fetchImpl: (_url, init) => {
+        const body = typeof init?.body === 'string' ? init.body : '{}';
+        requestBodies.push(JSON.parse(body));
+        return Promise.resolve(
+          new Response(JSON.stringify({ success: true, status: 'approved' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
+      },
+      requestLocalWhitelistUpdate: (hostname) => {
+        updatedHosts.push(hostname);
+        fixture.requestLocalWhitelistUpdateCalls += 1;
+        return new Promise<boolean>((resolve) => {
+          resolveLocalUpdate = resolve;
+        });
+      },
+    });
+
+    const firstRequest = workflow.autoAllowBlockedDomain(
+      5,
+      'cdn.example.com',
+      'https://portal.school/app',
+      'script',
+      'https://cdn.example.com/asset.js?attempt=1'
+    );
+    const secondRequest = workflow.autoAllowBlockedDomain(
+      5,
+      'cdn.example.com',
+      'https://portal.school/app',
+      'script',
+      'https://cdn.example.com/asset.js?attempt=2'
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(requestBodies.length, 1);
+    assert.deepEqual(updatedHosts, ['cdn.example.com']);
+    assert.equal(fixture.requestLocalWhitelistUpdateCalls, 1);
+
+    resolveLocalUpdate?.(true);
+    await Promise.all([firstRequest, secondRequest]);
+  });
+
   await test('keeps pending API responses pending without refreshing the local whitelist', async () => {
     const { fixture, statuses, workflow } = createWorkflowFixture({
       fetchImpl: () =>

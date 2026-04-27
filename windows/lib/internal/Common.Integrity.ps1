@@ -16,6 +16,7 @@ function Get-OpenPathCriticalFiles {
         "$script:OpenPathRoot\lib\browser-policy-spec.json",
         "$script:OpenPathRoot\lib\Services.psm1",
         "$script:OpenPathRoot\lib\CaptivePortal.psm1",
+        "$script:OpenPathRoot\lib\Update.Runtime.psm1",
         "$script:OpenPathRoot\lib\internal\Common.System.ps1",
         "$script:OpenPathRoot\lib\internal\Common.Config.ps1",
         "$script:OpenPathRoot\lib\internal\Common.Domains.ps1",
@@ -24,6 +25,7 @@ function Get-OpenPathCriticalFiles {
         "$script:OpenPathRoot\lib\internal\Common.Integrity.ps1",
         "$script:OpenPathRoot\lib\internal\Common.Network.ps1",
         "$script:OpenPathRoot\lib\internal\Common.Update.ps1",
+        "$script:OpenPathRoot\lib\internal\NativeHost.Actions.ps1",
         "$script:OpenPathRoot\scripts\Update-OpenPath.ps1",
         "$script:OpenPathRoot\scripts\Test-DNSHealth.ps1",
         "$script:OpenPathRoot\scripts\Start-SSEListener.ps1"

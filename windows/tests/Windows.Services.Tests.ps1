@@ -124,38 +124,35 @@ Describe "SSE Listener" {
     }
 
     Context "Update process triggering" {
-        It "prefers the registered OpenPath-Update task for SSE-triggered local policy refreshes" {
+        It "runs the shared OpenPath update runtime directly for SSE-triggered local policy refreshes" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Start-SSEListener.ps1"
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                "Start-ScheduledTask -TaskName 'OpenPath-Update'",
-                'SSE: Starting OpenPath-Update scheduled task',
-                'SSE: OpenPath-Update scheduled task started'
+                'Import-Module "$OpenPathRoot\lib\Update.Runtime.psm1" -Force',
+                'Initialize-OpenPathUpdateRuntimeSession -OpenPathRoot $OpenPathRoot',
+                '[int]$exitCode = Invoke-OpenPathUpdateCycle',
+                'SSE: Starting in-process OpenPath update',
+                'SSE: In-process OpenPath update completed'
             )
+
+            $content | Should -Not -Match 'Start-ScheduledTask\s+-TaskName\s+''OpenPath-Update'''
         }
 
-        It "keeps a detached PowerShell direct-update fallback instead of in-process jobs" {
+        It "does not rely on detached PowerShell launchers for SSE-triggered updates" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Start-SSEListener.ps1"
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Start-OpenPathSseUpdateProcess',
-                '[System.Diagnostics.ProcessStartInfo]::new()',
-                '[System.Diagnostics.Process]::Start($processInfo)',
-                '$processInfo.UseShellExecute = $false',
-                '$processInfo.CreateNoWindow = $true',
-                '$processInfo.Arguments =',
-                '-NoProfile',
-                '-ExecutionPolicy',
-                'Bypass',
-                '-EncodedCommand',
-                'Update.ScriptPath'
+                'SSE: In-process OpenPath update failed'
             )
 
             $content | Should -Not -Match '\.ArgumentList\.Add'
             $content | Should -Not -Match 'Start-Job\s+-ScriptBlock'
             $content | Should -Not -Match 'Get-Job\s+-Name'
+            $content | Should -Not -Match '\[System\.Diagnostics\.ProcessStartInfo\]::new'
+            $content | Should -Not -Match '\[System\.Diagnostics\.Process\]::Start'
         }
 
         It "queues one delayed catch-up update when whitelist changes arrive during cooldown" {
@@ -176,10 +173,47 @@ Describe "SSE Listener" {
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'SSE: Starting detached update process',
-                'SSE: Detached update process started',
-                'SSE: Failed to start detached update process'
+                'SSE: Starting in-process OpenPath update',
+                'SSE: In-process OpenPath update completed',
+                'SSE: In-process OpenPath update failed'
             )
+        }
+    }
+}
+
+Describe "Update Runtime" {
+    Context "Reusable update cycle" {
+        It "exposes the OpenPath update cycle as a reusable runtime function" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "Update.Runtime.psm1"
+            $content = Get-Content $modulePath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'function Initialize-OpenPathUpdateRuntimeSession',
+                '$script:OpenPathUpdateRuntimeSessionInitialized',
+                'function Invoke-OpenPathUpdateCycle',
+                '[string]$OpenPathRoot = ''C:\OpenPath''',
+                '[string]$UpdateMutexName = ''Global\OpenPathUpdateLock''',
+                '$null = Backup-OpenPathWhitelistState',
+                '$null = Handle-OpenPathWhitelistApply',
+                'Write-OpenPathLog "=== Starting openpath update ==="',
+                'return [int]$exitCode',
+                "'Initialize-OpenPathUpdateRuntimeSession'",
+                "'Invoke-OpenPathUpdateCycle'"
+            )
+        }
+
+        It "keeps Update-OpenPath.ps1 as a thin wrapper around the reusable runtime" {
+            $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Update-OpenPath.ps1"
+            $content = Get-Content $scriptPath -Raw
+
+            Assert-ContentContainsAll -Content $content -Needles @(
+                'Import-Module "$OpenPathRoot\lib\Update.Runtime.psm1" -Force',
+                '$exitCode = Invoke-OpenPathUpdateCycle -OpenPathRoot $OpenPathRoot',
+                'exit $exitCode'
+            )
+
+            $content | Should -Not -Match '\[System\.Threading\.Mutex\]::new'
+            $content | Should -Not -Match 'Handle-OpenPathWhitelistApply'
         }
     }
 }
