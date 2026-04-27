@@ -153,22 +153,24 @@ function Start-OpenPathSseUpdateProcess {
                 $command = "Start-Sleep -Seconds $DelaySeconds; $command"
             }
 
-            $arguments = @(
-                '-NoProfile',
-                '-ExecutionPolicy',
-                'Bypass',
-                '-WindowStyle',
-                'Hidden',
-                '-Command',
-                $command
-            )
+            $encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+            $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $processInfo.FileName = 'PowerShell.exe'
+            $processInfo.UseShellExecute = $false
+            $processInfo.CreateNoWindow = $true
+            $null = $processInfo.ArgumentList.Add('-NoProfile')
+            $null = $processInfo.ArgumentList.Add('-ExecutionPolicy')
+            $null = $processInfo.ArgumentList.Add('Bypass')
+            $null = $processInfo.ArgumentList.Add('-WindowStyle')
+            $null = $processInfo.ArgumentList.Add('Hidden')
+            $null = $processInfo.ArgumentList.Add('-EncodedCommand')
+            $null = $processInfo.ArgumentList.Add($encodedCommand)
 
             Write-OpenPathLog "SSE: Starting detached update process (delay ${DelaySeconds}s, Update.ScriptPath=$($script:UpdateScript))"
-            $process = Start-Process -FilePath 'PowerShell.exe' `
-                -ArgumentList $arguments `
-                -WindowStyle Hidden `
-                -PassThru `
-                -ErrorAction Stop
+            $process = [System.Diagnostics.Process]::Start($processInfo)
+            if (-not $process) {
+                throw 'Process.Start returned no process handle'
+            }
 
             Write-OpenPathLog "SSE: Detached update process started (pid=$($process.Id), delay ${DelaySeconds}s)"
         }

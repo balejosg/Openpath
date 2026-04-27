@@ -130,10 +130,14 @@ Describe "SSE Listener" {
 
             Assert-ContentContainsAll -Content $content -Needles @(
                 'Start-OpenPathSseUpdateProcess',
-                'Start-Process -FilePath',
+                '[System.Diagnostics.ProcessStartInfo]::new()',
+                '[System.Diagnostics.Process]::Start($processInfo)',
+                '$processInfo.UseShellExecute = $false',
+                '$processInfo.CreateNoWindow = $true',
                 '-NoProfile',
                 '-ExecutionPolicy',
                 'Bypass',
+                '-EncodedCommand',
                 'Update.ScriptPath'
             )
 
