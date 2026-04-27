@@ -278,7 +278,10 @@ function Invoke-OpenPathAgentSelfUpdate {
         if (Get-Command -Name 'Register-OpenPathFirefoxNativeHost' -ErrorAction SilentlyContinue) {
             Register-OpenPathFirefoxNativeHost -Config $config | Out-Null
         }
-        if (Get-Command -Name 'Restart-AcrylicService' -ErrorAction SilentlyContinue) {
+        if (Get-Command -Name 'Restore-OpenPathProtectedMode' -ErrorAction SilentlyContinue) {
+            Restore-OpenPathProtectedMode -Config $config | Out-Null
+        }
+        elseif (Get-Command -Name 'Restart-AcrylicService' -ErrorAction SilentlyContinue) {
             Restart-AcrylicService | Out-Null
         }
         if (Get-Command -Name 'Start-OpenPathTask' -ErrorAction SilentlyContinue) {

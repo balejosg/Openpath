@@ -51,6 +51,13 @@ Describe "Services Module" {
                 'Register-OpenPathFirefoxNativeHost -Config $config | Out-Null'
             )
         }
+
+        It "Reapplies protected DNS mode after applying updated files" {
+            $modulePath = Join-Path $PSScriptRoot ".." "lib" "internal" "Common.Update.ps1"
+            $content = Get-Content $modulePath -Raw
+
+            $content | Should -Match '(?s)Register-OpenPathTask.*?Enable-OpenPathTask.*?Register-OpenPathFirefoxNativeHost.*?Restore-OpenPathProtectedMode -Config \$config.*?Start-OpenPathTask -TaskType SSE'
+        }
     }
 
     Context "Start-OpenPathTask" {
