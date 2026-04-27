@@ -46,35 +46,7 @@ Initialize-OpenPathScriptSession `
 
 $script:LastUpdateTime = [datetime]::MinValue
 $script:UpdateScript = "$OpenPathRoot\scripts\Update-OpenPath.ps1"
-$script:UpdateJobName = "OpenPath-SSE-Update"
-$script:DelayedUpdateJobName = "OpenPath-SSE-Delayed-Update"
-
-function Write-OpenPathSseUpdateJobLog {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$LogPath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-
-        [ValidateSet('INFO', 'WARN', 'ERROR')]
-        [string]$Level = 'INFO'
-    )
-
-    try {
-        $logDir = Split-Path $LogPath -Parent
-        if ($logDir -and -not (Test-Path $logDir)) {
-            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-        }
-
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $logEntry = "$timestamp [$Level] [Start-SSEListener.ps1] [PID:$PID] $Message"
-        Add-Content -Path $LogPath -Value $logEntry -Encoding UTF8
-    }
-    catch {
-        # Best-effort diagnostic logging must never block the update path.
-    }
-}
+$script:DelayedUpdateDueAt = [datetime]::MinValue
 
 function Get-SSEConfig {
     <#
@@ -150,103 +122,58 @@ function Invoke-DebouncedUpdate {
 
     if ($elapsed -lt $CooldownSeconds) {
         $delaySeconds = [Math]::Max(1, [int][Math]::Ceiling($CooldownSeconds - $elapsed))
-        $existingDelayedJobs = @(Get-Job -Name $script:DelayedUpdateJobName -ErrorAction SilentlyContinue)
-        if ($existingDelayedJobs.Count -gt 0) {
-            $activeDelayedJob = $existingDelayedJobs | Where-Object { $_.State -notin @('Completed', 'Failed', 'Stopped') } | Select-Object -First 1
-            if ($activeDelayedJob) {
-                Write-OpenPathLog "SSE: Delayed update already queued (state: $($activeDelayedJob.State))"
-                return
-            }
-
-            $existingDelayedJobs | Remove-Job -Force -ErrorAction SilentlyContinue
+        if ($script:DelayedUpdateDueAt -gt $now) {
+            Write-OpenPathLog "SSE: Delayed update already queued for $($script:DelayedUpdateDueAt.ToString('o'))"
+            return
         }
 
+        $script:DelayedUpdateDueAt = $now.AddSeconds($delaySeconds)
         Write-OpenPathLog "SSE: Queuing delayed update in ${delaySeconds}s (last update ${elapsed}s ago, cooldown ${CooldownSeconds}s)"
-        Start-OpenPathSseUpdateJob -JobName $script:DelayedUpdateJobName -DelaySeconds $delaySeconds
+        Start-OpenPathSseUpdateProcess -DelaySeconds $delaySeconds
         return
     }
 
     Write-OpenPathLog "SSE: Whitelist change detected - triggering immediate update"
     $script:LastUpdateTime = $now
+    $script:DelayedUpdateDueAt = [datetime]::MinValue
 
-    $existingJobs = @(Get-Job -Name $script:UpdateJobName -ErrorAction SilentlyContinue)
-    if ($existingJobs.Count -gt 0) {
-        $activeJob = $existingJobs | Where-Object { $_.State -notin @('Completed', 'Failed', 'Stopped') } | Select-Object -First 1
-        if ($activeJob) {
-            Write-OpenPathLog "SSE: Update already in progress (state: $($activeJob.State)) - skipping duplicate trigger"
-            return
-        }
-
-        $existingJobs | Remove-Job -Force -ErrorAction SilentlyContinue
-    }
-
-    Start-OpenPathSseUpdateJob -JobName $script:UpdateJobName
+    Start-OpenPathSseUpdateProcess
 }
 
-function Start-OpenPathSseUpdateJob {
+function Start-OpenPathSseUpdateProcess {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$JobName,
-
         [int]$DelaySeconds = 0
     )
 
     if (Test-Path $script:UpdateScript) {
         try {
-            $logPath = Join-Path $OpenPathRoot 'data\logs\openpath.log'
-            Write-OpenPathLog "SSE: Starting update job $JobName (delay ${DelaySeconds}s)"
+            $escapedScriptPath = $script:UpdateScript.Replace("'", "''")
+            $command = "& '$escapedScriptPath'"
+            if ($DelaySeconds -gt 0) {
+                $command = "Start-Sleep -Seconds $DelaySeconds; $command"
+            }
 
-            $job = Start-Job -ScriptBlock {
-                param($scriptPath, $delaySeconds, $jobName, $logPath)
-                function Write-OpenPathSseUpdateJobLog {
-                    param(
-                        [Parameter(Mandatory = $true)]
-                        [string]$LogPath,
+            $arguments = @(
+                '-NoProfile',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-WindowStyle',
+                'Hidden',
+                '-Command',
+                $command
+            )
 
-                        [Parameter(Mandatory = $true)]
-                        [string]$Message,
+            Write-OpenPathLog "SSE: Starting detached update process (delay ${DelaySeconds}s, Update.ScriptPath=$($script:UpdateScript))"
+            $process = Start-Process -FilePath 'PowerShell.exe' `
+                -ArgumentList $arguments `
+                -WindowStyle Hidden `
+                -PassThru `
+                -ErrorAction Stop
 
-                        [ValidateSet('INFO', 'WARN', 'ERROR')]
-                        [string]$Level = 'INFO'
-                    )
-
-                    try {
-                        $logDir = Split-Path $LogPath -Parent
-                        if ($logDir -and -not (Test-Path $logDir)) {
-                            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-                        }
-
-                        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                        $logEntry = "$timestamp [$Level] [Start-SSEListener.ps1] [PID:$PID] $Message"
-                        Add-Content -Path $LogPath -Value $logEntry -Encoding UTF8
-                    }
-                    catch {
-                        # Best-effort diagnostic logging must never block the update path.
-                    }
-                }
-
-                Write-OpenPathSseUpdateJobLog -LogPath $logPath -Message "SSE update job started (jobName=$jobName, delaySeconds=$delaySeconds)"
-                if ($delaySeconds -gt 0) {
-                    Write-OpenPathSseUpdateJobLog -LogPath $logPath -Message "SSE update job waiting before update (jobName=$jobName, delaySeconds=$delaySeconds)"
-                    Start-Sleep -Seconds $delaySeconds
-                }
-
-                try {
-                    Write-OpenPathSseUpdateJobLog -LogPath $logPath -Message "SSE update job invoking update script (jobName=$jobName, scriptPath=$scriptPath)"
-                    & $scriptPath
-                    $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { $global:LASTEXITCODE }
-                    Write-OpenPathSseUpdateJobLog -LogPath $logPath -Message "SSE update job completed (jobName=$jobName, exitCode=$exitCode)"
-                }
-                catch {
-                    Write-OpenPathSseUpdateJobLog -LogPath $logPath -Message "SSE update job failed (jobName=$jobName): $_" -Level ERROR
-                    throw
-                }
-            } -Name $JobName -ArgumentList $script:UpdateScript, $DelaySeconds, $JobName, $logPath -ErrorAction Stop
-
-            Write-OpenPathLog "SSE: Update job queued (jobName=$JobName, id=$($job.Id), state=$($job.State))"
+            Write-OpenPathLog "SSE: Detached update process started (pid=$($process.Id), delay ${DelaySeconds}s)"
         }
         catch {
-            Write-OpenPathLog "SSE: Failed to start update job: $_" -Level WARN
+            Write-OpenPathLog "SSE: Failed to start detached update process: $_" -Level WARN
         }
     }
     else {

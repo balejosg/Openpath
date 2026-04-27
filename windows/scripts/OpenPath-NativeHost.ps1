@@ -67,7 +67,36 @@ function Write-NativeHostLog {
 
     try {
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        Add-Content -Path $script:LogPath -Value "[$timestamp] $Message" -Encoding UTF8
+        $logDir = Split-Path $script:LogPath -Parent
+        if ($logDir -and -not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+        }
+
+        $logBytes = [System.Text.Encoding]::UTF8.GetBytes("[$timestamp] $Message$([Environment]::NewLine)")
+        for ($attempt = 1; $attempt -le 5; $attempt++) {
+            $stream = $null
+            try {
+                $stream = [System.IO.File]::Open(
+                    $script:LogPath,
+                    [System.IO.FileMode]::OpenOrCreate,
+                    [System.IO.FileAccess]::Write,
+                    [System.IO.FileShare]::ReadWrite
+                )
+                $stream.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
+                $stream.Write($logBytes, 0, $logBytes.Length)
+                break
+            }
+            catch {
+                if ($attempt -lt 5) {
+                    Start-Sleep -Milliseconds (50 * $attempt)
+                }
+            }
+            finally {
+                if ($null -ne $stream) {
+                    $stream.Dispose()
+                }
+            }
+        }
     }
     catch {
         # Logging must never break protocol handling.

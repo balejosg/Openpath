@@ -116,18 +116,22 @@ Describe "SSE Listener" {
         }
     }
 
-    Context "Update job deduplication" {
-        It "uses a named job and active-job guard" {
+    Context "Update process triggering" {
+        It "starts update scripts through detached PowerShell processes instead of in-process jobs" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Start-SSEListener.ps1"
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'OpenPath-SSE-Update',
-                'Get-Job -Name $script:UpdateJobName',
-                "State -notin @('Completed', 'Failed', 'Stopped')",
-                'Start-Job -ScriptBlock',
-                '-Name $script:UpdateJobName'
+                'Start-OpenPathSseUpdateProcess',
+                'Start-Process -FilePath',
+                '-NoProfile',
+                '-ExecutionPolicy',
+                'Bypass',
+                'Update.ScriptPath'
             )
+
+            $content | Should -Not -Match 'Start-Job\s+-ScriptBlock'
+            $content | Should -Not -Match 'Get-Job\s+-Name'
         }
 
         It "queues one delayed catch-up update when whitelist changes arrive during cooldown" {
@@ -135,27 +139,22 @@ Describe "SSE Listener" {
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                '$script:DelayedUpdateJobName = "OpenPath-SSE-Delayed-Update"',
-                'function Start-OpenPathSseUpdateJob',
-                '[int]$DelaySeconds = 0',
-                'Start-Sleep -Seconds $delaySeconds',
-                'Get-Job -Name $script:DelayedUpdateJobName',
+                '$script:DelayedUpdateDueAt = [datetime]::MinValue',
+                'function Start-OpenPathSseUpdateProcess',
+                '-DelaySeconds $delaySeconds',
+                'Start-Sleep -Seconds',
                 'SSE: Queuing delayed update'
             )
         }
 
-        It "logs SSE update job lifecycle boundaries for production diagnostics" {
+        It "logs SSE update process boundaries for production diagnostics" {
             $scriptPath = Join-Path $PSScriptRoot ".." "scripts" "Start-SSEListener.ps1"
             $content = Get-Content $scriptPath -Raw
 
             Assert-ContentContainsAll -Content $content -Needles @(
-                'function Write-OpenPathSseUpdateJobLog',
-                'SSE: Starting update job',
-                'SSE: Update job queued',
-                'SSE update job started',
-                'SSE update job invoking update script',
-                'SSE update job completed',
-                'SSE update job failed'
+                'SSE: Starting detached update process',
+                'SSE: Detached update process started',
+                'SSE: Failed to start detached update process'
             )
         }
     }

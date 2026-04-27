@@ -307,5 +307,20 @@ Describe "Browser Module - Native Host" {
             $nativeHostActionsContent | Should -Not -Match ('Classroom' + 'Path')
             $nativeHostActionsContent | Should -Not -Match ('C' + 'P_')
         }
+
+        It "Writes native host logs with shared file access and retry tolerance" {
+            $nativeHostScriptPath = Join-Path $PSScriptRoot ".." "scripts" "OpenPath-NativeHost.ps1"
+            $nativeHostScriptContent = Get-Content $nativeHostScriptPath -Raw
+
+            Assert-ContentContainsAll -Content $nativeHostScriptContent -Needles @(
+                'function Write-NativeHostLog',
+                '[System.IO.File]::Open',
+                '[System.IO.FileShare]::ReadWrite',
+                'for ($attempt = 1; $attempt -le 5; $attempt++)',
+                'Start-Sleep -Milliseconds'
+            )
+
+            $nativeHostScriptContent | Should -Not -Match 'Add-Content -Path \$script:LogPath'
+        }
     }
 }
