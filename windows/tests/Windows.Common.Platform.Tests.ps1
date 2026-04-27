@@ -7,6 +7,11 @@ Describe "Platform script composition" {
 
         Assert-ContentContainsAll -Content $content -Needles @(
             'Import-Module "$OpenPathRoot\lib\Update.Runtime.psm1" -Force',
+            '$exitCode = Invoke-OpenPathUpdateCycle -OpenPathRoot $OpenPathRoot',
+            'exit $exitCode'
+        )
+
+        Assert-ContentContainsAll -Content $runtimeContent -Needles @(
             '. (Join-Path $OpenPathRoot ''lib\internal\Update.Script.Apply.ps1'')',
             '. (Join-Path $OpenPathRoot ''lib\internal\Update.Script.Rollback.ps1'')'
         )
