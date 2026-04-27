@@ -861,6 +861,27 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
   const linuxStudentPolicyBlock = extractWorkflowJobBlock(e2eWorkflow, 'linux-student-policy');
   const windowsStudentPolicyBlock = extractWorkflowJobBlock(e2eWorkflow, 'windows-student-policy');
 
+  assert.match(
+    e2eWorkflow,
+    /workflow_dispatch:\s*\n\s+inputs:\s*\n[\s\S]*platform:\s*\n[\s\S]*default: windows[\s\S]*options:\s*\n\s+- all\s*\n\s+- linux\s*\n\s+- windows/,
+    'manual E2E diagnostics should expose a platform selector defaulting to Windows'
+  );
+  assert.match(
+    e2eWorkflow,
+    /workflow_dispatch:[\s\S]*suite:\s*\n[\s\S]*default: student-policy[\s\S]*options:\s*\n\s+- all\s*\n\s+- e2e\s*\n\s+- student-policy/,
+    'manual E2E diagnostics should expose a suite selector defaulting to student-policy'
+  );
+  assert.ok(
+    e2eWorkflow.includes('manual_platform="${{ github.event.inputs.platform || \'windows\' }}"') &&
+      e2eWorkflow.includes('manual_suite="${{ github.event.inputs.suite || \'student-policy\' }}"'),
+    'workflow_dispatch should route only the selected platform and suite instead of forcing every E2E lane'
+  );
+  assert.doesNotMatch(
+    e2eWorkflow,
+    /if \[ "\$\{\{ github\.event_name \}\}" = "workflow_dispatch" \]; then[\s\S]*echo "linux_e2e=true"[\s\S]*echo "windows_e2e=true"[\s\S]*echo "linux_student_policy=true"[\s\S]*echo "windows_student_policy=true"/,
+    'workflow_dispatch must not unconditionally consume every E2E runner lane'
+  );
+
   for (const outputName of [
     'linux_e2e',
     'windows_e2e',
@@ -873,8 +894,8 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
       `e2e-tests.yml should expose ${outputName} from Detect Relevant Changes`
     );
     assert.ok(
-      e2eWorkflow.includes(`echo "${outputName}=true" >> "$GITHUB_OUTPUT"`),
-      `e2e-tests.yml should enable ${outputName} during workflow_dispatch runs`
+      e2eWorkflow.includes(`echo "${outputName}=$${outputName}" >> "$GITHUB_OUTPUT"`),
+      `e2e-tests.yml should emit selected ${outputName} during workflow_dispatch runs`
     );
   }
 

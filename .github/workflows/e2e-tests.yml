@@ -29,6 +29,25 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform runner lanes to exercise.
+        default: windows
+        required: false
+        type: choice
+        options:
+          - all
+          - linux
+          - windows
+      suite:
+        description: E2E suite to run.
+        default: student-policy
+        required: false
+        type: choice
+        options:
+          - all
+          - e2e
+          - student-policy
 
 concurrency:
   group: e2e-tests-${{ github.ref }}
@@ -59,11 +78,35 @@ jobs:
           set -euo pipefail
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            manual_platform="${{ github.event.inputs.platform || 'windows' }}"
+            manual_suite="${{ github.event.inputs.suite || 'student-policy' }}"
+            linux_e2e=false
+            windows_e2e=false
+            linux_student_policy=false
+            windows_student_policy=false
+
+            if { [ "$manual_platform" = "all" ] || [ "$manual_platform" = "linux" ]; } &&
+               { [ "$manual_suite" = "all" ] || [ "$manual_suite" = "e2e" ]; }; then
+              linux_e2e=true
+            fi
+            if { [ "$manual_platform" = "all" ] || [ "$manual_platform" = "windows" ]; } &&
+               { [ "$manual_suite" = "all" ] || [ "$manual_suite" = "e2e" ]; }; then
+              windows_e2e=true
+            fi
+            if { [ "$manual_platform" = "all" ] || [ "$manual_platform" = "linux" ]; } &&
+               { [ "$manual_suite" = "all" ] || [ "$manual_suite" = "student-policy" ]; }; then
+              linux_student_policy=true
+            fi
+            if { [ "$manual_platform" = "all" ] || [ "$manual_platform" = "windows" ]; } &&
+               { [ "$manual_suite" = "all" ] || [ "$manual_suite" = "student-policy" ]; }; then
+              windows_student_policy=true
+            fi
+
             echo "release_infra_only=false" >> "$GITHUB_OUTPUT"
-            echo "linux_e2e=true" >> "$GITHUB_OUTPUT"
-            echo "windows_e2e=true" >> "$GITHUB_OUTPUT"
-            echo "linux_student_policy=true" >> "$GITHUB_OUTPUT"
-            echo "windows_student_policy=true" >> "$GITHUB_OUTPUT"
+            echo "linux_e2e=$linux_e2e" >> "$GITHUB_OUTPUT"
+            echo "windows_e2e=$windows_e2e" >> "$GITHUB_OUTPUT"
+            echo "linux_student_policy=$linux_student_policy" >> "$GITHUB_OUTPUT"
+            echo "windows_student_policy=$windows_student_policy" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
