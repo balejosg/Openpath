@@ -47,10 +47,16 @@ load 'test_helper'
 }
 
 @test "windows standalone bootstrap imports dependent modules globally for updater execution" {
-    run grep -nF 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    run grep -nF 'Import-Module "$OpenPathRoot\lib\Update.Runtime.psm1" -Force' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'Initialize-OpenPathScriptSession' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    run grep -nF 'Invoke-OpenPathUpdateCycle -OpenPathRoot $OpenPathRoot' "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force' "$PROJECT_DIR/windows/lib/Update.Runtime.psm1"
+    [ "$status" -eq 0 ]
+
+    run grep -nF 'Initialize-OpenPathScriptSession' "$PROJECT_DIR/windows/lib/Update.Runtime.psm1"
     [ "$status" -eq 0 ]
 
     run grep -nF 'Import-Module (Join-Path $OpenPathRoot "lib\$moduleName.psm1") -Force -Global' "$PROJECT_DIR/windows/lib/ScriptBootstrap.psm1"
@@ -59,7 +65,7 @@ load 'test_helper'
     run grep -nF "Import-Module (Join-Path \$OpenPathRoot 'lib\Common.psm1') -Force -Global" "$PROJECT_DIR/windows/lib/ScriptBootstrap.psm1"
     [ "$status" -eq 0 ]
 
-    run grep -nF "'Update-AcrylicHost'" "$PROJECT_DIR/windows/scripts/Update-OpenPath.ps1"
+    run grep -nF "'Update-AcrylicHost'" "$PROJECT_DIR/windows/lib/Update.Runtime.psm1"
     [ "$status" -eq 0 ]
 }
 
