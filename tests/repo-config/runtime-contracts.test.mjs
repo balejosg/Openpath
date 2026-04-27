@@ -44,9 +44,13 @@ describe('repository verification contract', () => {
       'verify:full should start independent static, repository policy, and security checks together'
     );
     assert.ok(
-      verifyFullScript.includes(
-        "concurrently --group --names 'coverage,unit' 'npm:verify:coverage' 'npm:verify:unit'"
-      )
+      !verifyFullScript.includes("concurrently --group --names 'coverage,unit'"),
+      'verify:full should not run coverage beside unit because verify:unit rebuilds shared/dist'
+    );
+    assert.match(
+      verifyFullScript,
+      /npm run verify:coverage\s+npm run verify:unit/,
+      'verify:full should run coverage before the destructive shared rebuild in verify:unit'
     );
     assert.ok(verifyFullScript.includes('npm run e2e:full'));
   });

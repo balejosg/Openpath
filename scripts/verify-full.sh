@@ -16,5 +16,6 @@ if [[ -z "${OPENPATH_VERIFY_BASE:-}" ]]; then
 fi
 
 npx concurrently --group --names 'static,checks,security' 'npm:verify:static' 'npm:verify:checks' 'npm:verify:security'
-npx concurrently --group --names 'coverage,unit' 'npm:verify:coverage' 'npm:verify:unit'
+npm run verify:coverage
+npm run verify:unit
 npm run e2e:full
