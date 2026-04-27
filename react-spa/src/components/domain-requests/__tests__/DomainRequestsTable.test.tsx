@@ -49,6 +49,55 @@ function buildModel(overrides: Partial<DomainRequestsTableModel> = {}): DomainRe
 }
 
 describe('DomainRequestsTable', () => {
+  it('renders the no-requests empty state', () => {
+    render(
+      <DomainRequestsTable
+        model={buildModel({
+          rows: [],
+          emptyState: 'no-requests',
+          pagination: {
+            ...buildModel().pagination,
+            totalItems: 0,
+            visibleStart: 0,
+            visibleEnd: 0,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('Todo en orden')).toBeInTheDocument();
+    expect(
+      screen.getByText('No hay solicitudes de dominio pendientes de revisión.')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the filtered empty state and clears filters', () => {
+    const onClearFilters = vi.fn();
+
+    render(
+      <DomainRequestsTable
+        model={buildModel({
+          rows: [],
+          emptyState: 'no-filter-results',
+          onClearFilters,
+          pagination: {
+            ...buildModel().pagination,
+            totalItems: 0,
+            visibleStart: 0,
+            visibleEnd: 0,
+          },
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+
+    expect(
+      screen.getByText('No hay solicitudes para los filtros seleccionados')
+    ).toBeInTheDocument();
+    expect(onClearFilters).toHaveBeenCalled();
+  });
+
   it('renders pending rows and dispatches row-level actions', () => {
     const onOpenApprove = vi.fn();
     const onOpenReject = vi.fn();
@@ -98,5 +147,97 @@ describe('DomainRequestsTable', () => {
     expect(screen.getByTitle('Aprobar')).toBeInTheDocument();
     expect(screen.getByTitle('Rechazar')).toBeInTheDocument();
     expect(screen.queryByTitle('Eliminar')).not.toBeInTheDocument();
+  });
+
+  it('renders reviewed rows without selection or review actions and hides empty pagination', () => {
+    render(
+      <DomainRequestsTable
+        model={buildModel({
+          rows: [
+            {
+              ...pendingRow,
+              id: 'req-2',
+              domain: 'approved.example',
+              status: 'approved',
+              statusLabel: 'Aprobada',
+              statusClassName: 'bg-green-100 text-green-700 border-green-200',
+              reason: null,
+              selected: false,
+              selectable: false,
+              reviewable: false,
+            },
+          ],
+          pagination: {
+            ...buildModel().pagination,
+            totalItems: 0,
+            visibleStart: 0,
+            visibleEnd: 0,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('approved.example')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Seleccionar approved.example')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Aprobar')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Rechazar')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Eliminar')).toBeInTheDocument();
+    expect(screen.queryByText(/Mostrando/)).not.toBeInTheDocument();
+  });
+
+  it('dispatches pagination updates and disables boundary controls', () => {
+    const pageUpdates: Parameters<DomainRequestsTableModel['pagination']['onChangePage']>[0][] = [];
+    const onChangePage: DomainRequestsTableModel['pagination']['onChangePage'] = (updater) => {
+      pageUpdates.push(updater);
+    };
+    const { rerender } = render(
+      <DomainRequestsTable
+        model={buildModel({
+          pagination: {
+            ...buildModel().pagination,
+            currentPage: 1,
+            totalPages: 3,
+            totalItems: 45,
+            visibleStart: 1,
+            visibleEnd: 20,
+            onChangePage,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(pageUpdates).toHaveLength(1);
+    const nextPageUpdater = pageUpdates[0];
+    expect(typeof nextPageUpdater).toBe('function');
+    expect(typeof nextPageUpdater === 'function' ? nextPageUpdater(1) : nextPageUpdater).toBe(2);
+
+    rerender(
+      <DomainRequestsTable
+        model={buildModel({
+          pagination: {
+            ...buildModel().pagination,
+            currentPage: 3,
+            totalPages: 3,
+            totalItems: 45,
+            visibleStart: 41,
+            visibleEnd: 45,
+            onChangePage,
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('Mostrando 41-45 de 45')).toBeInTheDocument();
+    expect(screen.getByText('Pagina 3 de 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Anterior' }));
+    expect(pageUpdates).toHaveLength(2);
+    const previousPageUpdater = pageUpdates[1];
+    expect(typeof previousPageUpdater).toBe('function');
+    expect(
+      typeof previousPageUpdater === 'function' ? previousPageUpdater(3) : previousPageUpdater
+    ).toBe(2);
   });
 });
