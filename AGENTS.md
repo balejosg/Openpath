@@ -78,9 +78,15 @@ From the shared workspace, use `../scripts/validate-hypothesis.sh` when choosing
 
 - `../scripts/validate-hypothesis.sh openpath local`
 - `../scripts/validate-hypothesis.sh openpath windows-direct`
-- `../scripts/validate-hypothesis.sh openpath windows-gh`
+- `../scripts/validate-hypothesis.sh openpath windows-gh --integration`
 
-On a Windows-capable development environment, prefer focused Pester or `npm run test:student-policy:windows` before waiting on broader workflow fan-out. From the shared Linux workspace, prefer the direct runner lane first; keep `windows-gh` for integration-time verification rather than the default development loop.
+Repo-local fallback when the workspace wrapper is unavailable:
+
+- `npm run verify:quick`
+- `npm run diagnostics:windows:direct`
+- `npm run test:student-policy:windows` on a Windows-capable development machine
+
+On a Windows-capable development environment, prefer focused Pester or `npm run test:student-policy:windows` before waiting on broader workflow fan-out. From the shared Linux workspace, prefer the direct runner lane first; keep `windows-gh --integration` for integration-time verification rather than the default development loop.
 
 ## Repo Map
 

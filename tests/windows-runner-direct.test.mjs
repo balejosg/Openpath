@@ -21,6 +21,14 @@ function runDirectDiagnostic(args) {
   });
 }
 
+function runWorkspaceWrapper(args) {
+  const wrapperPath = resolve(projectRoot, '..', 'scripts', 'validate-hypothesis.sh');
+  return spawnSync('bash', [wrapperPath, ...args], {
+    cwd: resolve(projectRoot, '..'),
+    encoding: 'utf8',
+  });
+}
+
 describe('direct OpenPath Windows runner diagnostic', () => {
   test('package.json exposes the direct Windows diagnostic entrypoint', () => {
     const packageJson = readPackageJson();
@@ -48,4 +56,15 @@ describe('direct OpenPath Windows runner diagnostic', () => {
     assert.match(script, /windows-test-results\.xml/);
     assert.match(script, /qm guest exec/);
   });
+
+  test(
+    'workspace wrapper blocks GitHub integration lanes without explicit flag',
+    { skip: !process.env.WHITELIST_WORKSPACE_ROOT },
+    () => {
+      const result = runWorkspaceWrapper(['openpath', 'windows-gh', '--dry-run']);
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /require --integration/);
+    }
+  );
 });
