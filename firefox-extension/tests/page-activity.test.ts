@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import vm from 'node:vm';
 
 import {
   buildPageActivityMessage,
@@ -93,6 +94,34 @@ void describe('page activity content script', () => {
     assert.match(script, /as=font|font/);
     assert.match(script, /openpath-page-resource-candidate/);
     assert.match(script, /__openpathPageResourceObserverInstalled/);
+  });
+
+  void test('retries page-world observer patching when initial document_start APIs are incomplete', async () => {
+    const script = buildPageResourceObserverScript();
+    const pageMessages: unknown[] = [];
+    const pageWindow: Record<string, unknown> = {
+      postMessage(message: unknown): void {
+        pageMessages.push(message);
+      },
+    };
+    const context = vm.createContext({
+      window: pageWindow,
+    });
+
+    vm.runInContext(script, context);
+    pageWindow.fetch = (): Promise<{ ok: boolean }> => Promise.resolve({ ok: true });
+    context.fetch = pageWindow.fetch;
+
+    vm.runInContext(script, context);
+    await vm.runInContext("window.fetch('https://api.example/data.json')", context);
+
+    assert.deepEqual(JSON.parse(JSON.stringify(pageMessages)), [
+      {
+        kind: 'fetch',
+        source: 'openpath-page-resource-candidate',
+        url: 'https://api.example/data.json',
+      },
+    ]);
   });
 
   void test('relays page observer messages to the background runtime', () => {

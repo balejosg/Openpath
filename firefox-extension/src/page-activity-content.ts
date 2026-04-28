@@ -100,12 +100,22 @@ interface OpenPathContentGlobal {
 
     script.textContent = `(() => {
   const INSTALLED_KEY = '__openpathPageResourceObserverInstalled';
-  if (window[INSTALLED_KEY]) return;
-  try {
-    Object.defineProperty(window, INSTALLED_KEY, { value: true });
-  } catch {
-    window[INSTALLED_KEY] = true;
+  if (!window[INSTALLED_KEY]) {
+    try {
+      Object.defineProperty(window, INSTALLED_KEY, { configurable: true, value: true });
+    } catch {
+      window[INSTALLED_KEY] = true;
+    }
   }
+  const markPatched = (target, key) => {
+    if (!target || target[key]) return false;
+    try {
+      Object.defineProperty(target, key, { configurable: true, value: true });
+    } catch {
+      target[key] = true;
+    }
+    return true;
+  };
   const SOURCE = 'openpath-page-resource-candidate';
   const notify = (url, kind) => {
     if (!url) return;
@@ -121,22 +131,27 @@ interface OpenPathContentGlobal {
     return '';
   };
   const originalFetch = window.fetch;
-  if (typeof originalFetch === 'function') {
+  if (typeof originalFetch === 'function' && markPatched(window, '__openpathPageResourceObserverFetchPatched')) {
     window.fetch = function(input, init) {
       notify(unwrapUrl(input), 'fetch');
       return originalFetch.call(this, input, init);
     };
   }
   const originalOpen = typeof XMLHttpRequest !== 'undefined' ? XMLHttpRequest.prototype.open : null;
-  if (typeof originalOpen === 'function') {
+  if (typeof originalOpen === 'function' && markPatched(XMLHttpRequest.prototype, '__openpathPageResourceObserverXhrOpenPatched')) {
     XMLHttpRequest.prototype.open = function(method, url, ...rest) {
       notify(unwrapUrl(url), 'xmlhttprequest');
       return originalOpen.call(this, method, url, ...rest);
     };
   }
   const patchUrlProperty = (prototype, property, kind) => {
+    const patchKey = '__openpathPageResourceObserverPatched_' + property + '_' + kind;
+    if (!markPatched(prototype, patchKey)) return;
     const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-    if (!descriptor || typeof descriptor.set !== 'function') return;
+    if (!descriptor || typeof descriptor.set !== 'function') {
+      try { delete prototype[patchKey]; } catch {}
+      return;
+    }
     Object.defineProperty(prototype, property, {
       configurable: true,
       enumerable: descriptor.enumerable,
@@ -158,7 +173,7 @@ interface OpenPathContentGlobal {
   if (typeof HTMLScriptElement !== 'undefined') patchUrlProperty(HTMLScriptElement.prototype, 'src', 'script');
   if (typeof HTMLLinkElement !== 'undefined') {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
-    if (descriptor && typeof descriptor.set === 'function') {
+    if (descriptor && typeof descriptor.set === 'function' && markPatched(HTMLLinkElement.prototype, '__openpathPageResourceObserverPatched_href_link')) {
       Object.defineProperty(HTMLLinkElement.prototype, 'href', {
         configurable: true,
         enumerable: descriptor.enumerable,
@@ -171,7 +186,7 @@ interface OpenPathContentGlobal {
     }
   }
   const originalSetAttribute = typeof Element !== 'undefined' ? Element.prototype.setAttribute : null;
-  if (typeof originalSetAttribute === 'function') {
+  if (typeof originalSetAttribute === 'function' && markPatched(Element.prototype, '__openpathPageResourceObserverSetAttributePatched')) {
     Element.prototype.setAttribute = function(name, value) {
       const tag = String(this.tagName || '').toLowerCase();
       const attr = String(name || '').toLowerCase();
