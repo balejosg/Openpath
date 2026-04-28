@@ -233,6 +233,65 @@ void describe('page activity content script', () => {
     ]);
   });
 
+  void test('relays page observer messages when Firefox reports an opaque origin', () => {
+    const sentMessages: unknown[] = [];
+    let listener:
+      | ((event: { data?: unknown; origin?: string; source?: unknown }) => void)
+      | undefined;
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message): void => {
+        sentMessages.push(message);
+      },
+    };
+    const runtimeGlobal = {
+      addEventListener(
+        type: string,
+        callback: (event: { data?: unknown; origin?: string; source?: unknown }) => void
+      ): void {
+        if (type === 'message') {
+          listener = callback;
+        }
+      },
+      document: {
+        createElement(): { remove(): void; textContent: string } {
+          return {
+            textContent: '',
+            remove(): void {
+              // The injected page script is intentionally short-lived.
+            },
+          };
+        },
+        documentElement: {
+          appendChild(): void {
+            // Test only needs the message bridge.
+          },
+        },
+      },
+      location: { href: 'https://allowed.example/app' },
+      window: {},
+    };
+
+    installPageResourceObserver(runtime, runtimeGlobal);
+    listener?.({
+      data: {
+        source: 'openpath-page-resource-candidate',
+        kind: 'fetch',
+        url: 'https://api.example/data.json',
+      },
+      origin: 'null',
+      source: null,
+    });
+
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'fetch',
+        pageUrl: 'https://allowed.example/app',
+        resourceUrl: 'https://api.example/data.json',
+      },
+    ]);
+  });
+
   void test('defers page observer injection until the document has an append target', () => {
     const sentMessages: unknown[] = [];
     interface PageMessageEvent {

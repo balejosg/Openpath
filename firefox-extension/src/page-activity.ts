@@ -247,6 +247,18 @@ function installDomResourceObserver(
   });
 }
 
+function isPageResourceMessageOriginAllowed(eventOrigin: unknown, currentOrigin: string): boolean {
+  if (typeof eventOrigin !== 'string') {
+    return true;
+  }
+
+  if (!eventOrigin || eventOrigin === 'null') {
+    return true;
+  }
+
+  return !currentOrigin || eventOrigin === currentOrigin;
+}
+
 export function installPageResourceObserver(
   runtime: PageActivityRuntime | null | undefined = getRuntime(),
   runtimeGlobal: RuntimeGlobal = globalThis as unknown as RuntimeGlobal
@@ -254,7 +266,7 @@ export function installPageResourceObserver(
   const source = 'openpath-page-resource-candidate';
   runtimeGlobal.addEventListener?.('message', (event) => {
     const currentOrigin = getCurrentOrigin(runtimeGlobal);
-    if (typeof event.origin === 'string' && currentOrigin && event.origin !== currentOrigin) {
+    if (!isPageResourceMessageOriginAllowed(event.origin, currentOrigin)) {
       return;
     }
 

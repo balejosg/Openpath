@@ -75,6 +75,21 @@ interface OpenPathContentGlobal {
     }
   }
 
+  function isPageResourceMessageOriginAllowed(
+    eventOrigin: unknown,
+    currentOrigin: string
+  ): boolean {
+    if (typeof eventOrigin !== 'string') {
+      return true;
+    }
+
+    if (!eventOrigin || eventOrigin === 'null') {
+      return true;
+    }
+
+    return !currentOrigin || eventOrigin === currentOrigin;
+  }
+
   function installPageWorldObserver(): boolean {
     const script = document.createElement('script');
     const appendTarget =
@@ -209,7 +224,7 @@ interface OpenPathContentGlobal {
 
   window.addEventListener('message', (event) => {
     const currentOrigin = getCurrentOrigin();
-    if (typeof event.origin === 'string' && currentOrigin && event.origin !== currentOrigin) {
+    if (!isPageResourceMessageOriginAllowed(event.origin, currentOrigin)) {
       return;
     }
 

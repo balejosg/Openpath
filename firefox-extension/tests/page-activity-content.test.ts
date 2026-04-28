@@ -153,7 +153,8 @@ void describe('page activity content script', () => {
           source: 'openpath-page-resource-candidate',
           url: 'https://api.example/data.json',
         },
-        origin: 'https://allowed.example',
+        origin: 'null',
+        source: null,
       });
       mutationCallback?.([
         {
