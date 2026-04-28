@@ -83,6 +83,39 @@ export function notifyPageResourceCandidate(
 export function buildPageResourceObserverScript(): string {
   return `(() => {
   const INSTALLED_KEY = '__openpathPageResourceObserverInstalled';
+  const STATE_KEY = '__openpathPageResourceObserverState';
+  const createState = () => ({
+    attempts: 0,
+    installed: false,
+    lastError: null,
+    lastNotification: null,
+    notifications: {},
+    patched: {
+      fetch: false,
+      xhrOpen: false,
+      image: false,
+      script: false,
+      stylesheet: false,
+      font: false,
+      linkHref: false,
+      setAttribute: false
+    }
+  });
+  const getState = () => {
+    let state = window[STATE_KEY];
+    if (!state || typeof state !== 'object') {
+      state = createState();
+      try {
+        Object.defineProperty(window, STATE_KEY, { configurable: true, value: state });
+      } catch {
+        window[STATE_KEY] = state;
+      }
+    }
+    return state;
+  };
+  const state = getState();
+  state.attempts += 1;
+  state.installed = true;
   if (!window[INSTALLED_KEY]) {
     try {
       Object.defineProperty(window, INSTALLED_KEY, { configurable: true, value: true });
@@ -99,12 +132,26 @@ export function buildPageResourceObserverScript(): string {
     }
     return true;
   };
+  const recordPatch = (key) => {
+    try {
+      state.patched[key] = true;
+    } catch {}
+  };
+  const recordError = (error) => {
+    try {
+      state.lastError = String(error && error.message || error);
+    } catch {}
+  };
   const SOURCE = 'openpath-page-resource-candidate';
   const notify = (url, kind) => {
     if (!url) return;
     try {
+      state.notifications[kind] = (state.notifications[kind] || 0) + 1;
+      state.lastNotification = { kind, url: String(url) };
       window.postMessage({ source: SOURCE, url: String(url), kind }, '*');
-    } catch {}
+    } catch (error) {
+      recordError(error);
+    }
   };
   const unwrapUrl = (input) => {
     if (!input) return '';
@@ -119,6 +166,7 @@ export function buildPageResourceObserverScript(): string {
       notify(unwrapUrl(input), 'fetch');
       return originalFetch.call(this, input, init);
     };
+    recordPatch('fetch');
   }
   const originalOpen = typeof XMLHttpRequest !== 'undefined' ? XMLHttpRequest.prototype.open : null;
   if (typeof originalOpen === 'function' && markPatched(XMLHttpRequest.prototype, '__openpathPageResourceObserverXhrOpenPatched')) {
@@ -126,6 +174,7 @@ export function buildPageResourceObserverScript(): string {
       notify(unwrapUrl(url), 'xmlhttprequest');
       return originalOpen.call(this, method, url, ...rest);
     };
+    recordPatch('xhrOpen');
   }
   const patchUrlProperty = (prototype, property, kind) => {
     const patchKey = '__openpathPageResourceObserverPatched_' + property + '_' + kind;
@@ -144,6 +193,7 @@ export function buildPageResourceObserverScript(): string {
         return descriptor.set.call(this, value);
       }
     });
+    recordPatch(kind);
   };
   const getLinkResourceKind = (link) => {
     const relTokens = String(link && link.rel || '').toLowerCase().split(/\\s+/);
@@ -166,6 +216,9 @@ export function buildPageResourceObserverScript(): string {
           return descriptor.set.call(this, value);
         }
       });
+      recordPatch('linkHref');
+      recordPatch('stylesheet');
+      recordPatch('font');
     }
   }
   const originalSetAttribute = typeof Element !== 'undefined' ? Element.prototype.setAttribute : null;
@@ -178,6 +231,7 @@ export function buildPageResourceObserverScript(): string {
       if (tag === 'link' && attr === 'href') notify(value, getLinkResourceKind(this));
       return originalSetAttribute.call(this, name, value);
     };
+    recordPatch('setAttribute');
   }
 })();`;
 }

@@ -124,6 +124,68 @@ void describe('page activity content script', () => {
     ]);
   });
 
+  void test('exposes page-world observer patch state for diagnostics', async () => {
+    const script = buildPageResourceObserverScript();
+    const pageMessages: unknown[] = [];
+    const pageWindow: Record<string, unknown> = {
+      postMessage(message: unknown): void {
+        pageMessages.push(message);
+      },
+    };
+    const context = vm.createContext({
+      window: pageWindow,
+    });
+
+    vm.runInContext(script, context);
+
+    assert.deepEqual(JSON.parse(JSON.stringify(pageWindow.__openpathPageResourceObserverState)), {
+      attempts: 1,
+      installed: true,
+      lastError: null,
+      lastNotification: null,
+      notifications: {},
+      patched: {
+        fetch: false,
+        font: false,
+        image: false,
+        linkHref: false,
+        script: false,
+        setAttribute: false,
+        stylesheet: false,
+        xhrOpen: false,
+      },
+    });
+
+    pageWindow.fetch = (): Promise<{ ok: boolean }> => Promise.resolve({ ok: true });
+    context.fetch = pageWindow.fetch;
+
+    vm.runInContext(script, context);
+    await vm.runInContext("window.fetch('https://api.example/data.json')", context);
+
+    assert.deepEqual(JSON.parse(JSON.stringify(pageWindow.__openpathPageResourceObserverState)), {
+      attempts: 2,
+      installed: true,
+      lastError: null,
+      lastNotification: {
+        kind: 'fetch',
+        url: 'https://api.example/data.json',
+      },
+      notifications: {
+        fetch: 1,
+      },
+      patched: {
+        fetch: true,
+        font: false,
+        image: false,
+        linkHref: false,
+        script: false,
+        setAttribute: false,
+        stylesheet: false,
+        xhrOpen: false,
+      },
+    });
+  });
+
   void test('relays page observer messages to the background runtime', () => {
     const sentMessages: unknown[] = [];
     let listener:
