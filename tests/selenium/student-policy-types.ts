@@ -106,6 +106,13 @@ export type PolicyMode = 'sse' | 'fallback';
 
 export type StudentPolicyCoverageProfile = 'full' | 'fallback-propagation';
 
+export type StudentPolicyScenarioGroup =
+  | 'full'
+  | 'request-lifecycle'
+  | 'ajax-auto-allow'
+  | 'path-blocking'
+  | 'exemptions';
+
 export interface RequestSubmissionResult {
   success: boolean;
   id?: string;

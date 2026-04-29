@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   buildWindowsHttpProbeCommand,
   buildWindowsBlockedDnsCommand,
+  getStudentPolicyScenarioGroup,
   StudentPolicyDriver,
   type StudentScenario,
 } from './student-policy-flow.e2e';
@@ -173,6 +174,58 @@ test('student policy coverage plan keeps full SSE coverage and narrows fallback 
       })
     ),
     [{ name: 'fallback-propagation', suite: 'fallback-propagation', useBrowser: true }]
+  );
+});
+
+test('student policy scenario group defaults to full and accepts narrow groups', () => {
+  const original = process.env.OPENPATH_STUDENT_SCENARIO_GROUP;
+
+  try {
+    delete process.env.OPENPATH_STUDENT_SCENARIO_GROUP;
+    assert.strictEqual(getStudentPolicyScenarioGroup(), 'full');
+
+    for (const group of [
+      'request-lifecycle',
+      'ajax-auto-allow',
+      'path-blocking',
+      'exemptions',
+      'full',
+    ]) {
+      process.env.OPENPATH_STUDENT_SCENARIO_GROUP = group;
+      assert.strictEqual(getStudentPolicyScenarioGroup(), group);
+    }
+
+    process.env.OPENPATH_STUDENT_SCENARIO_GROUP = 'fast';
+    assert.throws(() => getStudentPolicyScenarioGroup(), /OPENPATH_STUDENT_SCENARIO_GROUP/);
+  } finally {
+    if (original === undefined) {
+      delete process.env.OPENPATH_STUDENT_SCENARIO_GROUP;
+    } else {
+      process.env.OPENPATH_STUDENT_SCENARIO_GROUP = original;
+    }
+  }
+});
+
+test('student policy scenario groups select narrow Selenium suites without weakening full coverage', () => {
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full', 'full').map(({ suite }) => suite),
+    ['matrix', 'matrix-phase-two']
+  );
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full', 'ajax-auto-allow').map(({ suite }) => suite),
+    ['ajax-auto-allow']
+  );
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full', 'path-blocking').map(({ suite }) => suite),
+    ['path-blocking']
+  );
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full', 'request-lifecycle').map(({ suite }) => suite),
+    ['request-lifecycle']
+  );
+  assert.deepStrictEqual(
+    getStudentPolicyPhasePlan('sse', 'full', 'exemptions').map(({ suite }) => suite),
+    ['exemptions']
   );
 });
 

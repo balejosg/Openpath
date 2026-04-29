@@ -1138,13 +1138,15 @@ function Invoke-SeleniumStudentSuite {
         [Parameter(Mandatory = $true)][string]$ScenarioPath,
         [Parameter(Mandatory = $true)][string]$ExtensionArchivePath,
         [Parameter(Mandatory = $true)][string]$Mode,
-        [Parameter(Mandatory = $true)][ValidateSet('full', 'fallback-propagation')][string]$CoverageProfile
+        [Parameter(Mandatory = $true)][ValidateSet('full', 'fallback-propagation')][string]$CoverageProfile,
+        [ValidateSet('full', 'request-lifecycle', 'ajax-auto-allow', 'path-blocking', 'exemptions')][string]$ScenarioGroup = 'full'
     )
 
     Push-Location (Join-Path $script:RepoRoot 'tests\selenium')
     try {
         $originalFirefoxBinary = $env:OPENPATH_FIREFOX_BINARY
         $originalCoverageProfile = $env:OPENPATH_STUDENT_COVERAGE_PROFILE
+        $originalScenarioGroup = $env:OPENPATH_STUDENT_SCENARIO_GROUP
         $env:OPENPATH_STUDENT_SCENARIO_FILE = $ScenarioPath
         $env:OPENPATH_FIXTURE_PORT = [string]$script:FixturePort
         $env:OPENPATH_EXTENSION_PATH = $ExtensionArchivePath
@@ -1155,12 +1157,18 @@ function Invoke-SeleniumStudentSuite {
         $env:CI = 'true'
         $env:OPENPATH_STUDENT_MODE = $Mode
         $env:OPENPATH_STUDENT_COVERAGE_PROFILE = $CoverageProfile
+        if ($ScenarioGroup -ne 'full') {
+            $env:OPENPATH_STUDENT_SCENARIO_GROUP = $ScenarioGroup
+        }
+        else {
+            Remove-Item Env:\OPENPATH_STUDENT_SCENARIO_GROUP -ErrorAction SilentlyContinue
+        }
         $env:OPENPATH_FIREFOX_BINARY = Get-FirefoxBinaryPath
         if (-not $env:OPENPATH_FIREFOX_BINARY) {
             throw 'Firefox executable not found before Selenium startup.'
         }
 
-        Write-DiagnosticNote "Starting Selenium student-policy suite mode=$Mode coverageProfile=$CoverageProfile scenarioPath=$ScenarioPath extensionPath=$ExtensionArchivePath"
+        Write-DiagnosticNote "Starting Selenium student-policy suite mode=$Mode coverageProfile=$CoverageProfile scenarioGroup=$ScenarioGroup scenarioPath=$ScenarioPath extensionPath=$ExtensionArchivePath"
         Write-DiagnosticNote "Scenario payload at Selenium handoff: $(Get-Content $ScenarioPath -Raw)"
 
         $npmCommand = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
@@ -1220,6 +1228,12 @@ function Invoke-SeleniumStudentSuite {
         }
         else {
             Remove-Item Env:\OPENPATH_STUDENT_COVERAGE_PROFILE -ErrorAction SilentlyContinue
+        }
+        if ($null -ne $originalScenarioGroup) {
+            $env:OPENPATH_STUDENT_SCENARIO_GROUP = $originalScenarioGroup
+        }
+        else {
+            Remove-Item Env:\OPENPATH_STUDENT_SCENARIO_GROUP -ErrorAction SilentlyContinue
         }
         if ($null -ne $originalFirefoxBinary) {
             $env:OPENPATH_FIREFOX_BINARY = $originalFirefoxBinary

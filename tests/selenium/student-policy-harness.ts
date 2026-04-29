@@ -4,11 +4,16 @@ import {
   getDiagnosticsDir,
   getPolicyMode,
   getStudentPolicyCoverageProfile,
+  getStudentPolicyScenarioGroup,
   loadScenarioFromEnv,
   optionalEnv,
 } from './student-policy-env';
 import {
+  runAjaxAutoAllowScenarios,
+  runExemptionAndScheduleScenarios,
   runFallbackPropagationProbe,
+  runPathBlockingScenarios,
+  runRequestLifecycleScenarios,
   runStudentPolicyMatrix,
   runStudentPolicyMatrixPhaseTwo,
   writeStudentPolicyScenarioTimings,
@@ -18,9 +23,17 @@ import type {
   RunResult,
   StudentPolicyCoverageProfile,
   StudentPolicyDriverOptions,
+  StudentPolicyScenarioGroup,
 } from './student-policy-types';
 
-type StudentPolicySuite = 'matrix' | 'matrix-phase-two' | 'fallback-propagation';
+type StudentPolicySuite =
+  | 'matrix'
+  | 'matrix-phase-two'
+  | 'fallback-propagation'
+  | 'request-lifecycle'
+  | 'ajax-auto-allow'
+  | 'path-blocking'
+  | 'exemptions';
 
 interface StudentPolicyPhasePlan {
   name: string;
@@ -30,7 +43,8 @@ interface StudentPolicyPhasePlan {
 
 export function getStudentPolicyPhasePlan(
   mode: PolicyMode,
-  coverageProfile: StudentPolicyCoverageProfile
+  coverageProfile: StudentPolicyCoverageProfile,
+  scenarioGroup: StudentPolicyScenarioGroup = 'full'
 ): StudentPolicyPhasePlan[] {
   if (coverageProfile === 'fallback-propagation') {
     if (mode !== 'fallback') {
@@ -38,6 +52,12 @@ export function getStudentPolicyPhasePlan(
     }
 
     return [{ name: 'fallback-propagation', suite: 'fallback-propagation', useBrowser: true }];
+  }
+
+  if (scenarioGroup !== 'full') {
+    return [
+      { name: scenarioGroup, suite: scenarioGroup, useBrowser: scenarioGroup !== 'exemptions' },
+    ];
   }
 
   return [
@@ -53,6 +73,7 @@ export async function runStudentPolicySuite(
   const client = new StudentPolicyServerClient(scenario);
   const mode = getPolicyMode();
   const coverageProfile = getStudentPolicyCoverageProfile();
+  const scenarioGroup = getStudentPolicyScenarioGroup();
   const diagnosticsDir =
     options.diagnosticsDir ??
     optionalEnv('OPENPATH_STUDENT_DIAGNOSTICS_DIR') ??
@@ -92,7 +113,7 @@ export async function runStudentPolicySuite(
   };
 
   try {
-    for (const phase of getStudentPolicyPhasePlan(mode, coverageProfile)) {
+    for (const phase of getStudentPolicyPhasePlan(mode, coverageProfile, scenarioGroup)) {
       await runPhase(
         phase.name,
         async (driver) => {
@@ -106,7 +127,27 @@ export async function runStudentPolicySuite(
             return;
           }
 
-          await runFallbackPropagationProbe(client, driver, mode);
+          if (phase.suite === 'fallback-propagation') {
+            await runFallbackPropagationProbe(client, driver, mode);
+            return;
+          }
+
+          if (phase.suite === 'request-lifecycle') {
+            await runRequestLifecycleScenarios(client, driver, mode);
+            return;
+          }
+
+          if (phase.suite === 'ajax-auto-allow') {
+            await runAjaxAutoAllowScenarios(client, driver, mode);
+            return;
+          }
+
+          if (phase.suite === 'path-blocking') {
+            await runPathBlockingScenarios(client, driver, mode);
+            return;
+          }
+
+          await runExemptionAndScheduleScenarios(client, driver, mode);
         },
         { useBrowser: phase.useBrowser }
       );

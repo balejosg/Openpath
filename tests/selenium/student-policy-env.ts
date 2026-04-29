@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import type {
   PolicyMode,
   StudentPolicyCoverageProfile,
+  StudentPolicyScenarioGroup,
   StudentScenario,
 } from './student-policy-types';
 
@@ -195,6 +196,27 @@ export function getStudentPolicyCoverageProfile(): StudentPolicyCoverageProfile 
 
   throw new Error(
     `OPENPATH_STUDENT_COVERAGE_PROFILE must be "full" or "fallback-propagation", received "${profile}"`
+  );
+}
+
+export function getStudentPolicyScenarioGroup(): StudentPolicyScenarioGroup {
+  const group = optionalEnv('OPENPATH_STUDENT_SCENARIO_GROUP');
+  if (group === undefined) {
+    return 'full';
+  }
+
+  if (
+    group === 'full' ||
+    group === 'request-lifecycle' ||
+    group === 'ajax-auto-allow' ||
+    group === 'path-blocking' ||
+    group === 'exemptions'
+  ) {
+    return group;
+  }
+
+  throw new Error(
+    `OPENPATH_STUDENT_SCENARIO_GROUP must be "full", "request-lifecycle", "ajax-auto-allow", "path-blocking", or "exemptions", received "${group}"`
   );
 }
 

@@ -1,5 +1,9 @@
 export { waitForFirefoxExtensionUuid } from './firefox-extension-uuid';
-export { buildWindowsBlockedDnsCommand, buildWindowsHttpProbeCommand } from './student-policy-env';
+export {
+  buildWindowsBlockedDnsCommand,
+  buildWindowsHttpProbeCommand,
+  getStudentPolicyScenarioGroup,
+} from './student-policy-env';
 export { StudentPolicyDriver } from './student-policy-driver';
 export { runStudentPolicySuite } from './student-policy-harness';
 export type {

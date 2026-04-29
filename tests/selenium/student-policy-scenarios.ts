@@ -289,7 +289,7 @@ async function seedBaselineWhitelist(
   });
 }
 
-async function runRequestLifecycleScenarios(
+async function runRequestLifecycleScenarioSet(
   client: StudentPolicyServerClient,
   driver: StudentPolicyDriver,
   mode: PolicyMode,
@@ -357,7 +357,7 @@ async function runRequestLifecycleScenarios(
   await driver.assertDnsBlocked(targets.hosts.duplicate);
 }
 
-async function runAllowedOriginAjaxAutoAllowScenarios(
+async function runAjaxAutoAllowScenarioSet(
   client: StudentPolicyServerClient,
   driver: StudentPolicyDriver,
   mode: PolicyMode,
@@ -947,10 +947,56 @@ export async function runStudentPolicyMatrix(
   const targets = buildTargets(driver.scenario);
 
   await seedBaselineWhitelist(client, driver, mode, targets);
-  await runAllowedOriginAjaxAutoAllowScenarios(client, driver, mode, targets);
-  await runRequestLifecycleScenarios(client, driver, mode, targets);
+  await runAjaxAutoAllowScenarioSet(client, driver, mode, targets);
+  await runRequestLifecycleScenarioSet(client, driver, mode, targets);
   await runBlockedSubdomainScenarios(client, driver, mode, targets);
   await runBlockedPathScenarios(client, driver, mode, targets);
+}
+
+export async function runPathBlockingScenarios(
+  client: StudentPolicyServerClient,
+  driver: StudentPolicyDriver,
+  mode: PolicyMode
+): Promise<void> {
+  const targets = buildTargets(driver.scenario);
+
+  await seedBaselineWhitelist(client, driver, mode, targets);
+  await runBlockedSubdomainScenarios(client, driver, mode, targets);
+  await runBlockedPathScenarios(client, driver, mode, targets);
+}
+
+export async function runRequestLifecycleScenarios(
+  client: StudentPolicyServerClient,
+  driver: StudentPolicyDriver,
+  mode: PolicyMode
+): Promise<void> {
+  const targets = buildTargets(driver.scenario);
+
+  await seedBaselineWhitelist(client, driver, mode, targets);
+  await runRequestLifecycleScenarioSet(client, driver, mode, targets);
+}
+
+export async function runAjaxAutoAllowScenarios(
+  client: StudentPolicyServerClient,
+  driver: StudentPolicyDriver,
+  mode: PolicyMode
+): Promise<void> {
+  const targets = buildTargets(driver.scenario);
+
+  await seedBaselineWhitelist(client, driver, mode, targets);
+  await runAjaxAutoAllowScenarioSet(client, driver, mode, targets);
+}
+
+export async function runExemptionAndScheduleScenarios(
+  client: StudentPolicyServerClient,
+  driver: StudentPolicyDriver,
+  mode: PolicyMode
+): Promise<void> {
+  const targets = buildTargets(driver.scenario);
+
+  await seedBaselineWhitelist(client, driver, mode, targets, { verifyBrowser: false });
+  await runTemporaryExemptionScenarios(client, driver, mode, targets);
+  await runActiveGroupAndScheduleScenarios(client, driver, mode, targets);
 }
 
 export async function runStudentPolicyMatrixPhaseTwo(

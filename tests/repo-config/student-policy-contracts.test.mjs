@@ -138,6 +138,43 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('student policy runners propagate optional narrow scenario groups', () => {
+    const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+
+    assert.match(
+      linuxRunner,
+      /OPENPATH_STUDENT_SCENARIO_GROUP/,
+      'Linux student-policy runner should read the optional scenario group'
+    );
+    assert.match(
+      linuxRunner,
+      /docker_env_args[\s\S]*OPENPATH_STUDENT_SCENARIO_GROUP/,
+      'Linux student-policy runner should pass OPENPATH_STUDENT_SCENARIO_GROUP into docker exec only when set'
+    );
+    assert.match(
+      linuxRunner,
+      /Scenario group: \$\{STUDENT_SCENARIO_GROUP:-full\}/,
+      'Linux student-policy summary should include the selected scenario group'
+    );
+
+    assert.match(
+      windowsRunner,
+      /\[ValidateSet\('full', 'request-lifecycle', 'ajax-auto-allow', 'path-blocking', 'exemptions'\)\]\[string\]\$ScenarioGroup = 'full'/,
+      'Windows student-policy runner should accept an optional ScenarioGroup parameter'
+    );
+    assert.match(
+      windowsRunner,
+      /\$originalScenarioGroup = \$env:OPENPATH_STUDENT_SCENARIO_GROUP[\s\S]*OPENPATH_STUDENT_SCENARIO_GROUP = \$ScenarioGroup[\s\S]*originalScenarioGroup/,
+      'Windows student-policy runner should snapshot and restore OPENPATH_STUDENT_SCENARIO_GROUP'
+    );
+    assert.match(
+      windowsRunner,
+      /scenarioGroup=\$ScenarioGroup/,
+      'Windows student-policy trace should include the selected scenario group'
+    );
+  });
+
   test('windows student policy runner enables Firefox unsigned addon support for Selenium', () => {
     const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
 

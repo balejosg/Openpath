@@ -11,6 +11,7 @@ FIXTURE_PORT="${OPENPATH_STUDENT_FIXTURE_PORT:-18081}"
 MACHINE_NAME="${OPENPATH_STUDENT_MACHINE_NAME:-linux-student-e2e}"
 ARTIFACTS_DIR="${OPENPATH_STUDENT_ARTIFACTS_DIR:-$PROJECT_ROOT/tests/e2e/artifacts/linux-student-policy}"
 STUDENT_HOST_SUFFIX="${OPENPATH_STUDENT_HOST_SUFFIX:-127.0.0.1.sslip.io}"
+STUDENT_SCENARIO_GROUP="${OPENPATH_STUDENT_SCENARIO_GROUP:-}"
 
 API_PID=""
 FIXTURE_PID=""
@@ -122,6 +123,7 @@ publish_github_step_summary() {
         echo "## Linux Student Policy Diagnostics"
         echo ""
         echo "Status: $mode"
+        echo "Scenario group: ${STUDENT_SCENARIO_GROUP:-full}"
         echo ""
         echo "Artifacts: linux-student-policy-timings.json, linux-auto-allow-boundary.json, linux-dns-readiness.err.log, and linux-firefox-readiness.err.log are uploaded with this job when present."
         echo ""
@@ -842,7 +844,13 @@ fi
 run_student_suite() {
     local mode="${1:-sse}"
     local coverage_profile="${2:-full}"
-    echo "Running Selenium student-policy suite inside container (mode: $mode, coverage profile: $coverage_profile)..."
+    local group_label="${STUDENT_SCENARIO_GROUP:-full}"
+    local docker_env_args=()
+    if [[ -n "$STUDENT_SCENARIO_GROUP" ]]; then
+        docker_env_args+=(-e OPENPATH_STUDENT_SCENARIO_GROUP="$STUDENT_SCENARIO_GROUP")
+    fi
+
+    echo "Running Selenium student-policy suite inside container (mode: $mode, coverage profile: $coverage_profile, scenario group: $group_label)..."
     docker exec \
         -e OPENPATH_STUDENT_SCENARIO_FILE=/artifacts/student-scenario.json \
         -e OPENPATH_STUDENT_DIAGNOSTICS_DIR=/artifacts/selenium-diagnostics \
@@ -856,6 +864,7 @@ run_student_suite() {
         -e OPENPATH_STUDENT_MODE="$mode" \
         -e OPENPATH_STUDENT_COVERAGE_PROFILE="$coverage_profile" \
         -e CI=true \
+        "${docker_env_args[@]}" \
         "$CONTAINER_NAME" \
         bash -lc 'cd /openpath/tests/selenium && npm run test:student-policy:ci'
 }
