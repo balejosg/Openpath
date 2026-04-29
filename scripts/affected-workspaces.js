@@ -42,7 +42,13 @@ const GLOBAL_PATTERNS = [
   /^\.prettierrc/,
 ];
 
-function getChangedFiles(staged = false) {
+export function getChangedFiles(staged = false) {
+  if (process.env.OPENPATH_AFFECTED_FILES) {
+    return process.env.OPENPATH_AFFECTED_FILES.split(/\r?\n|,/)
+      .map((file) => file.trim())
+      .filter(Boolean);
+  }
+
   try {
     const cmd = staged
       ? 'git diff --cached --name-only --diff-filter=ACM'
@@ -63,13 +69,121 @@ function getChangedFiles(staged = false) {
   }
 }
 
-function detectAffectedWorkspaces(files) {
+export function shouldUseWorkspaceFallback(files) {
+  return files.some((file) => GLOBAL_PATTERNS.some((pattern) => pattern.test(file)));
+}
+
+export function parseTestFileMap(contents) {
+  const mappings = new Map();
+
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const [source, tests] = line.split('|');
+    if (!source || !tests) continue;
+
+    const testFiles = tests
+      .split(',')
+      .map((testFile) => testFile.trim())
+      .filter(Boolean);
+
+    if (testFiles.length > 0) {
+      mappings.set(source.trim(), testFiles);
+    }
+  }
+
+  return mappings;
+}
+
+export function findMappedTests(files, mappings) {
+  const mapped = new Set();
+
+  for (const file of files) {
+    for (const testFile of mappings.get(file) ?? []) {
+      mapped.add(testFile);
+    }
+  }
+
+  return Array.from(mapped);
+}
+
+function findUnmappedFiles(files, mappings) {
+  return files.filter((file) => !mappings.has(file));
+}
+
+export function groupTestsByWorkspace(testFiles) {
+  const grouped = new Map();
+
+  for (const testFile of testFiles) {
+    const workspace =
+      Object.entries(WORKSPACE_MAP).find(([prefix]) => testFile.startsWith(prefix))?.[1] ?? 'root';
+
+    if (!grouped.has(workspace)) grouped.set(workspace, []);
+    grouped.get(workspace).push(testFile);
+  }
+
+  return grouped;
+}
+
+export function buildMappedTestCommands(testFiles) {
+  return Array.from(groupTestsByWorkspace(testFiles), ([workspace, tests]) => {
+    const workspaceDir = workspace === 'root' ? null : workspace.replace('@openpath/', '');
+    const relativeTests = workspaceDir
+      ? tests.map((testFile) => testFile.slice(`${workspaceDir}/`.length))
+      : tests;
+    const command = buildExactTestCommand(workspace, workspaceDir, relativeTests);
+
+    return { workspace, tests, command };
+  });
+}
+
+function buildExactTestCommand(workspace, workspaceDir, tests) {
+  if (workspace === '@openpath/react-spa') {
+    return `cd ${workspaceDir} && npm exec -- vitest run ${tests.join(' ')}`;
+  }
+
+  if (workspace === '@openpath/firefox-extension') {
+    return `cd ${workspaceDir} && npx tsx --test ${tests.join(' ')}`;
+  }
+
+  if (workspaceDir) {
+    return `cd ${workspaceDir} && NODE_ENV=test node --import tsx --test --test-concurrency=1 --test-force-exit ${tests.join(' ')}`;
+  }
+
+  return `node --import tsx --test --test-concurrency=1 ${tests.join(' ')}`;
+}
+
+export function buildAffectedTestPlan(files, mappings) {
+  if (shouldUseWorkspaceFallback(files)) {
+    return {
+      mappedTests: [],
+      mappedCommands: [],
+      fallbackWorkspaces: detectAffectedWorkspaces(files),
+    };
+  }
+
+  const mappedTests = findMappedTests(files, mappings);
+  const unmappedFiles = findUnmappedFiles(files, mappings);
+
+  return {
+    mappedTests,
+    mappedCommands: buildMappedTestCommands(mappedTests),
+    fallbackWorkspaces: detectAffectedWorkspaces(unmappedFiles),
+  };
+}
+
+function readTestFileMap() {
+  const mapPath = join(ROOT, '.test-file-map');
+  if (!existsSync(mapPath)) return new Map();
+  return parseTestFileMap(readFileSync(mapPath, 'utf-8'));
+}
+
+export function detectAffectedWorkspaces(files) {
   const affected = new Set();
 
   // Check for global changes that affect everything
-  const hasGlobalChange = files.some((file) =>
-    GLOBAL_PATTERNS.some((pattern) => pattern.test(file))
-  );
+  const hasGlobalChange = shouldUseWorkspaceFallback(files);
 
   if (hasGlobalChange) {
     // All workspaces are affected
@@ -137,27 +251,90 @@ function runTests(workspaces) {
   return failed ? 1 : 0;
 }
 
-// Main
-const args = process.argv.slice(2);
-const staged = args.includes('--staged');
-const runTestsFlag = args.includes('--run-tests');
-const jsonOutput = args.includes('--json');
+function runMappedTests(commands, fallbackWorkspaces) {
+  const testFiles = commands.flatMap((command) => command.tests);
+  let failed = false;
 
-const files = getChangedFiles(staged);
-const affected = detectAffectedWorkspaces(files);
-
-if (jsonOutput) {
-  console.log(JSON.stringify({ files, affected }, null, 2));
-} else if (runTestsFlag) {
-  if (affected.length === 0) {
-    console.log('No workspaces affected by current changes.');
-    process.exit(0);
+  if (commands.length > 0) {
+    console.log(`Running mapped tests for: ${testFiles.join(', ')}\n`);
   }
-  process.exit(runTests(affected));
-} else {
-  if (affected.length === 0) {
+
+  for (const { workspace, command } of commands) {
+    console.log(`\n--- Testing ${workspace} mapped tests ---\n`);
+    try {
+      execSync(command, {
+        cwd: ROOT,
+        stdio: 'inherit',
+      });
+    } catch {
+      failed = true;
+      console.error(`\nMapped tests failed for ${workspace}`);
+    }
+  }
+
+  if (fallbackWorkspaces.length > 0) {
+    const fallbackStatus = runTests(fallbackWorkspaces);
+    if (fallbackStatus !== 0) failed = true;
+  }
+
+  return failed ? 1 : 0;
+}
+
+function printLines(lines) {
+  if (lines.length === 0) {
     console.log('No workspaces affected by current changes.');
   } else {
-    affected.forEach((ws) => console.log(ws));
+    lines.forEach((line) => console.log(line));
+  }
+}
+
+export function main(args = process.argv.slice(2)) {
+  const staged = args.includes('--staged');
+  const runTestsFlag = args.includes('--run-tests');
+  const listTestsFlag = args.includes('--list-tests');
+  const runMappedTestsFlag = args.includes('--run-mapped-tests');
+  const jsonOutput = args.includes('--json');
+
+  const files = getChangedFiles(staged);
+  const affected = detectAffectedWorkspaces(files);
+  const mappings = readTestFileMap();
+  const testPlan = buildAffectedTestPlan(files, mappings);
+  const mappedTests = testPlan.mappedTests;
+  const exactTestMode = mappedTests.length > 0;
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({ files, affected, mappedTests }, null, 2));
+    return 0;
+  }
+
+  if (listTestsFlag) {
+    printLines(exactTestMode ? mappedTests : affected);
+    return 0;
+  }
+
+  if (runMappedTestsFlag) {
+    if (affected.length === 0 && mappedTests.length === 0) {
+      console.log('No workspaces affected by current changes.');
+      return 0;
+    }
+    return runMappedTests(testPlan.mappedCommands, testPlan.fallbackWorkspaces);
+  }
+
+  if (runTestsFlag) {
+    if (affected.length === 0) {
+      console.log('No workspaces affected by current changes.');
+      return 0;
+    }
+    return runTests(affected);
+  }
+
+  printLines(affected);
+  return 0;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const status = main();
+  if (status !== 0) {
+    process.exit(status);
   }
 }
