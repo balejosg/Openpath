@@ -150,7 +150,7 @@ jobs:
             linux_e2e=true
           fi
 
-          if [ "$release_infra_only" != "true" ] && echo "$changed_files" | grep -Eq '^(windows/|runtime/|firefox-extension/|tests/e2e/(Windows-E2E\.Tests\.ps1|ci/run-windows-e2e\.ps1|ci/report-windows-processes\.ps1|validation/)|package\.json$|package-lock\.json$|scripts/require-release-quality-gate\.mjs$|\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\.yml$)'; then
+          if [ "$release_infra_only" != "true" ] && echo "$changed_files" | grep -Eq '^(windows/|runtime/|tests/e2e/(Windows-E2E\.Tests\.ps1|ci/run-windows-e2e\.ps1|ci/report-windows-processes\.ps1|validation/)|package\.json$|package-lock\.json$|scripts/require-release-quality-gate\.mjs$|\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\.yml$)'; then
             windows_e2e=true
           fi
 

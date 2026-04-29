@@ -935,6 +935,18 @@ test('E2E workflow gates expensive platform lanes on targeted changed paths', ()
     'windows-e2e should run on the pinned OpenPath self-hosted Windows runner'
   );
   assert.ok(
+    e2eWorkflow.includes(
+      '^(windows/|runtime/|tests/e2e/(Windows-E2E\\.Tests\\.ps1|ci/run-windows-e2e\\.ps1|ci/report-windows-processes\\.ps1|validation/)|package\\.json$|package-lock\\.json$|scripts/require-release-quality-gate\\.mjs$|\\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\\.yml$)'
+    ),
+    'windows-e2e should stay focused on installer, runtime, and Windows-specific destructive paths'
+  );
+  assert.ok(
+    !e2eWorkflow.includes(
+      '^(windows/|runtime/|firefox-extension/|tests/e2e/(Windows-E2E\\.Tests\\.ps1|ci/run-windows-e2e\\.ps1|ci/report-windows-processes\\.ps1|validation/)|package\\.json$|package-lock\\.json$|scripts/require-release-quality-gate\\.mjs$|\\.github/workflows/(e2e-tests|installer-contracts|prerelease-deb|release-extension|release-scripts)\\.yml$)'
+    ),
+    'windows-e2e should not trigger on Firefox extension diffs because browser readiness lives in Windows student-policy'
+  );
+  assert.ok(
     !windowsE2eBlock.includes('${{ matrix.os }}') && !windowsE2eBlock.includes('matrix:'),
     'windows-e2e should not keep a hosted-runner matrix after moving to the pinned self-hosted Windows runner'
   );
