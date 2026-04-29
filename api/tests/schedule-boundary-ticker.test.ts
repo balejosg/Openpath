@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { describe, test, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { resetDb, TEST_RUN_ID } from './test-utils.js';
@@ -6,6 +7,45 @@ import { createScheduleBoundaryTicker } from '../src/lib/schedule-boundary-ticke
 import * as classroomStorage from '../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../src/lib/schedule-storage.js';
 import { pool } from '../src/db/legacy-pool.js';
+import { logger } from '../src/lib/logger.js';
+
+function snapshotTickerEnv(): Record<string, string | undefined> {
+  return {
+    OPENPATH_SCHEDULE_TICKER: process.env.OPENPATH_SCHEDULE_TICKER,
+    OPENPATH_SCHEDULE_TICKER_FORCE: process.env.OPENPATH_SCHEDULE_TICKER_FORCE,
+    OPENPATH_SCHEDULE_TICKER_LOCK_NAME: process.env.OPENPATH_SCHEDULE_TICKER_LOCK_NAME,
+    OPENPATH_SCHEDULE_TICKER_LOCK_SLOT: process.env.OPENPATH_SCHEDULE_TICKER_LOCK_SLOT,
+  };
+}
+
+function restoreTickerEnv(snapshot: Record<string, string | undefined>): void {
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+
+    process.env[key] = value;
+  }
+}
+
+function createLockName(label: string): string {
+  return `${label}-${TEST_RUN_ID}-${Date.now().toString()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function assertTickerLockAvailable(lockName: string, slot = 1): Promise<void> {
+  const client = await pool.connect();
+  try {
+    const result = await client.query<{ acquired: boolean }>(
+      'SELECT pg_try_advisory_lock(hashtext($1), $2) AS acquired',
+      [lockName, slot]
+    );
+    assert.strictEqual(result.rows[0]?.acquired, true);
+    await client.query('SELECT pg_advisory_unlock(hashtext($1), $2)', [lockName, slot]);
+  } finally {
+    client.release();
+  }
+}
 
 await describe('Schedule Boundary Ticker', async () => {
   beforeEach(async () => {
@@ -136,5 +176,143 @@ await describe('Schedule Boundary Ticker', async () => {
       `expired-exemption-${TEST_RUN_ID}`,
     ]);
     assert.strictEqual(remaining.rowCount, 0);
+  });
+
+  await test('ensureStarted is a no-op while ticker remains disabled in tests', async () => {
+    const envSnapshot = snapshotTickerEnv();
+    const lockName = createLockName('ticker-disabled');
+
+    delete process.env.OPENPATH_SCHEDULE_TICKER_FORCE;
+    process.env.OPENPATH_SCHEDULE_TICKER_LOCK_NAME = lockName;
+
+    const ticker = createScheduleBoundaryTicker({
+      emitClassroomChanged: () => undefined,
+    });
+
+    try {
+      await ticker.ensureStarted();
+      await assertTickerLockAvailable(lockName);
+    } finally {
+      await ticker.stop();
+      restoreTickerEnv(envSnapshot);
+    }
+  });
+
+  await test('ensureStarted acquires leadership once and stop releases the advisory lock', async () => {
+    const envSnapshot = snapshotTickerEnv();
+    const lockName = createLockName('ticker-leader');
+    const originalDateNow = Date.now;
+    const originalInfo = logger.info;
+    const originalWarn = logger.warn;
+    const originalDebug = logger.debug;
+
+    process.env.OPENPATH_SCHEDULE_TICKER_FORCE = '1';
+    process.env.OPENPATH_SCHEDULE_TICKER_LOCK_NAME = lockName;
+
+    const ticker = createScheduleBoundaryTicker({
+      emitClassroomChanged: () => undefined,
+    });
+
+    try {
+      Date.now = () => 120_000;
+      logger.info = () => undefined;
+      logger.warn = () => undefined;
+      logger.debug = () => undefined;
+
+      const firstStart = ticker.ensureStarted();
+      const secondStart = ticker.ensureStarted();
+      await Promise.all([firstStart, secondStart]);
+      await ticker.ensureStarted();
+      await ticker.stop();
+      await ticker.stop();
+
+      await assertTickerLockAvailable(lockName);
+    } finally {
+      Date.now = originalDateNow;
+      logger.info = originalInfo;
+      logger.warn = originalWarn;
+      logger.debug = originalDebug;
+      await ticker.stop();
+      restoreTickerEnv(envSnapshot);
+    }
+  });
+
+  await test('ensureStarted leaves follower instances in retry mode while a leader holds the lock', async () => {
+    const envSnapshot = snapshotTickerEnv();
+    const lockName = createLockName('ticker-follower');
+    const originalInfo = logger.info;
+    const originalWarn = logger.warn;
+    const originalDebug = logger.debug;
+
+    process.env.OPENPATH_SCHEDULE_TICKER_FORCE = '1';
+    process.env.OPENPATH_SCHEDULE_TICKER_LOCK_NAME = lockName;
+
+    const leader = createScheduleBoundaryTicker({
+      emitClassroomChanged: () => undefined,
+    });
+    const follower = createScheduleBoundaryTicker({
+      emitClassroomChanged: () => undefined,
+    });
+
+    try {
+      logger.info = () => undefined;
+      logger.warn = () => undefined;
+      logger.debug = () => undefined;
+
+      await leader.ensureStarted();
+      await follower.ensureStarted();
+      await follower.stop();
+    } finally {
+      logger.info = originalInfo;
+      logger.warn = originalWarn;
+      logger.debug = originalDebug;
+      await follower.stop();
+      await leader.stop();
+      restoreTickerEnv(envSnapshot);
+    }
+
+    await assertTickerLockAvailable(lockName);
+  });
+
+  await test('ensureStarted logs and resets when the database connection fails', async () => {
+    const envSnapshot = snapshotTickerEnv();
+    const lockName = createLockName('ticker-connect-failure');
+    const originalConnect = pool.connect.bind(pool);
+    const originalWarn = logger.warn;
+    const originalInfo = logger.info;
+    const originalDebug = logger.debug;
+    const warnings: string[] = [];
+
+    process.env.OPENPATH_SCHEDULE_TICKER_FORCE = '1';
+    process.env.OPENPATH_SCHEDULE_TICKER_LOCK_NAME = lockName;
+
+    pool.connect = (async (): Promise<PoolClient> => {
+      throw new Error('connect failed');
+    }) as typeof pool.connect;
+    logger.warn = (message) => {
+      warnings.push(message);
+    };
+    logger.info = () => undefined;
+    logger.debug = () => undefined;
+
+    const ticker = createScheduleBoundaryTicker({
+      emitClassroomChanged: () => undefined,
+    });
+
+    try {
+      await ticker.ensureStarted();
+      await ticker.ensureStarted();
+      assert.deepStrictEqual(warnings, [
+        'Failed to start schedule boundary ticker',
+        'Failed to start schedule boundary ticker',
+      ]);
+    } finally {
+      pool.connect = originalConnect;
+      logger.warn = originalWarn;
+      logger.info = originalInfo;
+      logger.debug = originalDebug;
+      await ticker.stop();
+      restoreTickerEnv(envSnapshot);
+    }
   });
 });
