@@ -57,7 +57,8 @@
     "size:check": "test -d react-spa/dist && npm run size --workspace=@openpath/react-spa || echo 'SKIP: react-spa/dist not built, skipping size check'",
     "docker:manifests": "node scripts/generate-docker-manifests.mjs",
     "docker:manifests:check": "node scripts/generate-docker-manifests.mjs --check",
-    "diagnostics:windows:direct": "node scripts/run-windows-runner-direct.mjs"
+    "diagnostics:windows:direct": "node scripts/run-windows-runner-direct.mjs",
+    "diagnostics:linux-student:local": "node scripts/run-linux-student-policy-local.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.0",
