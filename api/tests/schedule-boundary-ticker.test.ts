@@ -5,6 +5,7 @@ import { CANONICAL_GROUP_IDS } from './fixtures.js';
 import { createScheduleBoundaryTicker } from '../src/lib/schedule-boundary-ticker.js';
 import * as classroomStorage from '../src/lib/classroom-storage.js';
 import * as scheduleStorage from '../src/lib/schedule-storage.js';
+import { pool } from '../src/db/legacy-pool.js';
 
 await describe('Schedule Boundary Ticker', async () => {
   beforeEach(async () => {
@@ -78,5 +79,62 @@ await describe('Schedule Boundary Ticker', async () => {
     const atEnd = events[0];
     assert.ok(atEnd);
     assert.strictEqual(atEnd.classroomId, classroom.id);
+  });
+
+  await test('runTickOnce emits classroom IDs after expired machine exemptions are cleaned up', async () => {
+    const classroom = await classroomStorage.createClassroom({
+      name: `ticker-exemption-room-${TEST_RUN_ID}`,
+      displayName: 'Ticker Exemption Room',
+    });
+
+    const machine = await classroomStorage.registerMachine({
+      hostname: `ticker-exemption-machine-${TEST_RUN_ID}`,
+      classroomId: classroom.id,
+    });
+
+    const schedule = await scheduleStorage.createSchedule({
+      classroomId: classroom.id,
+      teacherId: 'legacy_admin',
+      groupId: CANONICAL_GROUP_IDS.groupA,
+      dayOfWeek: 1,
+      startTime: '07:00',
+      endTime: '08:00',
+    });
+
+    const now = new Date(2026, 1, 23, 9, 15, 0);
+    await pool.query(
+      `
+        INSERT INTO machine_exemptions (id, machine_id, classroom_id, schedule_id, created_by, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [
+        `expired-exemption-${TEST_RUN_ID}`,
+        machine.id,
+        classroom.id,
+        schedule.id,
+        'legacy_admin',
+        new Date(2026, 1, 23, 9, 0, 0),
+      ]
+    );
+
+    const events: { classroomId: string; now: Date }[] = [];
+    const ticker = createScheduleBoundaryTicker({
+      emitClassroomChanged: (classroomId: string, emittedNow: Date) => {
+        events.push({ classroomId, now: emittedNow });
+      },
+    });
+
+    await ticker.runTickOnce(now);
+
+    assert.strictEqual(events.length, 1);
+    const first = events[0];
+    assert.ok(first);
+    assert.strictEqual(first.classroomId, classroom.id);
+    assert.strictEqual(first.now, now);
+
+    const remaining = await pool.query('SELECT id FROM machine_exemptions WHERE id = $1', [
+      `expired-exemption-${TEST_RUN_ID}`,
+    ]);
+    assert.strictEqual(remaining.rowCount, 0);
   });
 });

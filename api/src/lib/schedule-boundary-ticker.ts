@@ -1,7 +1,10 @@
 import type { PoolClient } from 'pg';
 import { getErrorMessage } from '@openpath/shared';
 import { pool } from '../db/legacy-pool.js';
-import { getClassroomIdsWithBoundaryAt } from './schedule-storage.js';
+import {
+  emitScheduleChangeDelivery,
+  resolveScheduleChangeDelivery,
+} from '../services/schedule-change-delivery.service.js';
 import { logger } from './logger.js';
 
 export interface ScheduleBoundaryTicker {
@@ -32,38 +35,16 @@ export function createScheduleBoundaryTicker(params: {
   let retryTimeout: NodeJS.Timeout | null = null;
 
   async function runTickOnce(now: Date = new Date()): Promise<void> {
-    const boundaryClassroomIds = await getClassroomIdsWithBoundaryAt(now);
-
-    const expiredExemptionClassroomIds = await (async (): Promise<string[]> => {
-      try {
-        const result = await pool.query<{ classroom_id: string }>(
-          'DELETE FROM machine_exemptions WHERE expires_at <= $1 RETURNING classroom_id',
-          [now]
-        );
-        const ids = result.rows
-          .map((r) => r.classroom_id)
-          .filter((id): id is string => typeof id === 'string' && id.length > 0);
-        return [...new Set(ids)];
-      } catch (error: unknown) {
-        logger.warn('Failed to cleanup expired machine exemptions', {
-          error: getErrorMessage(error),
-        });
-        return [];
-      }
-    })();
-
-    const classroomIds = [...new Set([...boundaryClassroomIds, ...expiredExemptionClassroomIds])];
-    if (classroomIds.length === 0) return;
+    const delivery = await resolveScheduleChangeDelivery({ now });
+    if (delivery.classroomIds.length === 0) return;
 
     logger.debug('Schedule boundary tick', {
-      classroomCount: classroomIds.length,
-      boundaryClassroomCount: boundaryClassroomIds.length,
-      expiredExemptionClassroomCount: expiredExemptionClassroomIds.length,
+      classroomCount: delivery.classroomIds.length,
+      boundaryClassroomCount: delivery.boundaryClassroomIds.length,
+      expiredExemptionClassroomCount: delivery.expiredExemptionClassroomIds.length,
     });
 
-    for (const classroomId of classroomIds) {
-      params.emitClassroomChanged(classroomId, now);
-    }
+    emitScheduleChangeDelivery(delivery, params.emitClassroomChanged, now);
   }
 
   async function ensureStarted(): Promise<void> {
