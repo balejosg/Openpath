@@ -8,6 +8,7 @@ import {
 import { reportError } from '../lib/reportError';
 import { useAllowedGroups } from './useAllowedGroups';
 import { useClassroomListModelsQuery } from './useClassroomsList';
+import { useTeacherDashboardSchedules } from './useTeacherDashboardSchedules';
 
 export function useTeacherDashboardViewModel() {
   const teacherGroupsEnabled = isTeacherGroupsFeatureEnabled();
@@ -29,6 +30,14 @@ export function useTeacherDashboardViewModel() {
     error: groupsQueryError,
   } = useAllowedGroups();
 
+  const {
+    weeklySchedules,
+    oneOffSchedules,
+    loading: schedulesLoading,
+    error: schedulesError,
+    refetchSchedules: refetchMySchedules,
+  } = useTeacherDashboardSchedules(classrooms);
+
   const groupsError = groupsQueryError ? 'No se pudieron cargar tus grupos' : null;
 
   const [selectedClassroomForControl, setSelectedClassroomForControl] = useState('');
@@ -46,6 +55,22 @@ export function useTeacherDashboardViewModel() {
     () => selectActiveClassroomRowsFromModels(classrooms, groupById),
     [classrooms, groupById]
   );
+
+  const classroomNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const classroom of classrooms) {
+      map.set(classroom.id, classroom.displayName || classroom.name);
+    }
+    return map;
+  }, [classrooms]);
+
+  const groupDisplayNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, group] of groupById) {
+      map.set(id, group.displayName || group.name);
+    }
+    return map;
+  }, [groupById]);
 
   const applyControlChange = useCallback(
     async (classroomId: string, nextGroupId: string | null) => {
@@ -121,6 +146,13 @@ export function useTeacherDashboardViewModel() {
     groupById,
     groupsLoading,
     groupsError,
+    weeklySchedules,
+    oneOffSchedules,
+    schedulesLoading,
+    schedulesError,
+    refetchMySchedules,
+    classroomNameMap,
+    groupDisplayNameMap,
     selectedClassroomForControl,
     setSelectedClassroomForControl,
     selectedGroupForControl,
