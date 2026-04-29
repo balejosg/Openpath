@@ -48,6 +48,7 @@ OPENPATH_ETC="${OPENPATH_ETC:-/etc/openpath}"
 OPENPATH_RUN="${OPENPATH_RUN:-/run/openpath}"
 PID_FILE="${OPENPATH_RUN}/sse-listener.pid"
 LAST_UPDATE_FILE="${OPENPATH_RUN}/sse-last-update"
+PENDING_UPDATE_FILE="${OPENPATH_RUN}/sse-pending-update"
 UPDATE_SCRIPT="/usr/local/bin/openpath-update.sh"
 
 # Read machine token from the whitelist URL configuration
@@ -101,21 +102,12 @@ get_sse_url() {
 # Update Trigger (with debounce)
 # =============================================================================
 
-trigger_update() {
+run_update_now() {
     local now
-    now=$(date +%s)
+    now="${1:-$(date +%s)}"
 
-    # Debounce: skip if we updated recently
-    if [ -f "$LAST_UPDATE_FILE" ]; then
-        local last_update
-        last_update=$(cat "$LAST_UPDATE_FILE" 2>/dev/null || echo "0")
-        local elapsed=$((now - last_update))
-
-        if [ "$elapsed" -lt "${SSE_UPDATE_COOLDOWN:-10}" ]; then
-            log "↳ SSE: Skipping update (last update ${elapsed}s ago, cooldown ${SSE_UPDATE_COOLDOWN:-10}s)"
-            return 0
-        fi
-    fi
+    mkdir -p "$OPENPATH_RUN"
+    rm -f "$PENDING_UPDATE_FILE"
 
     log "⚡ SSE: Whitelist change detected — triggering immediate update"
     echo "$now" > "$LAST_UPDATE_FILE"
@@ -126,6 +118,47 @@ trigger_update() {
     else
         log "⚠ SSE: Update script not found at $UPDATE_SCRIPT"
     fi
+}
+
+schedule_deferred_update() {
+    local delay="$1"
+
+    if [ -f "$PENDING_UPDATE_FILE" ]; then
+        log "↳ SSE: Deferred update already scheduled"
+        return 0
+    fi
+
+    mkdir -p "$OPENPATH_RUN"
+    date +%s > "$PENDING_UPDATE_FILE"
+    log "↳ SSE: Scheduling deferred update in ${delay}s"
+
+    (
+        sleep "$delay"
+        rm -f "$PENDING_UPDATE_FILE"
+        trigger_update
+    ) &
+}
+
+trigger_update() {
+    local now
+    now=$(date +%s)
+    local cooldown="${SSE_UPDATE_COOLDOWN:-10}"
+
+    # Debounce: skip if we updated recently
+    if [ -f "$LAST_UPDATE_FILE" ]; then
+        local last_update
+        last_update=$(cat "$LAST_UPDATE_FILE" 2>/dev/null || echo "0")
+        local elapsed=$((now - last_update))
+
+        if [ "$elapsed" -lt "$cooldown" ]; then
+            local remaining=$((cooldown - elapsed))
+            log "↳ SSE: Deferring update (last update ${elapsed}s ago, cooldown ${cooldown}s)"
+            schedule_deferred_update "$remaining"
+            return 0
+        fi
+    fi
+
+    run_update_now "$now"
 }
 
 # =============================================================================
@@ -197,6 +230,13 @@ run_sse_listener() {
 # =============================================================================
 # Main
 # =============================================================================
+
+if [ "${OPENPATH_SSE_LISTENER_SOURCE_ONLY:-}" = "1" ]; then
+    if (return 0 2>/dev/null); then
+        return 0
+    fi
+    exit 0
+fi
 
 # Ensure we're running as root (required for systemd services)
 if [ "$(id -u)" -ne 0 ] && [ "${OPENPATH_TEST:-}" != "1" ]; then
