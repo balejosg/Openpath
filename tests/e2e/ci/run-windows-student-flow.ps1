@@ -432,8 +432,8 @@ function Build-RequiredWorkspaces {
     try {
         npm run build --workspace=@openpath/shared | Out-Host
         Assert-LastExitCode 'npm run build --workspace=@openpath/shared'
-        npm run build --workspace=@openpath/firefox-extension | Out-Host
-        Assert-LastExitCode 'npm run build --workspace=@openpath/firefox-extension'
+        npm run build:cached --workspace=@openpath/firefox-extension | Out-Host
+        Assert-LastExitCode 'npm run build:cached --workspace=@openpath/firefox-extension'
     }
     finally {
         Pop-Location
@@ -737,6 +737,11 @@ function New-FirefoxExtensionArchive {
     if (-not (Test-Path $builtXpiPath)) {
         throw "Firefox extension packaging did not produce $builtXpiPath"
     }
+
+    $xpiHash = (Get-FileHash -Algorithm SHA256 -Path $builtXpiPath).Hash.ToLowerInvariant()
+    $hashEvidencePath = Join-Path $script:ArtifactsRoot 'firefox-xpi-sha256.txt'
+    Set-Content -Path $hashEvidencePath -Value "$xpiHash  $builtXpiPath" -Encoding UTF8
+    Write-DiagnosticNote "Firefox XPI hash sha256=$xpiHash path=$builtXpiPath"
 
     Copy-Item $builtXpiPath -Destination $packagePath -Force
     return $packagePath

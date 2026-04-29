@@ -113,6 +113,54 @@ describe('repository verification contract', () => {
     );
   });
 
+  test('student policy runners record Firefox XPI SHA-256 after packaging', () => {
+    const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+
+    assert.match(
+      linuxRunner,
+      /sha256sum "\$built_xpi_path"[\s\S]*Firefox XPI hash sha256=/,
+      'Linux student-policy runner should record the packaged Firefox XPI SHA-256'
+    );
+    assert.match(
+      linuxRunner,
+      /firefox-xpi-sha256\.txt/,
+      'Linux student-policy runner should persist the Firefox XPI hash in diagnostics artifacts'
+    );
+    assert.match(
+      windowsRunner,
+      /Get-FileHash -Algorithm SHA256[\s\S]*Firefox XPI hash sha256=/,
+      'Windows student-policy runner should record the packaged Firefox XPI SHA-256'
+    );
+    assert.match(
+      windowsRunner,
+      /firefox-xpi-sha256\.txt/,
+      'Windows student-policy runner should persist the Firefox XPI hash in diagnostics artifacts'
+    );
+  });
+
+  test('student policy runners use Turbo-backed Firefox extension build while preserving prebuild cleanup', () => {
+    const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
+    const windowsRunner = readText('tests/e2e/ci/run-windows-student-flow.ps1');
+    const extensionPackage = readJson('firefox-extension/package.json');
+
+    assert.equal(
+      extensionPackage.scripts['build:cached'],
+      'npm run prebuild && npx turbo run build --filter=@openpath/firefox-extension',
+      'Firefox extension cached build should clean first, then let Turbo restore or build outputs'
+    );
+    assert.match(
+      linuxRunner,
+      /npm run build:cached --workspace=@openpath\/firefox-extension/,
+      'Linux student-policy runner should use the Turbo-backed Firefox extension build script'
+    );
+    assert.match(
+      windowsRunner,
+      /npm run build:cached --workspace=@openpath\/firefox-extension/,
+      'Windows student-policy runner should use the Turbo-backed Firefox extension build script'
+    );
+  });
+
   test('Linux student policy runner publishes Firefox release artifacts before starting the API', () => {
     const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
 

@@ -19,6 +19,7 @@ _context_dir=""
 _started_test_db=false
 TIMINGS_TSV="$ARTIFACTS_DIR/linux-student-policy-timings.tsv"
 TIMINGS_JSON="$ARTIFACTS_DIR/linux-student-policy-timings.json"
+FIREFOX_XPI_HASH_PATH="$ARTIFACTS_DIR/firefox-xpi-sha256.txt"
 CURRENT_TIMING_NAME=""
 CURRENT_TIMING_STARTED_AT=""
 CURRENT_TIMING_STARTED_NS=""
@@ -125,7 +126,7 @@ publish_github_step_summary() {
         echo "Status: $mode"
         echo "Scenario group: ${STUDENT_SCENARIO_GROUP:-full}"
         echo ""
-        echo "Artifacts: linux-student-policy-timings.json, linux-auto-allow-boundary.json, linux-dns-readiness.err.log, and linux-firefox-readiness.err.log are uploaded with this job when present."
+        echo "Artifacts: linux-student-policy-timings.json, firefox-xpi-sha256.txt, linux-auto-allow-boundary.json, linux-dns-readiness.err.log, and linux-firefox-readiness.err.log are uploaded with this job when present."
         echo ""
         echo "## Linux Student Policy Timing"
         echo ""
@@ -462,7 +463,7 @@ prepare_workspace() {
     (
         cd "$PROJECT_ROOT"
         npm run build --workspace=@openpath/shared
-        npm run build --workspace=@openpath/firefox-extension
+        npm run build:cached --workspace=@openpath/firefox-extension
         prepare_firefox_release_artifacts
     )
 }
@@ -484,6 +485,11 @@ prepare_firefox_release_artifacts() {
     rm -f "$built_xpi_path"
     "$extension_dir/build-xpi.sh"
     require_file "$built_xpi_path"
+    mkdir -p "$ARTIFACTS_DIR"
+    local xpi_sha256
+    xpi_sha256="$(sha256sum "$built_xpi_path" | awk '{print $1}')"
+    printf '%s  %s\n' "$xpi_sha256" "$built_xpi_path" >"$FIREFOX_XPI_HASH_PATH"
+    echo "Firefox XPI hash sha256=$xpi_sha256 path=$built_xpi_path"
 
     npm run build:firefox-release --workspace=@openpath/firefox-extension -- \
         --signed-xpi "$built_xpi_path" \
