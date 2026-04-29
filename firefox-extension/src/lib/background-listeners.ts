@@ -7,11 +7,11 @@ import {
   extractHostname,
   isExtensionUrl,
 } from './path-blocking.js';
-import { isAutoAllowRequestType } from './auto-allow-workflow.js';
+import { isPageResourceCandidateMessage } from './auto-allow-observation.js';
 import {
-  isPageResourceCandidateMessage,
-  parsePageResourceCandidateMessage,
-} from './auto-allow-observation.js';
+  buildAutoAllowCandidateFromMessage,
+  buildAutoAllowCandidateFromWebRequest,
+} from './page-resource-auto-allow-intake.js';
 
 const BLOCKING_ERRORS = [
   'NS_ERROR_UNKNOWN_HOST',
@@ -72,10 +72,7 @@ async function handlePageResourceCandidate(
   sender: Runtime.MessageSender,
   autoAllowBlockedDomain: BackgroundListenersOptions['autoAllowBlockedDomain']
 ): Promise<{ error?: string; success: boolean }> {
-  const parsed = parsePageResourceCandidateMessage(message, {
-    senderTabId: sender.tab?.id,
-    senderTabUrl: sender.tab?.url,
-  });
+  const parsed = buildAutoAllowCandidateFromMessage(message, sender);
   if (!parsed.ok) {
     return { success: false, error: parsed.error };
   }
@@ -172,17 +169,6 @@ function buildBlockedScreenContext(details: {
 
 function buildRedirectKey(context: ConfirmBlockedScreenContext): string {
   return [context.tabId.toString(), context.hostname, context.error, context.url].join(':');
-}
-
-function normalizeAutoAllowOriginCandidate(
-  candidateUrl: string | undefined,
-  targetUrl: string
-): string | null {
-  if (!candidateUrl || candidateUrl === targetUrl || isExtensionUrl(candidateUrl)) {
-    return null;
-  }
-
-  return extractHostname(candidateUrl) ? candidateUrl : null;
 }
 
 function buildDisplayedRedirectKey(context: ConfirmBlockedScreenContext): string {
@@ -368,54 +354,6 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     }
   }
 
-  async function resolveAutoAllowOriginPage(details: {
-    documentUrl?: string;
-    originUrl?: string;
-    tabId: number;
-    url: string;
-  }): Promise<string | null> {
-    if (details.tabId >= 0) {
-      try {
-        const tab = await options.browser.tabs.get(details.tabId);
-        const tabOrigin = normalizeAutoAllowOriginCandidate(tab.url, details.url);
-        if (tabOrigin) {
-          return tabOrigin;
-        }
-      } catch {
-        // Fall back to Firefox's request context below.
-      }
-    }
-
-    const explicitOrigin = normalizeAutoAllowOriginCandidate(
-      details.originUrl ?? details.documentUrl,
-      details.url
-    );
-    if (explicitOrigin) {
-      return explicitOrigin;
-    }
-
-    return null;
-  }
-
-  function resolveAutoAllowRequestType(details: {
-    documentUrl?: string;
-    originUrl?: string;
-    type?: WebRequest.ResourceType;
-    url: string;
-  }): WebRequest.ResourceType | null {
-    const requestType =
-      details.type ??
-      (normalizeAutoAllowOriginCandidate(details.originUrl ?? details.documentUrl, details.url)
-        ? 'other'
-        : undefined);
-
-    if (!requestType || !isAutoAllowRequestType(requestType)) {
-      return null;
-    }
-
-    return requestType;
-  }
-
   function triggerAutoAllowForEligibleRequest(details: {
     documentUrl?: string;
     originUrl?: string;
@@ -423,23 +361,23 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     type?: WebRequest.ResourceType;
     url: string;
   }): void {
-    const hostname = extractHostname(details.url);
-    const requestType = resolveAutoAllowRequestType(details);
-    if (!hostname || !requestType) {
-      return;
-    }
-
-    void resolveAutoAllowOriginPage(details).then((originPage) => {
-      if (details.tabId < 0 && !originPage) {
+    void buildAutoAllowCandidateFromWebRequest(details, {
+      getTabUrl: async (tabId) => {
+        const tab = await options.browser.tabs.get(tabId);
+        return tab.url;
+      },
+    }).then((result) => {
+      if (!result.ok) {
         return;
       }
 
+      const { candidate } = result;
       return options.autoAllowBlockedDomain(
-        details.tabId,
-        hostname,
-        originPage,
-        requestType,
-        details.url
+        candidate.tabId,
+        candidate.hostname,
+        candidate.originPage,
+        candidate.requestType,
+        candidate.targetUrl
       );
     });
   }
