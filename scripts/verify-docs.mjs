@@ -19,6 +19,11 @@ const failures = [];
 const docsIndexPath = 'docs/INDEX.md';
 const asciiOnlyExemptPaths = new Set(['CHANGELOG.md']);
 const asciiOnlyExemptPrefixes = ['docs/adr/'];
+const draftDocPrefixes = ['docs/plans/'];
+
+function isDraftDoc(relativePath) {
+  return draftDocPrefixes.some((prefix) => relativePath.startsWith(prefix));
+}
 
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -34,11 +39,19 @@ function walk(dir) {
     const relativePath = path.relative(rootDir, fullPath);
 
     if (entry.isDirectory()) {
+      if (isDraftDoc(`${relativePath}/`)) {
+        continue;
+      }
+
       walk(fullPath);
       continue;
     }
 
     if (entry.isFile() && entry.name.endsWith('.md')) {
+      if (isDraftDoc(relativePath)) {
+        continue;
+      }
+
       markdownFiles.push(relativePath);
     }
   }
