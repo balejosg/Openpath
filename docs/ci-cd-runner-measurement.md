@@ -2,7 +2,7 @@
 
 > Status: maintained
 > Applies to: OpenPath CI/E2E timing, artifact evidence, and controlled runner follow-up
-> Last verified: 2026-04-27
+> Last verified: 2026-04-29
 > Source of truth: `docs/ci-cd-runner-measurement.md`
 
 Use this runbook when continuing CI optimization work. It replaces temporary
@@ -219,6 +219,40 @@ to release workflows, the release quality-gate helper, or repo-config contract
 tests. In that case the expensive Linux and Windows E2E/student-policy lanes
 are skipped explicitly; product, runtime, installer, browser, API, shared, and
 Selenium changes still route to the full relevant platform lanes.
+
+## Windows Runner Queue Update - 2026-04-29
+
+Change:
+
+- Promoted `Windows Agent Tests (Pester, hosted)` to a required `CI Success`
+  input while keeping the self-hosted `Windows Agent Tests (Pester)` lane as
+  the pinned Windows target-platform proof.
+- Routed release-infrastructure-only diffs to `E2E Summary` so destructive
+  Windows lanes stay reserved for product, runtime, installer, browser, API,
+  shared, and Selenium changes.
+
+Before:
+
+- `CI` run `25098824685`: `Windows Agent Tests (Pester)` queue `761s`,
+  execution `55s`; `Windows Agent Tests (Pester, hosted advisory)` skipped;
+  `CI Success` queue `818s`, execution `3s`.
+- `E2E Tests` run `25098824712`: `Windows E2E` queue `534s`, execution `225s`.
+
+After:
+
+- `CI` run `25111008847`: `Windows Agent Tests (Pester)` queue `13s`,
+  execution `54s`; `Windows Agent Tests (Pester, hosted)` queue `13s`,
+  execution `81s`; `CI Success` queue `163s`, execution `4s`.
+- `E2E Tests` run `25111008912`: `E2E Summary` queue `14s`, execution `2s`;
+  Windows and Linux target-platform lanes skipped because the diff was
+  release-infrastructure-only.
+
+Policy:
+
+- Keep short Windows unit coverage on hosted Windows only while repeated hosted
+  samples stay stable.
+- Keep installed-client, DNS, service, and browser-policy evidence on the
+  self-hosted Windows runner.
 
 ## Decision Rules
 
