@@ -298,7 +298,7 @@ test('delivery contracts run public request regressions before reporting success
 
   assert.equal(
     apiPackage.scripts['test:public-requests'],
-    'tsx scripts/run-node-test-suite.ts tests/lib/public-request-input.test.ts tests/api-submit-routes.test.ts tests/routes/public-requests.test.ts',
+    'tsx scripts/run-node-test-suite.ts tests/lib/public-request-input.test.ts tests/api-submit-routes.test.ts tests/machine-request-admission.service.test.ts tests/routes/public-requests.test.ts',
     'the API package should expose a focused public request contract suite for CI'
   );
   assert.ok(
