@@ -71,7 +71,7 @@ void describe('page activity content script', () => {
       observe(target: unknown, options: unknown): void {
         assert.equal(target, fakeDocument);
         assert.deepEqual(options, {
-          attributeFilter: ['src', 'href', 'rel', 'as'],
+          attributeFilter: ['src', 'srcset', 'href', 'rel', 'as'],
           attributes: true,
           childList: true,
           subtree: true,
@@ -185,6 +185,14 @@ void describe('page activity content script', () => {
               rel: 'preload',
               tagName: 'LINK',
             },
+            {
+              currentSrc:
+                'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080',
+              src: '',
+              srcset:
+                'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=640 640w, https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080 1080w',
+              tagName: 'IMG',
+            },
           ],
           target: {},
         },
@@ -192,6 +200,18 @@ void describe('page activity content script', () => {
           addedNodes: [],
           attributeName: 'src',
           target: { src: 'https://cdn.example/changed.js', tagName: 'SCRIPT' },
+        },
+        {
+          addedNodes: [],
+          attributeName: 'srcset',
+          target: {
+            currentSrc:
+              'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
+            src: '',
+            srcset:
+              'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart 1080w',
+            tagName: 'IMG',
+          },
         },
       ]);
 
@@ -228,9 +248,23 @@ void describe('page activity content script', () => {
         },
         {
           action: 'openpathPageResourceCandidate',
+          kind: 'image',
+          pageUrl: 'https://allowed.example/app',
+          resourceUrl:
+            'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080',
+        },
+        {
+          action: 'openpathPageResourceCandidate',
           kind: 'script',
           pageUrl: 'https://allowed.example/app',
           resourceUrl: 'https://cdn.example/changed.js',
+        },
+        {
+          action: 'openpathPageResourceCandidate',
+          kind: 'image',
+          pageUrl: 'https://allowed.example/app',
+          resourceUrl:
+            'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
         },
       ]);
     } finally {

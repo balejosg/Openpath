@@ -99,6 +99,7 @@ export function buildPageResourceObserverScript(): string {
       fetch: false,
       xhrOpen: false,
       image: false,
+      imageSrcset: false,
       script: false,
       stylesheet: false,
       font: false,
@@ -169,6 +170,20 @@ export function buildPageResourceObserverScript(): string {
     if (typeof Request !== 'undefined' && input instanceof Request) return input.url;
     return '';
   };
+  const parseSrcset = (value) => {
+    if (typeof value !== 'string') return '';
+    const firstCandidate = value.split(',')[0];
+    if (!firstCandidate) return '';
+    return firstCandidate.trim().split(/\\s+/u)[0] || '';
+  };
+  const resolveImageUrl = (element, value) => {
+    if (element && typeof element.currentSrc === 'string' && element.currentSrc.length > 0) {
+      return element.currentSrc;
+    }
+    const direct = unwrapUrl(value);
+    if (direct) return direct;
+    return parseSrcset(value);
+  };
   const originalFetch = window.fetch;
   if (typeof originalFetch === 'function' && markPatched(window, '__openpathPageResourceObserverFetchPatched')) {
     window.fetch = function(input, init) {
@@ -211,7 +226,22 @@ export function buildPageResourceObserverScript(): string {
     if (relTokens.includes('stylesheet')) return 'stylesheet';
     return 'other';
   };
-  if (typeof HTMLImageElement !== 'undefined') patchUrlProperty(HTMLImageElement.prototype, 'src', 'image');
+  if (typeof HTMLImageElement !== 'undefined') {
+    patchUrlProperty(HTMLImageElement.prototype, 'src', 'image');
+    const imageSrcsetDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'srcset');
+    if (imageSrcsetDescriptor && typeof imageSrcsetDescriptor.set === 'function' && markPatched(HTMLImageElement.prototype, '__openpathPageResourceObserverPatched_srcset_image')) {
+      Object.defineProperty(HTMLImageElement.prototype, 'srcset', {
+        configurable: true,
+        enumerable: imageSrcsetDescriptor.enumerable,
+        get: imageSrcsetDescriptor.get,
+        set(value) {
+          notify(resolveImageUrl(this, value), 'image');
+          return imageSrcsetDescriptor.set.call(this, value);
+        }
+      });
+      recordPatch('imageSrcset');
+    }
+  }
   if (typeof HTMLScriptElement !== 'undefined') patchUrlProperty(HTMLScriptElement.prototype, 'src', 'script');
   if (typeof HTMLLinkElement !== 'undefined') {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
@@ -236,6 +266,8 @@ export function buildPageResourceObserverScript(): string {
       const tag = String(this.tagName || '').toLowerCase();
       const attr = String(name || '').toLowerCase();
       if (tag === 'img' && attr === 'src') notify(value, 'image');
+      if (tag === 'img' && attr === 'srcset') notify(resolveImageUrl(this, value), 'image');
+      if (tag === 'source' && attr === 'srcset') notify(parseSrcset(value), 'image');
       if (tag === 'script' && attr === 'src') notify(value, 'script');
       if (tag === 'link' && attr === 'href') notify(value, getLinkResourceKind(this));
       return originalSetAttribute.call(this, name, value);
@@ -251,14 +283,33 @@ function getDomResourceCandidate(node: unknown): {
 } | null {
   const element = node as {
     as?: unknown;
+    currentSrc?: unknown;
     href?: unknown;
     rel?: unknown;
     src?: unknown;
+    srcset?: unknown;
     tagName?: unknown;
   };
   const tagName = typeof element.tagName === 'string' ? element.tagName.toLowerCase() : '';
-  if (tagName === 'img' && typeof element.src === 'string' && element.src.length > 0) {
-    return { kind: 'image', url: element.src };
+  if (tagName === 'img') {
+    const imageUrl =
+      (typeof element.currentSrc === 'string' && element.currentSrc.length > 0
+        ? element.currentSrc
+        : undefined) ??
+      (typeof element.src === 'string' && element.src.length > 0 ? element.src : undefined) ??
+      (typeof element.srcset === 'string'
+        ? (element.srcset.split(',')[0]?.trim().split(/\s+/u)[0] ?? '')
+        : '');
+    if (imageUrl.length > 0) {
+      return { kind: 'image', url: imageUrl };
+    }
+  }
+
+  if (tagName === 'source' && typeof element.srcset === 'string' && element.srcset.length > 0) {
+    const imageUrl = element.srcset.split(',')[0]?.trim().split(/\s+/u)[0] ?? '';
+    if (imageUrl.length > 0) {
+      return { kind: 'image', url: imageUrl };
+    }
   }
 
   if (tagName === 'script' && typeof element.src === 'string' && element.src.length > 0) {
@@ -308,6 +359,7 @@ function installDomResourceObserver(
 
       if (
         record.attributeName === 'src' ||
+        record.attributeName === 'srcset' ||
         record.attributeName === 'href' ||
         record.attributeName === 'rel' ||
         record.attributeName === 'as'
@@ -318,7 +370,7 @@ function installDomResourceObserver(
   });
 
   observer.observe?.(runtimeGlobal.document, {
-    attributeFilter: ['src', 'href', 'rel', 'as'],
+    attributeFilter: ['src', 'srcset', 'href', 'rel', 'as'],
     attributes: true,
     childList: true,
     subtree: true,

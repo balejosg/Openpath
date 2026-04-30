@@ -148,6 +148,7 @@ void describe('page activity content script', () => {
         fetch: false,
         font: false,
         image: false,
+        imageSrcset: false,
         linkHref: false,
         script: false,
         setAttribute: false,
@@ -177,6 +178,7 @@ void describe('page activity content script', () => {
         fetch: true,
         font: false,
         image: false,
+        imageSrcset: false,
         linkHref: false,
         script: false,
         setAttribute: false,
@@ -629,7 +631,7 @@ void describe('page activity content script', () => {
       observe(target: unknown, options: unknown): void {
         assert.equal(target, runtimeGlobal.document);
         assert.deepEqual(options, {
-          attributeFilter: ['src', 'href', 'rel', 'as'],
+          attributeFilter: ['src', 'srcset', 'href', 'rel', 'as'],
           attributes: true,
           childList: true,
           subtree: true,
@@ -718,6 +720,98 @@ void describe('page activity content script', () => {
         kind: 'image',
         pageUrl: 'https://allowed.example/app',
         resourceUrl: 'https://cdn.example/changed.png',
+      },
+    ]);
+  });
+
+  void test('reports responsive reddit image candidates from srcset mutations', () => {
+    const sentMessages: unknown[] = [];
+    let mutationCallback:
+      | ((records: { addedNodes?: unknown[]; attributeName?: string; target?: unknown }[]) => void)
+      | undefined;
+    const runtime: PageActivityRuntime = {
+      sendMessage: (message): void => {
+        sentMessages.push(message);
+      },
+    };
+    class FakeMutationObserver {
+      constructor(
+        callback: (
+          records: { addedNodes?: unknown[]; attributeName?: string; target?: unknown }[]
+        ) => void
+      ) {
+        mutationCallback = callback;
+      }
+
+      observe(): void {
+        // Contract covered in the neighboring DOM observer test.
+      }
+    }
+    const runtimeGlobal = {
+      addEventListener(): void {
+        // No-op for this focused DOM observer assertion.
+      },
+      document: {
+        createElement(): { remove(): void; textContent: string } {
+          return {
+            textContent: '',
+            remove(): void {
+              // No-op.
+            },
+          };
+        },
+        documentElement: {
+          appendChild(): void {
+            // No-op.
+          },
+        },
+      },
+      location: { href: 'https://www.reddit.com/r/openpath/comments/demo' },
+      MutationObserver: FakeMutationObserver,
+      window: {},
+    };
+
+    installPageResourceObserver(runtime, runtimeGlobal);
+    mutationCallback?.([
+      {
+        addedNodes: [
+          {
+            currentSrc:
+              'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080',
+            src: '',
+            srcset:
+              'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=640 640w, https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080 1080w',
+            tagName: 'IMG',
+          },
+        ],
+      },
+      {
+        attributeName: 'srcset',
+        target: {
+          currentSrc:
+            'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
+          src: '',
+          srcset:
+            'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart 1080w',
+          tagName: 'IMG',
+        },
+      },
+    ]);
+
+    assert.deepEqual(sentMessages, [
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'image',
+        pageUrl: 'https://www.reddit.com/r/openpath/comments/demo',
+        resourceUrl:
+          'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080',
+      },
+      {
+        action: 'openpathPageResourceCandidate',
+        kind: 'image',
+        pageUrl: 'https://www.reddit.com/r/openpath/comments/demo',
+        resourceUrl:
+          'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
       },
     ]);
   });

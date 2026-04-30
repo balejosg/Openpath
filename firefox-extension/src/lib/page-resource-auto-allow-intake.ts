@@ -54,23 +54,40 @@ async function resolveAutoAllowOriginPage(
   return normalizeAutoAllowOriginCandidate(details.originUrl ?? details.documentUrl, details.url);
 }
 
-function resolveAutoAllowRequestType(details: {
-  documentUrl?: string;
-  originUrl?: string;
-  type?: WebRequest.ResourceType;
-  url: string;
-}): WebRequest.ResourceType | null {
-  const requestType =
-    details.type ??
-    (normalizeAutoAllowOriginCandidate(details.originUrl ?? details.documentUrl, details.url)
-      ? 'other'
-      : undefined);
+function resolveAutoAllowRequestType(
+  details: {
+    documentUrl?: string;
+    originUrl?: string;
+    tabId: number;
+    type?: WebRequest.ResourceType;
+    url: string;
+  },
+  adapters?: WebRequestIntakeAdapters
+): Promise<WebRequest.ResourceType | null> | WebRequest.ResourceType | null {
+  if (details.type) {
+    return isAutoAllowRequestType(details.type) ? details.type : null;
+  }
 
-  if (!requestType || !isAutoAllowRequestType(requestType)) {
+  const fallbackRequestType = normalizeAutoAllowOriginCandidate(
+    details.originUrl ?? details.documentUrl,
+    details.url
+  )
+    ? 'other'
+    : null;
+  if (fallbackRequestType) {
+    return fallbackRequestType;
+  }
+
+  if (!adapters || details.tabId < 0) {
     return null;
   }
 
-  return requestType;
+  return adapters
+    .getTabUrl(details.tabId)
+    .then((tabUrl) =>
+      normalizeAutoAllowOriginCandidate(tabUrl ?? undefined, details.url) ? 'other' : null
+    )
+    .catch(() => null);
 }
 
 export function isEligibleAutoAllowCandidate(candidate: PageResourceAutoAllowCandidate): boolean {
@@ -124,7 +141,7 @@ export async function buildAutoAllowCandidateFromWebRequest(
     };
   }
 
-  const requestType = resolveAutoAllowRequestType(details);
+  const requestType = await resolveAutoAllowRequestType(details, adapters);
   if (!requestType) {
     return { ok: false, error: 'request type is not eligible for page-resource auto-allow' };
   }

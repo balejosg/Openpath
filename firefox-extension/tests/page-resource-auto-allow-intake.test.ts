@@ -201,6 +201,28 @@ void describe('page resource auto-allow intake', () => {
     });
   });
 
+  void test('uses current reddit tab URL when Firefox omits origin and type for preview image requests', async () => {
+    const result = await buildAutoAllowCandidateFromWebRequest(
+      {
+        tabId: 27,
+        url: 'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
+      } as WebRequest.OnBeforeRequestDetailsType,
+      { getTabUrl: () => Promise.resolve('https://www.reddit.com/r/openpath/comments/demo') }
+    );
+
+    assert.deepEqual(result, {
+      ok: true,
+      candidate: {
+        tabId: 27,
+        hostname: 'preview.redd.it',
+        originPage: 'https://www.reddit.com/r/openpath/comments/demo',
+        requestType: 'other',
+        targetUrl:
+          'https://preview.redd.it/my-paprika-had-no-seeds-v0-0q7k5y7403yg1.jpeg?width=1080&crop=smart',
+      },
+    });
+  });
+
   void test('checks normalized candidate eligibility', () => {
     assert.equal(
       isEligibleAutoAllowCandidate({
