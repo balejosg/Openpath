@@ -203,6 +203,19 @@ function registerRateLimits(app: express.Express, runtimeConfig: Config): void {
     keyGenerator: (req) => req.ip ?? 'unknown',
     skip: () => rateLimitDisabled,
   });
+  const autoRequestLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: {
+      success: false,
+      error: 'Too many automatic domain requests, please try again later',
+      code: 'AUTO_REQUEST_RATE_LIMITED',
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip ?? 'unknown',
+    skip: () => rateLimitDisabled,
+  });
 
   app.use('/trpc/auth.login', authLimiter);
   app.use('/trpc/auth.register', authLimiter);
@@ -212,7 +225,7 @@ function registerRateLimits(app: express.Express, runtimeConfig: Config): void {
   app.use('/api/setup/first-admin', authLimiter);
 
   app.use('/trpc/requests.create', publicRequestLimiter);
-  app.use('/api/requests/auto', publicRequestLimiter);
+  app.use('/api/requests/auto', autoRequestLimiter);
   app.use('/api/requests/submit', publicRequestLimiter);
 }
 
