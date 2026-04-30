@@ -320,7 +320,10 @@ enumerate_firefox_activation_targets() {
                     continue
                     ;;
             esac
-            if [ "$user" != "root" ] && { ! [[ "$uid" =~ ^[0-9]+$ ]] || [ "$uid" -lt 1000 ]; }; then
+            if [ "$user" = "root" ]; then
+                continue
+            fi
+            if ! [[ "$uid" =~ ^[0-9]+$ ]] || [ "$uid" -lt 1000 ]; then
                 continue
             fi
             profile_dir="$(ensure_firefox_activation_profile "$user" "$home_dir")" || return 1
