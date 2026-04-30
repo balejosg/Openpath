@@ -718,6 +718,9 @@ async function runBlockedSubdomainScenarios(
   );
 
   await client.deleteGroupRule(rule.id, driver.scenario.groups.restricted.id);
+  await driver.forceLocalUpdate();
+  await driver.refreshBlockedSubdomainRules();
+  await driver.restart();
   await settlePolicyChange(
     driver,
     mode,

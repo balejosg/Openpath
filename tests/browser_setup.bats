@@ -1205,6 +1205,49 @@ EOF
     [ -f "$alice_home/.mozilla/firefox/openpath.default/extensions.json" ]
 }
 
+@test "openpath-browser-setup does not create fallback profiles for system users" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local ready_file="$TEST_TMP_DIR/state/firefox-extension-ready"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local daemon_home="$TEST_TMP_DIR/usr/sbin"
+    local alice_home="$TEST_TMP_DIR/home/alice"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir" "$daemon_home" "$alice_home"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    printf 'daemon:x:1:1::%s:/usr/sbin/nologin\nalice:x:1001:1001::%s:/bin/bash\n' "$daemon_home" "$alice_home" > "$passwd_file"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/root-home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
+        OPENPATH_FAKE_FIREFOX_MODE="success" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        FIREFOX_EXTENSION_READY_FILE="$ready_file" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 0 ]
+    [ ! -e "$daemon_home/.mozilla/firefox/openpath.default/extensions.json" ]
+    [ -f "$alice_home/.mozilla/firefox/openpath.default/extensions.json" ]
+    grep -F 'target_count=1' "$ready_file"
+}
+
 @test "openpath-browser-setup profile overrides limit verification to one target" {
     local fake_install="$TEST_TMP_DIR/install"
     local fake_scripts="$TEST_TMP_DIR/scripts"

@@ -280,7 +280,9 @@ PY
 enumerate_firefox_activation_targets() {
     local passwd_file="${OPENPATH_PASSWD_FILE:-/etc/passwd}"
     local user=""
+    local uid=""
     local home_dir=""
+    local shell=""
     local firefox_root=""
     local profile_dir=""
     local found_profile=false
@@ -296,7 +298,7 @@ enumerate_firefox_activation_targets() {
     fi
 
     [ -r "$passwd_file" ] || return 1
-    while IFS=: read -r user _ _ _ _ home_dir _; do
+    while IFS=: read -r user _ uid _ _ home_dir shell; do
         [ -n "$user" ] || continue
         [ -n "$home_dir" ] || continue
         [ -d "$home_dir" ] || continue
@@ -313,6 +315,14 @@ enumerate_firefox_activation_targets() {
         done
 
         if [ "$found_profile" = false ]; then
+            case "$shell" in
+                */nologin|*/false)
+                    continue
+                    ;;
+            esac
+            if [ "$user" != "root" ] && { ! [[ "$uid" =~ ^[0-9]+$ ]] || [ "$uid" -lt 1000 ]; }; then
+                continue
+            fi
             profile_dir="$(ensure_firefox_activation_profile "$user" "$home_dir")" || return 1
             printf '%s\t%s\t%s\n' "$user" "$home_dir" "$profile_dir"
         fi
