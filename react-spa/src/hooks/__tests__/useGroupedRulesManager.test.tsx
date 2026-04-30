@@ -18,6 +18,9 @@ vi.mock('../../lib/trpc', () => ({
       deleteRule: {
         mutate: vi.fn(),
       },
+      revokeAutoApproval: {
+        mutate: vi.fn(),
+      },
       updateRule: {
         mutate: vi.fn(),
       },
@@ -321,6 +324,118 @@ describe('useGroupedRulesManager', () => {
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
       });
+    });
+
+    it('should pass automatic source filter to grouped API query', async () => {
+      const { result } = renderHook(() =>
+        useGroupedRulesManager({
+          groupId: 'test-group',
+          onToast: mockToast,
+        })
+      );
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      act(() => {
+        result.current.setFilter('automatic');
+      });
+
+      const queryMock = vi.mocked(trpc.groups.listRulesGrouped.query);
+
+      await waitFor(() => {
+        expect(queryMock).toHaveBeenCalledTimes(2);
+      });
+
+      expect(queryMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: 'whitelist',
+          source: 'auto_extension',
+        })
+      );
+    });
+
+    it('groups blocked subdomain and path rules locally with search filtering', async () => {
+      vi.mocked(trpc.groups.listRules.query).mockImplementation(async (input) => {
+        if (input?.type === 'blocked_subdomain') {
+          return [
+            {
+              id: 'blocked-1',
+              groupId: 'g1',
+              type: 'blocked_subdomain',
+              source: 'manual',
+              value: 'z-search.example.com',
+              comment: null,
+              createdAt: '2024-01-01',
+            },
+            {
+              id: 'blocked-2',
+              groupId: 'g1',
+              type: 'blocked_subdomain',
+              source: 'manual',
+              value: 'a-search.example.com',
+              comment: null,
+              createdAt: '2024-01-01',
+            },
+          ];
+        }
+        if (input?.type === 'blocked_path') {
+          return [
+            {
+              id: 'path-1',
+              groupId: 'g1',
+              type: 'blocked_path',
+              source: 'manual',
+              value: 'example.com/search-track',
+              comment: null,
+              createdAt: '2024-01-01',
+            },
+            {
+              id: 'path-2',
+              groupId: 'g1',
+              type: 'blocked_path',
+              source: 'manual',
+              value: 'other.test/ads',
+              comment: null,
+              createdAt: '2024-01-01',
+            },
+          ];
+        }
+        return [];
+      });
+
+      const { result } = renderHook(() =>
+        useGroupedRulesManager({
+          groupId: 'test-group',
+          onToast: mockToast,
+        })
+      );
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      act(() => {
+        result.current.setSearch('search');
+        result.current.setFilter('blocked');
+      });
+
+      await waitFor(() => {
+        expect(result.current.domainGroups).toHaveLength(1);
+      });
+
+      expect(result.current.domainGroups[0]).toMatchObject({
+        root: 'example.com',
+        status: 'blocked',
+      });
+      expect(result.current.domainGroups[0].rules.map((rule) => rule.value)).toEqual([
+        'a-search.example.com',
+        'example.com/search-track',
+        'z-search.example.com',
+      ]);
+      expect(result.current.totalGroups).toBe(1);
+      expect(result.current.totalRules).toBe(3);
     });
   });
 

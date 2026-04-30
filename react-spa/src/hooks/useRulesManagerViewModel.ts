@@ -186,9 +186,11 @@ export function useRulesManagerViewModel({
     ? 'No se encontraron resultados para tu búsqueda'
     : manager.filter === 'allowed'
       ? 'No hay dominios permitidos'
-      : manager.filter === 'blocked'
-        ? 'No hay dominios bloqueados'
-        : 'No hay reglas configuradas. Añade una para empezar.';
+      : manager.filter === 'automatic'
+        ? 'No hay aprobaciones automáticas'
+        : manager.filter === 'blocked'
+          ? 'No hay dominios bloqueados'
+          : 'No hay reglas configuradas. Añade una para empezar.';
 
   const tabs = [
     { id: 'all' as FilterType, label: 'Todos', count: manager.counts.all },
@@ -196,6 +198,12 @@ export function useRulesManagerViewModel({
       id: 'allowed' as FilterType,
       label: 'Permitidas',
       count: manager.counts.allowed,
+      icon: createElement(Check, { size: 14 }),
+    },
+    {
+      id: 'automatic' as FilterType,
+      label: 'Automáticas',
+      count: manager.counts.automatic,
       icon: createElement(Check, { size: 14 }),
     },
     {

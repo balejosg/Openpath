@@ -110,6 +110,75 @@ export async function deleteRule(
   return { ok: true, data: { deleted } };
 }
 
+export async function revokeAutoApproval(
+  input: { id: string; groupId: string; resolvedBy: string },
+  deps: GroupsRulesDependencies = defaultRulesDependencies
+): Promise<GroupsResult<{ revoked: boolean; blockedRuleId: string | null }>> {
+  const rule = await deps.getRuleById(input.id);
+  if (rule?.groupId !== input.groupId) {
+    return { ok: false, error: { code: 'NOT_FOUND', message: 'Rule not found' } };
+  }
+
+  if (rule.type !== 'whitelist' || rule.source !== 'auto_extension') {
+    return {
+      ok: false,
+      error: {
+        code: 'BAD_REQUEST',
+        message: 'Only automatic whitelist approvals can be revoked this way',
+      },
+    };
+  }
+
+  const comment = `Revoked automatic approval by ${input.resolvedBy}`;
+  const dispatcher = DomainEventsService.createDispatcher({
+    publishWhitelistChanged: deps.publishWhitelistChanged,
+  });
+
+  try {
+    const result = await DomainEventsService.withDbTransactionEvents<{
+      blockedRuleId: string | null;
+      revoked: boolean;
+    }>(
+      deps.withTransaction,
+      async (tx, events) => {
+        const deleted = await deps.deleteRule(rule.id, tx);
+        const created = await deps.createRule(
+          rule.groupId,
+          'blocked_subdomain',
+          rule.value,
+          comment,
+          'manual',
+          tx
+        );
+
+        if (!created.success && created.error !== 'Rule already exists') {
+          throw new Error(created.error ?? 'Failed to create blocking rule');
+        }
+
+        if (deleted || created.success) {
+          events.publishWhitelistChanged(rule.groupId);
+        }
+
+        return {
+          blockedRuleId: created.id ?? null,
+          revoked: deleted,
+        };
+      },
+      dispatcher
+    );
+
+    return { ok: true, data: result };
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        code: 'BAD_REQUEST',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
 export async function bulkDeleteRules(
   ids: string[],
   options?: { rules?: Rule[] },

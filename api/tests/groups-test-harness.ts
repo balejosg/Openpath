@@ -25,6 +25,7 @@ export interface Rule {
   id: string;
   groupId: string;
   type: string;
+  source: string;
   value: string;
   comment: string | null;
   createdAt: string;

@@ -9,6 +9,7 @@ import {
   uniqueGroupName,
 } from './groups-test-harness.js';
 import { assertStatus, bearerAuth, parseTRPC, TEST_RUN_ID } from './test-utils.js';
+import { createRule as createStoredRule } from '../src/lib/groups-storage.js';
 
 let harness: Awaited<ReturnType<typeof startGroupsTestHarness>> | undefined;
 
@@ -149,6 +150,128 @@ await describe(
 
         const { data } = (await parseTRPC(response)) as { data?: { deleted: boolean } };
         assert.strictEqual(data?.deleted, true);
+      });
+
+      await test('should list, paginate, group, and revoke automatic approvals by source', async () => {
+        const group = await getHarness().createGroup({
+          displayName: 'Automatic Approval Rule Test Group',
+          name: uniqueGroupName('auto-rule-test'),
+        });
+
+        const autoResult = await createStoredRule(
+          group.id,
+          'whitelist',
+          'cdn.auto.example.com',
+          'Automatically approved by extension',
+          'auto_extension'
+        );
+        assert.strictEqual(autoResult.success, true);
+        assert.ok(autoResult.id);
+
+        const manualResult = await createStoredRule(
+          group.id,
+          'whitelist',
+          'manual.example.com',
+          null,
+          'manual'
+        );
+        assert.strictEqual(manualResult.success, true);
+
+        const listResp = await getHarness().trpcQuery(
+          'groups.listRules',
+          {
+            groupId: group.id,
+            type: 'whitelist',
+            source: 'auto_extension',
+          },
+          bearerAuth(getHarness().adminToken)
+        );
+        assertStatus(listResp, 200);
+        const { data: autoRules } = (await parseTRPC(listResp)) as { data?: Rule[] };
+        assert.strictEqual(autoRules?.length, 1);
+        assert.strictEqual(autoRules?.[0]?.id, autoResult.id);
+        assert.strictEqual(autoRules?.[0]?.source, 'auto_extension');
+
+        const paginatedResp = await getHarness().trpcQuery(
+          'groups.listRulesPaginated',
+          {
+            groupId: group.id,
+            type: 'whitelist',
+            source: 'auto_extension',
+            limit: 20,
+            offset: 0,
+          },
+          bearerAuth(getHarness().adminToken)
+        );
+        assertStatus(paginatedResp, 200);
+        const { data: paginated } = (await parseTRPC(paginatedResp)) as {
+          data?: { rules: Rule[]; total: number };
+        };
+        assert.strictEqual(paginated?.total, 1);
+        assert.strictEqual(paginated?.rules[0]?.value, 'cdn.auto.example.com');
+
+        const groupedResp = await getHarness().trpcQuery(
+          'groups.listRulesGrouped',
+          {
+            groupId: group.id,
+            type: 'whitelist',
+            source: 'auto_extension',
+            limit: 20,
+            offset: 0,
+          },
+          bearerAuth(getHarness().adminToken)
+        );
+        assertStatus(groupedResp, 200);
+        const { data: grouped } = (await parseTRPC(groupedResp)) as {
+          data?: { groups: { root: string; rules: Rule[] }[]; totalRules: number };
+        };
+        assert.strictEqual(grouped?.totalRules, 1);
+        assert.strictEqual(grouped?.groups[0]?.rules[0]?.source, 'auto_extension');
+
+        const teacher = await getHarness().createTeacherSession([group.id]);
+        const revokeResp = await getHarness().trpcMutate(
+          'groups.revokeAutoApproval',
+          {
+            id: autoResult.id,
+            groupId: group.id,
+          },
+          bearerAuth(teacher.accessToken)
+        );
+        assertStatus(revokeResp, 200);
+        const { data: revokeData } = (await parseTRPC(revokeResp)) as {
+          data?: { revoked: boolean; blockedRuleId: string | null };
+        };
+        assert.strictEqual(revokeData?.revoked, true);
+        assert.ok(revokeData?.blockedRuleId);
+
+        const remainingAutoResp = await getHarness().trpcQuery(
+          'groups.listRules',
+          {
+            groupId: group.id,
+            type: 'whitelist',
+            source: 'auto_extension',
+          },
+          bearerAuth(getHarness().adminToken)
+        );
+        assertStatus(remainingAutoResp, 200);
+        const { data: remainingAutoRules } = (await parseTRPC(remainingAutoResp)) as {
+          data?: Rule[];
+        };
+        assert.deepStrictEqual(remainingAutoRules, []);
+
+        const blockedResp = await getHarness().trpcQuery(
+          'groups.listRules',
+          {
+            groupId: group.id,
+            type: 'blocked_subdomain',
+          },
+          bearerAuth(getHarness().adminToken)
+        );
+        assertStatus(blockedResp, 200);
+        const { data: blockedRules } = (await parseTRPC(blockedResp)) as { data?: Rule[] };
+        assert.strictEqual(blockedRules?.length, 1);
+        assert.strictEqual(blockedRules?.[0]?.value, 'cdn.auto.example.com');
+        assert.match(blockedRules?.[0]?.comment ?? '', /Revoked automatic approval by/);
       });
     });
 

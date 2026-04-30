@@ -40,6 +40,9 @@ vi.mock('../../lib/trpc', () => ({
       deleteRule: {
         mutate: vi.fn().mockResolvedValue({ deleted: true }),
       },
+      revokeAutoApproval: {
+        mutate: vi.fn().mockResolvedValue({ revoked: true, blockedRuleId: 'blocked-rule' }),
+      },
       updateRule: {
         mutate: vi.fn().mockResolvedValue({
           id: '1',
@@ -122,6 +125,131 @@ describe('useRulesManager Hook', () => {
       expect(result.current.loading).toBe(false);
       expect(result.current.filter).toBe('allowed');
     });
+  });
+
+  it('passes automatic source filter to the paginated API and counts automatic approvals', async () => {
+    vi.mocked(trpc.groups.listRules.query)
+      .mockResolvedValueOnce([
+        {
+          id: 'w1',
+          groupId: 'test-group',
+          type: 'whitelist',
+          source: 'manual',
+          value: 'a.com',
+          comment: null,
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'a1',
+          groupId: 'test-group',
+          type: 'whitelist',
+          source: 'auto_extension',
+          value: 'cdn.a.com',
+          comment: null,
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const { result } = renderHook(() => useRulesManager(defaultOptions));
+    const queryMock = vi.mocked(trpc.groups.listRulesPaginated.query);
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setFilter('automatic');
+    });
+
+    await waitFor(() => {
+      expect(queryMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(queryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'whitelist',
+        source: 'auto_extension',
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.counts.automatic).toBe(1);
+    });
+  });
+
+  it('builds blocked tab from subdomain and path rules with search and pagination', async () => {
+    vi.mocked(trpc.groups.listRules.query).mockImplementation(async (input) => {
+      if (input?.type === 'blocked_subdomain') {
+        return [
+          {
+            id: 'blocked-2',
+            groupId: 'test-group',
+            type: 'blocked_subdomain',
+            source: 'manual',
+            value: 'z-search.example.com',
+            comment: null,
+            createdAt: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 'blocked-1',
+            groupId: 'test-group',
+            type: 'blocked_subdomain',
+            source: 'manual',
+            value: 'a-search.example.com',
+            comment: null,
+            createdAt: '2024-01-01T00:00:00Z',
+          },
+        ];
+      }
+      if (input?.type === 'blocked_path') {
+        return [
+          {
+            id: 'path-1',
+            groupId: 'test-group',
+            type: 'blocked_path',
+            source: 'manual',
+            value: 'example.com/search-track',
+            comment: null,
+            createdAt: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 'path-2',
+            groupId: 'test-group',
+            type: 'blocked_path',
+            source: 'manual',
+            value: 'example.com/other',
+            comment: null,
+            createdAt: '2024-01-01T00:00:00Z',
+          },
+        ];
+      }
+      return [];
+    });
+
+    const { result } = renderHook(() => useRulesManager(defaultOptions));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setSearch('search');
+      result.current.setFilter('blocked');
+    });
+
+    await waitFor(() => {
+      expect(result.current.rules.map((rule) => rule.value)).toEqual([
+        'a-search.example.com',
+        'example.com/search-track',
+        'z-search.example.com',
+      ]);
+    });
+    expect(result.current.total).toBe(3);
+    expect(result.current.totalPages).toBe(1);
   });
 
   it('provides search state and setter', async () => {

@@ -5,19 +5,24 @@ import type {
   PaginatedGroupedRulesResult,
   PaginatedRulesResult,
   Rule,
+  RuleSource,
   RuleType,
 } from '../lib/groups-storage.js';
 
 import type { GroupsResult } from './groups-service-shared.js';
 import { ensureGroupExists } from './groups-rules-shared.js';
 
-export async function listRules(groupId: string, type?: RuleType): Promise<GroupsResult<Rule[]>> {
+export async function listRules(
+  groupId: string,
+  type?: RuleType,
+  source?: RuleSource
+): Promise<GroupsResult<Rule[]>> {
   const group = await ensureGroupExists(groupId);
   if (!group.ok) {
     return group;
   }
 
-  const rules = await groupsStorage.getRulesByGroup(groupId, type);
+  const rules = await groupsStorage.getRulesByGroup(groupId, type, source);
   return { ok: true, data: rules };
 }
 

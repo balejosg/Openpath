@@ -4,19 +4,24 @@ import {
   type DomainGroup,
   type ListRulesGroupedOptions,
   type PaginatedGroupedRulesResult,
+  type RuleSource,
 } from './groups-storage-shared.js';
 import { listRuleRowsByGroup } from './groups-storage-rules-shared.js';
+
+function filterRulesBySource<T extends { source: string }>(rules: T[], source?: RuleSource): T[] {
+  return source ? rules.filter((rule) => rule.source === source) : rules;
+}
 
 export async function getRulesByGroupGrouped(
   options: ListRulesGroupedOptions
 ): Promise<PaginatedGroupedRulesResult> {
-  const { groupId, type, limit = 20, offset = 0, search } = options;
+  const { groupId, type, source, limit = 20, offset = 0, search } = options;
   const rules = await listRuleRowsByGroup(groupId, type);
 
-  let filtered = rules;
+  let filtered = filterRulesBySource(rules, source);
   if (search?.trim()) {
     const searchLower = search.toLowerCase().trim();
-    filtered = rules.filter((rule) => rule.value.toLowerCase().includes(searchLower));
+    filtered = filtered.filter((rule) => rule.value.toLowerCase().includes(searchLower));
   }
 
   const groupedMap = new Map<string, typeof filtered>();

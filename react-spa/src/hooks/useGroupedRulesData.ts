@@ -19,7 +19,7 @@ interface UseGroupedRulesDataOptions {
 }
 
 export interface UseGroupedRulesDataResult {
-  counts: { all: number; allowed: number; blocked: number };
+  counts: { all: number; allowed: number; automatic: number; blocked: number };
   domainGroups: DomainGroup[];
   error: string | null;
   loading: boolean;
@@ -40,7 +40,7 @@ export function useGroupedRulesData({
   const [totalRules, setTotalRules] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState({ all: 0, allowed: 0, blocked: 0 });
+  const [counts, setCounts] = useState({ all: 0, allowed: 0, automatic: 0, blocked: 0 });
 
   const fetchSeqRef = useRef(createLatestGuard());
 
@@ -98,7 +98,8 @@ export function useGroupedRulesData({
       } else {
         const result = await trpc.groups.listRulesGrouped.query({
           groupId,
-          type: filter === 'allowed' ? 'whitelist' : undefined,
+          type: filter === 'allowed' || filter === 'automatic' ? 'whitelist' : undefined,
+          source: filter === 'automatic' ? 'auto_extension' : undefined,
           limit: PAGE_SIZE,
           offset: (page - 1) * PAGE_SIZE,
           search: search.trim() || undefined,
@@ -129,8 +130,13 @@ export function useGroupedRulesData({
     if (!groupId) return;
 
     try {
-      const [whitelist, subdomains, paths] = await Promise.all([
+      const [whitelist, autoApproved, subdomains, paths] = await Promise.all([
         trpc.groups.listRules.query({ groupId, type: 'whitelist' }),
+        trpc.groups.listRules.query({
+          groupId,
+          type: 'whitelist',
+          source: 'auto_extension',
+        }),
         trpc.groups.listRules.query({ groupId, type: 'blocked_subdomain' }),
         trpc.groups.listRules.query({ groupId, type: 'blocked_path' }),
       ]);
@@ -141,6 +147,7 @@ export function useGroupedRulesData({
       setCounts({
         all: allowed + blocked,
         allowed,
+        automatic: autoApproved.length,
         blocked,
       });
     } catch (err) {

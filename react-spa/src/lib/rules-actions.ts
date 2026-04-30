@@ -205,6 +205,28 @@ export async function deleteRuleWithUndoAction(
   }
 }
 
+export async function revokeAutoApprovalAction(
+  rule: RuleForUndo,
+  params: DeleteRuleParams
+): Promise<void> {
+  try {
+    const confirmed =
+      typeof window === 'undefined' ||
+      window.confirm(
+        `Revocar la aprobación automática de "${rule.value}" bloqueará este dominio para que no vuelva a autoaprobarse.`
+      );
+    if (!confirmed) return;
+
+    await trpc.groups.revokeAutoApproval.mutate({ id: rule.id, groupId: rule.groupId });
+    params.onToast(`"${rule.value}" bloqueado tras revocar la aprobación automática`, 'success');
+    await params.fetchRules();
+    await params.fetchCounts();
+  } catch (err) {
+    reportError('Failed to revoke automatic approval:', err);
+    params.onToast('Error al revocar aprobación automática', 'error');
+  }
+}
+
 export async function bulkDeleteRulesWithUndoAction(params: BulkDeleteRulesParams): Promise<void> {
   if (params.ids.length === 0) return;
 

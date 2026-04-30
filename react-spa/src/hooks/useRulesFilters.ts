@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type RulesFilterType = 'all' | 'allowed' | 'blocked';
+export type RulesFilterType = 'all' | 'allowed' | 'automatic' | 'blocked';
 
 interface UseRulesFiltersOptions {
   initialFilter?: RulesFilterType;

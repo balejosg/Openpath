@@ -6,6 +6,7 @@ import {
   createRule,
   deleteRule,
   getRulesByIds,
+  revokeAutoApproval,
 } from '../src/services/groups-rules.service.js';
 
 async function runWithFakeTx<T>(callback: (tx: never) => Promise<T>): Promise<T> {
@@ -134,5 +135,97 @@ await describe('groups rules service', async () => {
       data: { deleted: true },
     });
     assert.deepEqual(publishedGroups, ['group-a']);
+  });
+
+  await test('revokes an automatic approval by replacing it with an explicit block', async () => {
+    const publishedGroups: string[] = [];
+    const deletedRuleIds: string[] = [];
+    const createdRules: {
+      groupId: string;
+      type: string;
+      value: string;
+      comment: string | null | undefined;
+      source: string | undefined;
+    }[] = [];
+
+    const result = await revokeAutoApproval(
+      { id: 'rule-auto-1', groupId: 'group-a', resolvedBy: 'teacher@example.com' },
+      {
+        bulkDeleteRules: () => Promise.resolve(0),
+        createRule: (groupId, type, value, comment, source) => {
+          createdRules.push({ groupId, type, value, comment, source });
+          return Promise.resolve({ success: true, id: 'blocked-rule-1' });
+        },
+        deleteRule: (id) => {
+          deletedRuleIds.push(id);
+          return Promise.resolve(true);
+        },
+        getGroupById: () => Promise.resolve(null),
+        getRuleById: () =>
+          Promise.resolve({
+            id: 'rule-auto-1',
+            groupId: 'group-a',
+            type: 'whitelist',
+            value: 'cdn.example.com',
+            source: 'auto_extension',
+            comment: null,
+            createdAt: '',
+          }),
+        getRulesByIds: () => Promise.resolve([]),
+        publishWhitelistChanged: (groupId: string) => {
+          publishedGroups.push(groupId);
+        },
+        withTransaction: runWithFakeTx,
+      }
+    );
+
+    assert.deepEqual(result, {
+      ok: true,
+      data: { revoked: true, blockedRuleId: 'blocked-rule-1' },
+    });
+    assert.deepEqual(deletedRuleIds, ['rule-auto-1']);
+    assert.deepEqual(createdRules, [
+      {
+        groupId: 'group-a',
+        type: 'blocked_subdomain',
+        value: 'cdn.example.com',
+        comment: 'Revoked automatic approval by teacher@example.com',
+        source: 'manual',
+      },
+    ]);
+    assert.deepEqual(publishedGroups, ['group-a']);
+  });
+
+  await test('does not revoke manual whitelist rules as automatic approvals', async () => {
+    const result = await revokeAutoApproval(
+      { id: 'rule-manual-1', groupId: 'group-a', resolvedBy: 'teacher@example.com' },
+      {
+        bulkDeleteRules: () => Promise.resolve(0),
+        createRule: () => Promise.resolve({ success: true, id: 'blocked-rule-1' }),
+        deleteRule: () => Promise.resolve(true),
+        getGroupById: () => Promise.resolve(null),
+        getRuleById: () =>
+          Promise.resolve({
+            id: 'rule-manual-1',
+            groupId: 'group-a',
+            type: 'whitelist',
+            value: 'cdn.example.com',
+            source: 'manual',
+            comment: null,
+            createdAt: '',
+          }),
+        getRulesByIds: () => Promise.resolve([]),
+        publishWhitelistChanged: () => undefined,
+        withTransaction: runWithFakeTx,
+      }
+    );
+
+    assert.deepEqual(result, {
+      ok: false,
+      error: {
+        code: 'BAD_REQUEST',
+        message: 'Only automatic whitelist approvals can be revoked this way',
+      },
+    });
   });
 });

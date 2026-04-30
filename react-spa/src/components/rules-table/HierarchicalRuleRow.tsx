@@ -150,7 +150,11 @@ export const HierarchicalRuleRow: React.FC<HierarchicalRuleRowProps> = ({
                   onDelete(rule);
                 }}
                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                title="Eliminar"
+                title={
+                  rule.type === 'whitelist' && rule.source === 'auto_extension'
+                    ? 'Revocar autoaprobación'
+                    : 'Eliminar'
+                }
               >
                 <Trash2 size={14} />
               </button>

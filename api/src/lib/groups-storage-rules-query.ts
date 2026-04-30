@@ -6,22 +6,33 @@ import {
   type ListRulesOptions,
   type PaginatedRulesResult,
   type Rule,
+  type RuleSource,
   type RuleType,
 } from './groups-storage-shared.js';
 import { listRuleRowsByGroup } from './groups-storage-rules-shared.js';
 
-export async function getRulesByGroup(groupId: string, type?: RuleType): Promise<Rule[]> {
+function filterRulesBySource<T extends { source: string }>(rules: T[], source?: RuleSource): T[] {
+  return source ? rules.filter((rule) => rule.source === source) : rules;
+}
+
+export async function getRulesByGroup(
+  groupId: string,
+  type?: RuleType,
+  source?: RuleSource
+): Promise<Rule[]> {
   const rules = await listRuleRowsByGroup(groupId, type);
-  return rules.map(dbRuleToApi).sort((left, right) => left.value.localeCompare(right.value));
+  return filterRulesBySource(rules, source)
+    .map(dbRuleToApi)
+    .sort((left, right) => left.value.localeCompare(right.value));
 }
 
 export async function getRulesByGroupPaginated(
   options: ListRulesOptions
 ): Promise<PaginatedRulesResult> {
-  const { groupId, type, limit = 50, offset = 0, search } = options;
+  const { groupId, type, source, limit = 50, offset = 0, search } = options;
   const rules = await listRuleRowsByGroup(groupId, type);
 
-  let filtered = rules;
+  let filtered = filterRulesBySource(rules, source);
   if (search?.trim()) {
     const searchLower = search.toLowerCase().trim();
     filtered = rules.filter((rule) => rule.value.toLowerCase().includes(searchLower));

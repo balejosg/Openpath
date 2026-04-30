@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { validateRuleValue } from '@openpath/shared/rules-validation';
 
 export const RuleTypeSchema = z.enum(['whitelist', 'blocked_subdomain', 'blocked_path']);
+export const RuleSourceSchema = z.enum(['manual', 'auto_extension']);
 export const GroupVisibilitySchema = z.enum(['private', 'instance_public']);
 
 export const CreateGroupSchema = z.object({
@@ -25,11 +26,13 @@ export const UpdateGroupSchema = z.object({
 export const ListRulesSchema = z.object({
   groupId: z.string().min(1),
   type: RuleTypeSchema.optional(),
+  source: RuleSourceSchema.optional(),
 });
 
 export const ListRulesPaginatedSchema = z.object({
   groupId: z.string().min(1),
   type: RuleTypeSchema.optional(),
+  source: RuleSourceSchema.optional(),
   limit: z.number().min(1).max(100).optional().default(50),
   offset: z.number().min(0).optional().default(0),
   search: z.string().optional(),
@@ -38,6 +41,7 @@ export const ListRulesPaginatedSchema = z.object({
 export const ListRulesGroupedSchema = z.object({
   groupId: z.string().min(1),
   type: RuleTypeSchema.optional(),
+  source: RuleSourceSchema.optional(),
   limit: z.number().min(1).max(50).optional().default(20),
   offset: z.number().min(0).optional().default(0),
   search: z.string().optional(),
@@ -53,6 +57,11 @@ export const UpdateRuleSchema = z.object({
 export const DeleteRuleSchema = z.object({
   id: z.string().min(1),
   groupId: z.string().optional(),
+});
+
+export const RevokeAutoApprovalSchema = z.object({
+  id: z.string().min(1),
+  groupId: z.string().min(1),
 });
 
 export const CreateRuleSchema = z

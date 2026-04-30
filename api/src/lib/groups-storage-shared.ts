@@ -74,6 +74,7 @@ export interface SystemStatus {
 export interface ListRulesOptions {
   groupId: string;
   type?: RuleType | undefined;
+  source?: RuleSource | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   search?: string | undefined;
@@ -97,6 +98,7 @@ export interface DomainGroup {
 export interface ListRulesGroupedOptions {
   groupId: string;
   type?: RuleType | undefined;
+  source?: RuleSource | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   search?: string | undefined;
