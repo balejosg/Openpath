@@ -178,6 +178,31 @@ install_firefox_esr() {
 #!/bin/bash
 profile_root="\${HOME:-}/.mozilla/firefox/openpath-test.default"
 explicit_profile=0
+selected_install_profile=""
+profiles_ini_path="\${HOME:-}/.mozilla/firefox/profiles.ini"
+if [ -f "\$profiles_ini_path" ]; then
+    selected_install_profile="\$(python3 - "\$profiles_ini_path" <<'PY' 2>/dev/null || true
+import configparser
+import sys
+from pathlib import Path
+
+profiles_ini = Path(sys.argv[1])
+parser = configparser.RawConfigParser()
+parser.read(profiles_ini, encoding="utf-8")
+
+for section in parser.sections():
+    if not section.startswith("Install"):
+        continue
+    default = parser.get(section, "Default", fallback="").strip()
+    locked = parser.get(section, "Locked", fallback="").strip()
+    if default and locked == "1":
+        print((profiles_ini.parent / default).resolve())
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+)"
+fi
 while [ "\$#" -gt 0 ]; do
     case "\$1" in
         --profile|-profile|--Profile|-Profile)
@@ -191,6 +216,9 @@ while [ "\$#" -gt 0 ]; do
     esac
     shift
 done
+if [ "\$explicit_profile" -eq 0 ] && [ -n "\$selected_install_profile" ]; then
+    profile_root="\$selected_install_profile"
+fi
 mkdir -p "\$profile_root"
 count_file="\${HOME:-}/.mozilla/firefox/openpath-test-run-count"
 mkdir -p "\$(dirname "\$count_file")"
@@ -226,6 +254,13 @@ JSON
         ;;
     requires-profile-registration)
         if [ "\$explicit_profile" -eq 1 ]; then
+            cat > "\$profile_root/extensions.json" <<'JSON'
+{"addons":[{"id":"monitor-bloqueos@openpath","rootURI":"moz-extension://openpath-test-uuid/"}]}
+JSON
+        fi
+        ;;
+    install-profile-registration)
+        if [ -n "\$selected_install_profile" ] && [ "\$profile_root" = "\$selected_install_profile" ]; then
             cat > "\$profile_root/extensions.json" <<'JSON'
 {"addons":[{"id":"monitor-bloqueos@openpath","rootURI":"moz-extension://openpath-test-uuid/"}]}
 JSON
@@ -649,6 +684,61 @@ JSON
     [ "$status" -eq 0 ]
     [[ "$output" == *"Firefox browser setup is ready"* ]]
     [ -f "$expected_profile/extensions.json" ]
+}
+
+@test "openpath-browser-setup follows Firefox install default profile instead of forcing openpath.default" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local firefox_home="$TEST_TMP_DIR/home"
+    local firefox_root="$firefox_home/.mozilla/firefox"
+    local install_profile="$firefox_root/default-release"
+    local openpath_profile="$firefox_root/openpath.default"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir" "$firefox_root"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    cat > "$firefox_root/profiles.ini" <<'EOF'
+[General]
+StartWithLastProfile=1
+Version=2
+
+[Profile0]
+Name=default-release
+IsRelative=1
+Path=default-release
+
+[InstallTESTHASH]
+Default=default-release
+Locked=1
+EOF
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$firefox_home" \
+        OPENPATH_FAKE_FIREFOX_MODE="install-profile-registration" \
+        OPENPATH_FIREFOX_PROFILE_HOME="$firefox_home" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Firefox browser setup is ready"* ]]
+    [ -f "$install_profile/extensions.json" ]
+    [ ! -f "$openpath_profile/extensions.json" ]
 }
 
 @test "openpath-browser-setup retries firefox activation while waiting for managed extension registration" {

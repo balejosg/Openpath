@@ -205,6 +205,19 @@ profiles_ini = Path(sys.argv[2])
 parser = configparser.RawConfigParser()
 parser.read(profiles_ini, encoding="utf-8")
 
+def resolve_profile_path(path_value: str, is_relative: str) -> str:
+    path = root / path_value if is_relative != "0" else Path(path_value)
+    return str(path)
+
+for section in parser.sections():
+    if not section.startswith("Install"):
+        continue
+    default_path = parser.get(section, "Default", fallback="").strip()
+    locked = parser.get(section, "Locked", fallback="").strip()
+    if default_path and locked == "1":
+        print(resolve_profile_path(default_path, "1"))
+        raise SystemExit(0)
+
 sections = [section for section in parser.sections() if section.lower().startswith("profile")]
 selected = None
 for section in sections:
@@ -218,8 +231,7 @@ if selected:
     profile_path = parser.get(selected, "Path", fallback="").strip()
     is_relative = parser.get(selected, "IsRelative", fallback="1").strip()
     if profile_path:
-        path = root / profile_path if is_relative != "0" else Path(profile_path)
-        print(path)
+        print(resolve_profile_path(profile_path, is_relative))
 PY
         )"
     fi
