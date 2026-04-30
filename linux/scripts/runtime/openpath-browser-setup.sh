@@ -163,6 +163,7 @@ resolve_firefox_activation_user() {
 
 resolve_firefox_activation_home() {
     local activation_user="$1"
+    local passwd_file="${OPENPATH_PASSWD_FILE:-/etc/passwd}"
     local home_dir=""
 
     if [ -n "${OPENPATH_FIREFOX_PROFILE_HOME:-}" ]; then
@@ -170,8 +171,12 @@ resolve_firefox_activation_home() {
         return 0
     fi
 
+    if [ -n "$activation_user" ] && [ -r "$passwd_file" ]; then
+        home_dir="$(awk -F: -v user="$activation_user" '$1 == user { print $6; exit }' "$passwd_file" || true)"
+    fi
+
     if [ -n "$activation_user" ] && command -v getent >/dev/null 2>&1; then
-        home_dir="$(getent passwd "$activation_user" | cut -d: -f6 || true)"
+        home_dir="${home_dir:-$(getent passwd "$activation_user" | cut -d: -f6 || true)}"
     fi
 
     if [ -z "$home_dir" ]; then
@@ -583,8 +588,17 @@ verify_firefox_extension_registered() {
     mapfile -t targets < <(enumerate_firefox_activation_targets)
     target_count="${#targets[@]}"
     if [ "$target_count" -eq 0 ]; then
-        log_error "No Firefox activation targets found for extension verification"
-        return 1
+        activation_user="$(resolve_firefox_activation_user)"
+        profile_home="$(resolve_firefox_activation_home "$activation_user")" || {
+            log_error "No Firefox activation targets found for extension verification"
+            return 1
+        }
+        profile_dir="$(ensure_firefox_activation_profile "$activation_user" "$profile_home")" || {
+            log_error "No Firefox activation targets found for extension verification"
+            return 1
+        }
+        targets+=("$activation_user"$'\t'"$profile_home"$'\t'"$profile_dir")
+        target_count=1
     fi
 
     for target in "${targets[@]}"; do
