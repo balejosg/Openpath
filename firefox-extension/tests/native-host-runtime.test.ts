@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 function encodeNativeMessage(payload: unknown): Buffer {
@@ -32,6 +32,35 @@ function runNativeHostOnce(env: NodeJS.ProcessEnv, payload: unknown): unknown {
 
 function runNativeHostCheck(env: NodeJS.ProcessEnv, domains: string[]): unknown {
   return runNativeHostOnce(env, { action: 'check', domains });
+}
+
+function runNativeHostAsync(env: NodeJS.ProcessEnv, payload: unknown): Promise<unknown> {
+  const scriptPath = new URL('../native/openpath-native-host.py', import.meta.url);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('python3', [scriptPath.pathname], { env });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      if (code !== 0) {
+        reject(new Error(stderr || `native host exited with code ${code ?? -1}`));
+        return;
+      }
+
+      try {
+        resolve(decodeNativeMessage(Buffer.concat(stdoutChunks)));
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    child.stdin.end(encodeNativeMessage(payload));
+  });
 }
 
 void test('native host confirms local DNS blocks when OpenPath CLI is unavailable', () => {
@@ -163,4 +192,169 @@ void test('native host returns blocked subdomains from the local whitelist file'
   assert.deepEqual(response.subdomains, ['ads.example.org', 'cdn.example.org']);
   assert.equal(response.count, 2);
   assert.equal(typeof response.hash, 'string');
+});
+
+void test('native host update-whitelist without domains preserves legacy trigger behavior', () => {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'openpath-native-host-'));
+  const whitelistPath = join(runtimeDir, 'whitelist.txt');
+  const updateScript = join(runtimeDir, 'openpath-update.sh');
+  const markerPath = join(runtimeDir, 'update-invocations.txt');
+  const lockPath = join(runtimeDir, 'native-update.lock');
+  writeFileSync(whitelistPath, '## WHITELIST\nallowed.example\n', 'utf8');
+  writeFileSync(
+    updateScript,
+    ['#!/bin/sh', 'printf "triggered\\n" >> "$OPENPATH_UPDATE_MARKER"', 'exit 0', ''].join('\n'),
+    'utf8'
+  );
+  chmodSync(updateScript, 0o755);
+
+  const response = runNativeHostOnce(
+    {
+      ...process.env,
+      OPENPATH_NATIVE_HOST_UPDATE_SCRIPT: updateScript,
+      OPENPATH_NATIVE_HOST_UPDATE_LOCK: lockPath,
+      OPENPATH_NATIVE_HOST_UPDATE_TIMEOUT_MS: '4000',
+      OPENPATH_UPDATE_MARKER: markerPath,
+      OPENPATH_WHITELIST_FILE: whitelistPath,
+      XDG_DATA_HOME: runtimeDir,
+    },
+    { action: 'update-whitelist' }
+  ) as {
+    success?: boolean;
+    action?: string;
+    message?: string;
+    domains?: string[];
+  };
+
+  assert.equal(response.success, true);
+  assert.equal(response.action, 'update-whitelist');
+  assert.equal(response.message, 'OpenPath update triggered');
+  assert.deepEqual(response.domains, []);
+  assert.match(readFileSync(markerPath, 'utf8'), /triggered/);
+});
+
+void test('native host update-whitelist waits until requested domains reach the local whitelist', () => {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'openpath-native-host-'));
+  const whitelistPath = join(runtimeDir, 'whitelist.txt');
+  const updateScript = join(runtimeDir, 'openpath-update.sh');
+  const markerPath = join(runtimeDir, 'update-invocations.txt');
+  const lockPath = join(runtimeDir, 'native-update.lock');
+  writeFileSync(whitelistPath, '## WHITELIST\nallowed.example\n', 'utf8');
+  writeFileSync(
+    updateScript,
+    [
+      '#!/bin/sh',
+      'printf "triggered\\n" >> "$OPENPATH_UPDATE_MARKER"',
+      '(sleep 1; printf "## WHITELIST\\nallowed.example\\ncdn.redditstatic.com\\n" > "$OPENPATH_WHITELIST_FILE") &',
+      'exit 0',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  chmodSync(updateScript, 0o755);
+
+  const response = runNativeHostOnce(
+    {
+      ...process.env,
+      OPENPATH_NATIVE_HOST_UPDATE_SCRIPT: updateScript,
+      OPENPATH_NATIVE_HOST_UPDATE_TIMEOUT_MS: '4000',
+      OPENPATH_UPDATE_MARKER: markerPath,
+      OPENPATH_WHITELIST_FILE: whitelistPath,
+      XDG_DATA_HOME: runtimeDir,
+    },
+    { action: 'update-whitelist', domains: ['cdn.redditstatic.com'] }
+  ) as {
+    success?: boolean;
+    action?: string;
+    message?: string;
+    domains?: string[];
+    error?: string;
+  };
+
+  assert.equal(response.success, true);
+  assert.equal(response.action, 'update-whitelist');
+  assert.equal(response.message, 'OpenPath update wrote expected domains');
+  assert.deepEqual(response.domains, ['cdn.redditstatic.com']);
+  assert.match(readFileSync(whitelistPath, 'utf8'), /cdn\.redditstatic\.com/);
+  assert.match(readFileSync(markerPath, 'utf8'), /triggered/);
+});
+
+void test('native host update-whitelist times out when requested domains never reach the local whitelist', () => {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'openpath-native-host-'));
+  const whitelistPath = join(runtimeDir, 'whitelist.txt');
+  const updateScript = join(runtimeDir, 'openpath-update.sh');
+  writeFileSync(whitelistPath, '## WHITELIST\nallowed.example\n', 'utf8');
+  writeFileSync(updateScript, ['#!/bin/sh', 'exit 0', ''].join('\n'), 'utf8');
+  chmodSync(updateScript, 0o755);
+
+  const response = runNativeHostOnce(
+    {
+      ...process.env,
+      OPENPATH_NATIVE_HOST_UPDATE_SCRIPT: updateScript,
+      OPENPATH_NATIVE_HOST_UPDATE_TIMEOUT_MS: '1200',
+      OPENPATH_WHITELIST_FILE: whitelistPath,
+      XDG_DATA_HOME: runtimeDir,
+    },
+    { action: 'update-whitelist', domains: ['cdn.redditstatic.com'] }
+  ) as {
+    success?: boolean;
+    action?: string;
+    domains?: string[];
+    error?: string;
+  };
+
+  assert.equal(response.success, false);
+  assert.equal(response.action, 'update-whitelist');
+  assert.deepEqual(response.domains, ['cdn.redditstatic.com']);
+  assert.match(response.error ?? '', /did not write expected domains/i);
+});
+
+void test('native host update-whitelist coalesces concurrent requests behind a single trigger', async () => {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'openpath-native-host-'));
+  const whitelistPath = join(runtimeDir, 'whitelist.txt');
+  const updateScript = join(runtimeDir, 'openpath-update.sh');
+  const markerPath = join(runtimeDir, 'update-invocations.txt');
+  const lockPath = join(runtimeDir, 'native-update.lock');
+  writeFileSync(whitelistPath, '## WHITELIST\nallowed.example\n', 'utf8');
+  writeFileSync(
+    updateScript,
+    [
+      '#!/bin/sh',
+      'printf "triggered\\n" >> "$OPENPATH_UPDATE_MARKER"',
+      '(sleep 1; printf "## WHITELIST\\nallowed.example\\nemoji.redditmedia.com\\n" > "$OPENPATH_WHITELIST_FILE") &',
+      'exit 0',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  chmodSync(updateScript, 0o755);
+
+  const env = {
+    ...process.env,
+    OPENPATH_NATIVE_HOST_UPDATE_SCRIPT: updateScript,
+    OPENPATH_NATIVE_HOST_UPDATE_LOCK: lockPath,
+    OPENPATH_NATIVE_HOST_UPDATE_TIMEOUT_MS: '4000',
+    OPENPATH_UPDATE_MARKER: markerPath,
+    OPENPATH_WHITELIST_FILE: whitelistPath,
+    XDG_DATA_HOME: runtimeDir,
+  };
+  const [firstResponse, secondResponse] = (await Promise.all([
+    runNativeHostAsync(env, {
+      action: 'update-whitelist',
+      domains: ['emoji.redditmedia.com'],
+    }),
+    runNativeHostAsync(env, {
+      action: 'update-whitelist',
+      domains: ['emoji.redditmedia.com'],
+    }),
+  ])) as [{ success?: boolean }, { success?: boolean }];
+
+  assert.equal(firstResponse.success, true);
+  assert.equal(secondResponse.success, true);
+  assert.equal(
+    readFileSync(markerPath, 'utf8')
+      .split('\n')
+      .filter((line) => line === 'triggered').length,
+    1
+  );
 });

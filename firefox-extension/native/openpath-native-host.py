@@ -24,6 +24,9 @@ import os
 import re
 import socket
 import hashlib
+import fcntl
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -33,6 +36,7 @@ MAX_PATH_RULES = 500
 MAX_LOG_SIZE_MB = 5
 BLOCKED_DNS_SENTINELS = {"0.0.0.0", "::", "192.0.2.1", "100::"}
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+UPDATE_TRIGGER_LOCK = threading.Lock()
 
 
 def get_log_path():
@@ -226,6 +230,175 @@ def whitelist_file_contains_domain(whitelist_file, domain):
     return False
 
 
+def get_valid_domains(domains):
+    valid_domains = []
+    for domain in domains[:MAX_DOMAINS]:
+        if not domain or not isinstance(domain, str):
+            continue
+
+        normalized = domain.strip().lower()
+        if not normalized:
+            continue
+        if not all(c.isalnum() or c in '.-' for c in normalized):
+            continue
+
+        valid_domains.append(normalized)
+
+    return valid_domains
+
+
+def whitelist_contains_domains(whitelist_file, domains):
+    if not domains:
+        return True
+    if whitelist_file is None:
+        return False
+
+    return all(whitelist_file_contains_domain(whitelist_file, domain) for domain in domains)
+
+
+def get_update_script_path():
+    env_path = os.environ.get("OPENPATH_NATIVE_HOST_UPDATE_SCRIPT")
+    if env_path:
+        return env_path
+    return "/usr/local/bin/openpath-update.sh"
+
+
+def get_update_timeout_ms():
+    raw_value = os.environ.get("OPENPATH_NATIVE_HOST_UPDATE_TIMEOUT_MS", "45000")
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return 45000
+
+    return max(parsed, 0)
+
+
+def get_update_lock_path():
+    env_path = os.environ.get("OPENPATH_NATIVE_HOST_UPDATE_LOCK")
+    if env_path:
+        return env_path
+    return "/tmp/openpath-native-host-update.lock"
+
+
+def wait_for_whitelist_domains(domains, timeout_ms):
+    if not domains:
+        return True
+
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() <= deadline:
+        whitelist_file = get_whitelist_file_path()
+        if whitelist_contains_domains(whitelist_file, domains):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(1, remaining))
+
+    whitelist_file = get_whitelist_file_path()
+    return whitelist_contains_domains(whitelist_file, domains)
+
+
+def run_update_script(update_script, timeout_ms):
+    return subprocess.run(
+        [update_script, "--update"],
+        capture_output=True,
+        text=True,
+        timeout=max(timeout_ms / 1000, 0.001),
+    )
+
+
+def trigger_update_whitelist(domains):
+    update_script = get_update_script_path()
+    timeout_ms = get_update_timeout_ms()
+    requires_domain_convergence = len(domains) > 0
+
+    if requires_domain_convergence and whitelist_contains_domains(get_whitelist_file_path(), domains):
+        return {
+            "success": True,
+            "action": "update-whitelist",
+            "message": "OpenPath update wrote expected domains",
+            "domains": domains,
+        }
+
+    try:
+        with UPDATE_TRIGGER_LOCK:
+            lock_path = get_update_lock_path()
+            with open(lock_path, "a+", encoding="utf-8") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    if requires_domain_convergence and whitelist_contains_domains(
+                        get_whitelist_file_path(), domains
+                    ):
+                        return {
+                            "success": True,
+                            "action": "update-whitelist",
+                            "message": "OpenPath update wrote expected domains",
+                            "domains": domains,
+                        }
+
+                    if not os.path.exists(update_script):
+                        return {
+                            "success": False,
+                            "action": "update-whitelist",
+                            "domains": domains,
+                            "error": "Update script not found",
+                        }
+
+                    deadline = time.monotonic() + (timeout_ms / 1000)
+                    proc = run_update_script(update_script, timeout_ms)
+                    if proc.returncode != 0:
+                        return {
+                            "success": False,
+                            "action": "update-whitelist",
+                            "domains": domains,
+                            "output": proc.stdout,
+                            "error": proc.stderr or f"Update exited with code {proc.returncode}",
+                        }
+
+                    if not requires_domain_convergence:
+                        return {
+                            "success": True,
+                            "action": "update-whitelist",
+                            "domains": domains,
+                            "message": "OpenPath update triggered",
+                            "output": proc.stdout,
+                        }
+
+                    remaining_timeout_ms = max(int((deadline - time.monotonic()) * 1000), 0)
+                    if wait_for_whitelist_domains(domains, remaining_timeout_ms):
+                        return {
+                            "success": True,
+                            "action": "update-whitelist",
+                            "domains": domains,
+                            "message": "OpenPath update wrote expected domains",
+                            "output": proc.stdout,
+                        }
+
+                    return {
+                        "success": False,
+                        "action": "update-whitelist",
+                        "domains": domains,
+                        "output": proc.stdout,
+                        "error": f"OpenPath update did not write expected domains: {', '.join(domains)}",
+                    }
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "action": "update-whitelist",
+            "domains": domains,
+            "error": "Update timed out",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "action": "update-whitelist",
+            "domains": domains,
+            "error": str(e),
+        }
+
+
 def resolve_domain_with_system_dns(domain):
     try:
         addresses = socket.getaddrinfo(domain, None)
@@ -320,18 +493,7 @@ def check_domains(domains):
     """Verifica múltiples dominios"""
     results = []
 
-    # Limitar cantidad de dominios
-    domains = domains[:MAX_DOMAINS]
-
-    for domain in domains:
-        # Validación básica del dominio
-        if not domain or not isinstance(domain, str):
-            continue
-
-        # Sanitizar: solo permitir caracteres válidos para dominios
-        domain = domain.strip().lower()
-        if not all(c.isalnum() or c in ".-" for c in domain):
-            continue
+    for domain in get_valid_domains(domains):
 
         result = check_domain(domain)
         results.append(result)
@@ -546,36 +708,7 @@ def handle_message(message):
         return get_native_config()
 
     elif action == "update-whitelist":
-        # Trigger whitelist update script
-        try:
-            update_script = "/usr/local/bin/openpath-update.sh"
-            if os.path.exists(update_script):
-                proc = subprocess.run(
-                    [update_script, "--update"],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                return {
-                    "success": proc.returncode == 0,
-                    "action": "update-whitelist",
-                    "output": proc.stdout,
-                    "error": proc.stderr if proc.returncode != 0 else None,
-                }
-            else:
-                return {
-                    "success": False,
-                    "action": "update-whitelist",
-                    "error": "Update script not found",
-                }
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "action": "update-whitelist",
-                "error": "Update timed out",
-            }
-        except Exception as e:
-            return {"success": False, "action": "update-whitelist", "error": str(e)}
+        return trigger_update_whitelist(get_valid_domains(message.get("domains", [])))
 
     elif action == "get-blocked-paths":
         return get_blocked_paths()
