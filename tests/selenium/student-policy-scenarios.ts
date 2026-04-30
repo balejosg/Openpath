@@ -68,6 +68,13 @@ interface StudentPolicyScenarioTiming {
   durationSeconds: number;
 }
 
+interface PageResourceObserverState {
+  lastError?: string | null;
+  lastNotification?: { kind?: string; url?: string } | null;
+  notifications?: Record<string, number>;
+  patched?: Record<string, boolean>;
+}
+
 let activeScenarioTiming: {
   name: string;
   startedAt: string;
@@ -254,6 +261,39 @@ export function writeStudentPolicyScenarioTimings(diagnosticsDir: string): void 
     `${JSON.stringify(scenarioTimings, null, 2)}\n`,
     'utf8'
   );
+}
+
+function observerKindForProbe(probeId: string): string {
+  return probeId === 'xhr' ? 'xmlhttprequest' : probeId;
+}
+
+function urlsMatchIgnoringCacheBust(actual: string | undefined, expected: string): boolean {
+  if (!actual) {
+    return false;
+  }
+  try {
+    const actualUrl = new URL(actual);
+    const expectedUrl = new URL(expected);
+    actualUrl.searchParams.delete('cache');
+    expectedUrl.searchParams.delete('cache');
+    actualUrl.hash = '';
+    expectedUrl.hash = '';
+    return actualUrl.toString() === expectedUrl.toString();
+  } catch {
+    return actual === expected;
+  }
+}
+
+async function readPageResourceObserverState(
+  driver: StudentPolicyDriver
+): Promise<PageResourceObserverState | null> {
+  const state = await driver
+    .getDriver()
+    .executeScript('return window.__openpathPageResourceObserverState ?? null;');
+  if (!state || typeof state !== 'object') {
+    return null;
+  }
+  return state as PageResourceObserverState;
 }
 
 async function seedBaselineWhitelist(
@@ -517,9 +557,25 @@ async function runAjaxAutoAllowScenarioSet(
         linuxProbe.firstResult = firstResult;
       }
       await runLinuxDiagnosticPhase('page-resource-candidates', async () => {
+        const observerState = await readPageResourceObserverState(driver);
+        if (linuxProbe !== null) {
+          linuxProbe.observerState = observerState ?? undefined;
+        }
+        assert.ok(observerState, 'page resource observer state should be readable');
+        assert.strictEqual(
+          observerState.lastError ?? null,
+          null,
+          `page resource observer should not report an error for ${probe.id}`
+        );
+        const expectedKind = observerKindForProbe(probe.id);
+        const notifications = observerState.notifications ?? {};
         assert.ok(
-          firstResult === 'blocked' || firstResult === 'ok',
-          `${probe.id} dependency should produce a candidate probe outcome`
+          (notifications[expectedKind] ?? 0) > 0,
+          `${probe.id} dependency should emit a ${expectedKind} page-resource candidate`
+        );
+        assert.ok(
+          urlsMatchIgnoringCacheBust(observerState.lastNotification?.url, probe.url),
+          `${probe.id} dependency should emit the probed async dependency URL`
         );
       });
 

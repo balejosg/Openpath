@@ -36,6 +36,12 @@ export interface LinuxAutoAllowProbe {
   id: 'fetch' | 'xhr' | 'image' | 'script' | 'stylesheet' | 'font';
   host: string;
   url: string;
+  observerState?: {
+    lastError?: string | null;
+    lastNotification?: { kind?: string; url?: string } | null;
+    notifications?: Record<string, number>;
+    patched?: Record<string, boolean>;
+  };
   firstResult?: 'ok' | 'blocked';
   secondResult?: 'ok' | 'blocked';
 }

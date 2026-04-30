@@ -30,13 +30,12 @@ void describe('page activity content script', () => {
     assert.match(source, /window\.addEventListener\('openpath-page-resource-candidate'/);
   });
 
-  void test('installs page-world and DOM observers for dynamic AJAX resources', async () => {
+  void test('relays page-world observers without inline script injection', async () => {
     const source = await readContentEntrypoint();
 
-    assert.match(source, /__openpathPageResourceObserverInstalled/);
-    assert.match(source, /window\.fetch = function/);
-    assert.match(source, /XMLHttpRequest\.prototype\.open/);
     assert.match(source, /MutationObserver/);
+    assert.doesNotMatch(source, /script\.textContent/);
+    assert.doesNotMatch(source, /appendChild\(script\)/);
   });
 
   void test('executes the manifest entrypoint and relays observed resources', async () => {
@@ -48,9 +47,6 @@ void describe('page activity content script', () => {
     const originalWindow = testGlobal.window;
 
     const sentMessages: unknown[] = [];
-    const appendedScripts: { remove(): void; textContent: string }[] = [];
-    const scheduledCallbacks: (() => void)[] = [];
-    const scheduledDelays: number[] = [];
     let messageListener:
       | ((event: { data?: unknown; origin?: string; source?: unknown }) => void)
       | undefined;
@@ -79,28 +75,7 @@ void describe('page activity content script', () => {
       }
     }
 
-    const fakeDocument = {
-      createElement(tagName: string): { remove(): void; textContent: string } {
-        assert.equal(tagName, 'script');
-        const script = {
-          textContent: '',
-          remove(): void {
-            // The injected page-world script is removed immediately after injection.
-          },
-        };
-        return script;
-      },
-      documentElement: undefined as
-        | undefined
-        | {
-            appendChild(script: { remove(): void; textContent: string }): void;
-          },
-    };
-    const appendTarget = {
-      appendChild(script: { remove(): void; textContent: string }): void {
-        appendedScripts.push(script);
-      },
-    };
+    const fakeDocument = {};
     const fakeWindow = {
       addEventListener(
         type: string,
@@ -120,11 +95,6 @@ void describe('page activity content script', () => {
         }
       },
       location: { href: 'https://allowed.example/app' },
-      setTimeout(callback: () => void, delay: number): number {
-        scheduledCallbacks.push(callback);
-        scheduledDelays.push(delay);
-        return scheduledDelays.length;
-      },
     };
 
     Object.assign(testGlobal, {
@@ -145,12 +115,6 @@ void describe('page activity content script', () => {
       // @ts-expect-error page-activity-content is intentionally a classic script for manifest loading.
       await import('../src/page-activity-content.ts');
 
-      assert.deepEqual(scheduledDelays, [0, 5, 25, 100, 500]);
-      assert.equal(appendedScripts.length, 0);
-      fakeDocument.documentElement = appendTarget;
-      scheduledCallbacks[0]?.();
-      assert.equal(appendedScripts.length, 1);
-      assert.match(appendedScripts[0]?.textContent ?? '', /window\.fetch = function/);
       assert.deepEqual(sentMessages, [
         {
           action: 'openpathPageActivity',

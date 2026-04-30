@@ -749,6 +749,16 @@ describe('repository verification contract', () => {
       /readWhitelistFile\(\)/,
       'SP-006 diagnostics should capture the local Linux whitelist file'
     );
+    assert.match(
+      scenarios,
+      /__openpathPageResourceObserverState/,
+      'SP-006 should inspect observer state, not only observer installation'
+    );
+    assert.match(
+      scenarios,
+      /lastNotification[\s\S]*probe\.url/,
+      'SP-006 should prove the probed async dependency emitted a page-resource candidate'
+    );
   });
 
   test('Linux student policy runner highlights readiness failures in GitHub summaries', () => {
@@ -1307,6 +1317,21 @@ describe('repository verification contract', () => {
       linuxRunner,
       /configure_client false[\s\S]*?wait_for_linux_dns_policy_ready[\s\S]*?assert_linux_firefox_extension_ready[\s\S]*?run_student_suite fallback/,
       'Linux student-policy runner should gate the fallback Selenium phase after reconfiguration/update'
+    );
+  });
+
+  test('Linux student-policy Selenium uses the installed Firefox extension', () => {
+    const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
+
+    assert.match(
+      linuxRunner,
+      /-e OPENPATH_SKIP_EXTENSION_BUNDLE=1/,
+      'Linux Selenium must not hide managed-install regressions by loading the XPI directly into a temporary profile'
+    );
+    assert.match(
+      linuxRunner,
+      /assert_linux_firefox_extension_ready[\s\S]*?OPENPATH_SKIP_EXTENSION_BUNDLE=1[\s\S]*?npm run test:student-policy:ci/,
+      'Linux Selenium should use the installed extension only after the managed Firefox readiness gate'
     );
   });
 

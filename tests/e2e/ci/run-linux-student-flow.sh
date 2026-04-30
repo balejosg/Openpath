@@ -863,6 +863,7 @@ run_student_suite() {
         -e OPENPATH_FIXTURE_PORT="$FIXTURE_PORT" \
         -e OPENPATH_STUDENT_HOST_SUFFIX="$OPENPATH_STUDENT_HOST_SUFFIX" \
         -e OPENPATH_EXTENSION_PATH=/openpath/firefox-extension/openpath-firefox-extension.xpi \
+        -e OPENPATH_SKIP_EXTENSION_BUNDLE=1 \
         -e OPENPATH_WHITELIST_PATH=/var/lib/openpath/whitelist.txt \
         -e OPENPATH_FORCE_UPDATE_COMMAND=/usr/local/bin/openpath-update.sh \
         -e OPENPATH_DISABLE_SSE_COMMAND='systemctl stop openpath-sse-listener.service' \

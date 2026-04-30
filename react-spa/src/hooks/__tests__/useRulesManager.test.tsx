@@ -182,9 +182,9 @@ describe('useRulesManager Hook', () => {
   });
 
   it('builds blocked tab from subdomain and path rules with search and pagination', async () => {
-    vi.mocked(trpc.groups.listRules.query).mockImplementation(async (input) => {
-      if (input?.type === 'blocked_subdomain') {
-        return [
+    vi.mocked(trpc.groups.listRules.query).mockImplementation((input) => {
+      if (input.type === 'blocked_subdomain') {
+        return Promise.resolve([
           {
             id: 'blocked-2',
             groupId: 'test-group',
@@ -203,10 +203,10 @@ describe('useRulesManager Hook', () => {
             comment: null,
             createdAt: '2024-01-01T00:00:00Z',
           },
-        ];
+        ]);
       }
-      if (input?.type === 'blocked_path') {
-        return [
+      if (input.type === 'blocked_path') {
+        return Promise.resolve([
           {
             id: 'path-1',
             groupId: 'test-group',
@@ -225,9 +225,9 @@ describe('useRulesManager Hook', () => {
             comment: null,
             createdAt: '2024-01-01T00:00:00Z',
           },
-        ];
+        ]);
       }
-      return [];
+      return Promise.resolve([]);
     });
 
     const { result } = renderHook(() => useRulesManager(defaultOptions));

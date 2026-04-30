@@ -357,9 +357,9 @@ describe('useGroupedRulesManager', () => {
     });
 
     it('groups blocked subdomain and path rules locally with search filtering', async () => {
-      vi.mocked(trpc.groups.listRules.query).mockImplementation(async (input) => {
-        if (input?.type === 'blocked_subdomain') {
-          return [
+      vi.mocked(trpc.groups.listRules.query).mockImplementation((input) => {
+        if (input.type === 'blocked_subdomain') {
+          return Promise.resolve([
             {
               id: 'blocked-1',
               groupId: 'g1',
@@ -378,10 +378,10 @@ describe('useGroupedRulesManager', () => {
               comment: null,
               createdAt: '2024-01-01',
             },
-          ];
+          ]);
         }
-        if (input?.type === 'blocked_path') {
-          return [
+        if (input.type === 'blocked_path') {
+          return Promise.resolve([
             {
               id: 'path-1',
               groupId: 'g1',
@@ -400,9 +400,9 @@ describe('useGroupedRulesManager', () => {
               comment: null,
               createdAt: '2024-01-01',
             },
-          ];
+          ]);
         }
-        return [];
+        return Promise.resolve([]);
       });
 
       const { result } = renderHook(() =>
