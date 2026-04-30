@@ -68,6 +68,11 @@ step_install_extension() {
             "$staged_ext_dir" \
             "$staged_release_dir" \
             "${browser_integration_args[@]}"
+        if declare -F verify_firefox_extension_registered >/dev/null 2>&1; then
+            verify_firefox_extension_registered
+        elif [ -x "$SCRIPTS_DIR/openpath-browser-setup.sh" ]; then
+            "$SCRIPTS_DIR/openpath-browser-setup.sh"
+        fi
         echo "✓ Extensiones del navegador instaladas"
     else
         echo "⊘ Extensiones del navegador omitidas (--no-extension)"

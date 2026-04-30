@@ -215,6 +215,7 @@ except Exception:
     echo -e "  Aplicando configuracion..."
     systemctl restart openpath-sse-listener.service 2>/dev/null || true
     /usr/local/bin/openpath-update.sh || echo -e "${YELLOW}Primera actualizacion fallo (el timer lo reintentara)${NC}"
+    /usr/local/bin/openpath-browser-setup.sh
 
     if [[ -n "$classroom" ]]; then
         echo -e "${GREEN}✓ Registrado en aula: $classroom${NC}"

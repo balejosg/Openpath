@@ -259,6 +259,17 @@ JSON
 JSON
         fi
         ;;
+    missing-second-profile)
+        case "\$profile_root" in
+            *second.default)
+                ;;
+            *)
+                cat > "\$profile_root/extensions.json" <<'JSON'
+{"addons":[{"id":"monitor-bloqueos@openpath","rootURI":"moz-extension://openpath-test-uuid/"}]}
+JSON
+                ;;
+        esac
+        ;;
     install-profile-registration)
         if [ -n "\$selected_install_profile" ] && [ "\$profile_root" = "\$selected_install_profile" ]; then
             cat > "\$profile_root/extensions.json" <<'JSON'
@@ -937,20 +948,30 @@ EOF
     local calls_file="$TEST_TMP_DIR/browser-setup.calls"
     local bin_dir="$TEST_TMP_DIR/bin"
     local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local firefox_home="$TEST_TMP_DIR/home"
+    local snap_root="$firefox_home/snap/firefox/common/.mozilla/firefox"
 
-    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir"
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir" "$snap_root/openpath-test.default"
     printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
     printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
     printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    cat > "$snap_root/profiles.ini" <<'EOF'
+[Profile0]
+Name=snap
+IsRelative=1
+Path=openpath-test.default
+EOF
+    printf 'student:x:1001:1001::%s:/bin/bash\n' "$firefox_home" > "$passwd_file"
     write_mock_id "$bin_dir"
     write_fake_common_sh "$fake_install/lib/common.sh"
     write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
 
     run env \
         PATH="$bin_dir:$PATH" \
-        HOME="$TEST_TMP_DIR/home" \
+        HOME="$firefox_home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
         OPENPATH_FAKE_FIREFOX_MODE="snap-registration" \
-        OPENPATH_FIREFOX_PROFILE_HOME="$TEST_TMP_DIR/home" \
         OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
         INSTALL_DIR="$fake_install" \
         SCRIPTS_DIR="$fake_scripts" \
@@ -1027,4 +1048,207 @@ EOF
         bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
 
     [ "$status" -eq 1 ]
+}
+
+@test "openpath-browser-setup activates all passwd homes and all firefox profiles" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local ready_file="$TEST_TMP_DIR/state/firefox-extension-ready"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local alice_home="$TEST_TMP_DIR/home/alice"
+    local bob_home="$TEST_TMP_DIR/home/bob"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir"
+    mkdir -p "$alice_home/.mozilla/firefox/first.default" "$alice_home/.mozilla/firefox/second.default"
+    mkdir -p "$bob_home/snap/firefox/common/.mozilla/firefox/snap.default"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    cat > "$alice_home/.mozilla/firefox/profiles.ini" <<'EOF'
+[Profile0]
+Name=first
+IsRelative=1
+Path=first.default
+
+[Profile1]
+Name=second
+IsRelative=1
+Path=second.default
+EOF
+    cat > "$bob_home/snap/firefox/common/.mozilla/firefox/profiles.ini" <<'EOF'
+[Profile0]
+Name=snap
+IsRelative=1
+Path=snap.default
+EOF
+    printf 'alice:x:1001:1001::%s:/bin/bash\nbob:x:1002:1002::%s:/bin/bash\n' "$alice_home" "$bob_home" > "$passwd_file"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/root-home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
+        OPENPATH_FAKE_FIREFOX_MODE="success" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        FIREFOX_EXTENSION_READY_FILE="$ready_file" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 0 ]
+    [ -f "$alice_home/.mozilla/firefox/first.default/extensions.json" ]
+    [ -f "$alice_home/.mozilla/firefox/second.default/extensions.json" ]
+    [ -f "$bob_home/snap/firefox/common/.mozilla/firefox/snap.default/extensions.json" ]
+    grep -F 'extension_id=monitor-bloqueos@openpath' "$ready_file"
+    grep -F 'target_count=3' "$ready_file"
+    grep -F 'registered_count=3' "$ready_file"
+}
+
+@test "openpath-browser-setup fails and lists missing profile registration" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local alice_home="$TEST_TMP_DIR/home/alice"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir"
+    mkdir -p "$alice_home/.mozilla/firefox/first.default" "$alice_home/.mozilla/firefox/second.default"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    cat > "$alice_home/.mozilla/firefox/profiles.ini" <<'EOF'
+[Profile0]
+Name=first
+IsRelative=1
+Path=first.default
+
+[Profile1]
+Name=second
+IsRelative=1
+Path=second.default
+EOF
+    printf 'alice:x:1001:1001::%s:/bin/bash\n' "$alice_home" > "$passwd_file"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/root-home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
+        OPENPATH_FAKE_FIREFOX_MODE="missing-second-profile" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"registered=1 target_count=2"* ]]
+    [[ "$output" == *"alice|$alice_home|$alice_home/.mozilla/firefox/second.default"* ]]
+}
+
+@test "openpath-browser-setup creates openpath.default for passwd user without firefox profile" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local alice_home="$TEST_TMP_DIR/home/alice"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir" "$alice_home"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    printf 'alice:x:1001:1001::%s:/bin/bash\n' "$alice_home" > "$passwd_file"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/root-home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
+        OPENPATH_FAKE_FIREFOX_MODE="success" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 0 ]
+    [ -f "$alice_home/.mozilla/firefox/profiles.ini" ]
+    [ -f "$alice_home/.mozilla/firefox/openpath.default/extensions.json" ]
+}
+
+@test "openpath-browser-setup profile overrides limit verification to one target" {
+    local fake_install="$TEST_TMP_DIR/install"
+    local fake_scripts="$TEST_TMP_DIR/scripts"
+    local firefox_dir="$TEST_TMP_DIR/usr/lib/firefox-esr"
+    local ext_root="$TEST_TMP_DIR/share/mozilla/extensions"
+    local policies_file="$TEST_TMP_DIR/etc/firefox/policies/policies.json"
+    local ready_file="$TEST_TMP_DIR/state/firefox-extension-ready"
+    local calls_file="$TEST_TMP_DIR/browser-setup.calls"
+    local bin_dir="$TEST_TMP_DIR/bin"
+    local etc_dir="$TEST_TMP_DIR/etc/openpath"
+    local passwd_file="$TEST_TMP_DIR/passwd"
+    local alice_home="$TEST_TMP_DIR/home/alice"
+    local bob_home="$TEST_TMP_DIR/home/bob"
+
+    mkdir -p "$fake_install/lib" "$fake_scripts" "$ext_root" "$bin_dir" "$etc_dir"
+    mkdir -p "$alice_home/.mozilla/firefox/first.default" "$bob_home/.mozilla/firefox/bob.default"
+    printf '%s' 'https://control.example' > "$etc_dir/api-url.conf"
+    printf '%s' 'https://control.example/w/token123/whitelist.txt' > "$etc_dir/whitelist-url.conf"
+    printf '%s' 'cls_123' > "$etc_dir/classroom-id.conf"
+    printf 'alice:x:1001:1001::%s:/bin/bash\nbob:x:1002:1002::%s:/bin/bash\n' "$alice_home" "$bob_home" > "$passwd_file"
+    write_mock_id "$bin_dir"
+    write_fake_common_sh "$fake_install/lib/common.sh"
+    write_fake_browser_sh "$fake_install/lib/browser.sh" "$calls_file" "$firefox_dir" "$ext_root" "$policies_file" "managed-api"
+
+    run env \
+        PATH="$bin_dir:$PATH" \
+        HOME="$TEST_TMP_DIR/root-home" \
+        OPENPATH_PASSWD_FILE="$passwd_file" \
+        OPENPATH_FIREFOX_PROFILE_USER="alice" \
+        OPENPATH_FIREFOX_PROFILE_HOME="$alice_home" \
+        OPENPATH_FIREFOX_PROFILE_DIR="$alice_home/.mozilla/firefox/first.default" \
+        OPENPATH_FAKE_FIREFOX_MODE="success" \
+        OPENPATH_FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS="1" \
+        FIREFOX_EXTENSION_READY_FILE="$ready_file" \
+        INSTALL_DIR="$fake_install" \
+        SCRIPTS_DIR="$fake_scripts" \
+        ETC_CONFIG_DIR="$etc_dir" \
+        FIREFOX_POLICIES="$policies_file" \
+        FIREFOX_EXTENSIONS_ROOT="$ext_root" \
+        bash "$PROJECT_DIR/linux/scripts/runtime/openpath-browser-setup.sh"
+
+    [ "$status" -eq 0 ]
+    [ -f "$alice_home/.mozilla/firefox/first.default/extensions.json" ]
+    [ ! -f "$bob_home/.mozilla/firefox/bob.default/extensions.json" ]
+    grep -F 'target_count=1' "$ready_file"
+    grep -F 'registered_count=1' "$ready_file"
 }

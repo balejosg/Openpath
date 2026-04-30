@@ -244,12 +244,12 @@ EOF
     [ "$status" -ne 0 ]
 }
 
-@test "linux debian postinst treats firefox extension installation as best effort" {
-    run grep -nF 'install_browser_integrations \' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
+@test "linux debian postinst runs strict browser setup when request setup exists" {
+    run grep -nF '/usr/local/bin/openpath-browser-setup.sh' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
     [ "$status" -eq 0 ]
 
     run grep -nF -- '--firefox-best-effort \' "$PROJECT_DIR/linux/debian-package/DEBIAN/postinst"
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
 }
 
 @test "linux apt contracts defer managed browser integration when setup is skipped" {

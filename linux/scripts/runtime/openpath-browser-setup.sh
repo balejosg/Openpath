@@ -245,6 +245,80 @@ PY
     return 0
 }
 
+resolve_firefox_profile_paths_from_ini() {
+    local firefox_root="$1"
+    local profiles_ini="$firefox_root/profiles.ini"
+
+    [ -f "$profiles_ini" ] || return 1
+    python3 - "$firefox_root" "$profiles_ini" <<'PY' 2>/dev/null || true
+import configparser
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+profiles_ini = Path(sys.argv[2])
+parser = configparser.RawConfigParser()
+parser.read(profiles_ini, encoding="utf-8")
+
+seen = set()
+for section in parser.sections():
+    if not section.lower().startswith("profile"):
+        continue
+    profile_path = parser.get(section, "Path", fallback="").strip()
+    if not profile_path:
+        continue
+    is_relative = parser.get(section, "IsRelative", fallback="1").strip()
+    resolved = root / profile_path if is_relative != "0" else Path(profile_path)
+    text = str(resolved)
+    if text in seen:
+        continue
+    seen.add(text)
+    print(text)
+PY
+}
+
+enumerate_firefox_activation_targets() {
+    local passwd_file="${OPENPATH_PASSWD_FILE:-/etc/passwd}"
+    local user=""
+    local home_dir=""
+    local firefox_root=""
+    local profile_dir=""
+    local found_profile=false
+
+    if [ -n "${OPENPATH_FIREFOX_PROFILE_USER:-}" ] \
+        || [ -n "${OPENPATH_FIREFOX_PROFILE_HOME:-}" ] \
+        || [ -n "${OPENPATH_FIREFOX_PROFILE_DIR:-}" ]; then
+        user="$(resolve_firefox_activation_user)"
+        home_dir="$(resolve_firefox_activation_home "$user")" || return 1
+        profile_dir="$(ensure_firefox_activation_profile "$user" "$home_dir")" || return 1
+        printf '%s\t%s\t%s\n' "$user" "$home_dir" "$profile_dir"
+        return 0
+    fi
+
+    [ -r "$passwd_file" ] || return 1
+    while IFS=: read -r user _ _ _ _ home_dir _; do
+        [ -n "$user" ] || continue
+        [ -n "$home_dir" ] || continue
+        [ -d "$home_dir" ] || continue
+        found_profile=false
+
+        for firefox_root in \
+            "$home_dir/.mozilla/firefox" \
+            "$home_dir/snap/firefox/common/.mozilla/firefox"; do
+            while IFS= read -r profile_dir; do
+                [ -n "$profile_dir" ] || continue
+                found_profile=true
+                printf '%s\t%s\t%s\n' "$user" "$home_dir" "$profile_dir"
+            done < <(resolve_firefox_profile_paths_from_ini "$firefox_root")
+        done
+
+        if [ "$found_profile" = false ]; then
+            profile_dir="$(ensure_firefox_activation_profile "$user" "$home_dir")" || return 1
+            printf '%s\t%s\t%s\n' "$user" "$home_dir" "$profile_dir"
+        fi
+    done < "$passwd_file"
+}
+
 ensure_firefox_activation_profile() {
     local activation_user="$1"
     local profile_home="$2"
@@ -260,7 +334,30 @@ ensure_firefox_activation_profile() {
         && [ -n "$activation_user" ] \
         && [ "$activation_user" != "root" ] \
         && [ "$activation_user" != "$current_user" ] \
-        && { [ -n "${SUDO_USER:-}" ] || [ -n "${OPENPATH_FIREFOX_PROFILE_USER:-}" ]; } \
+        && id "$activation_user" >/dev/null 2>&1 \
+        && command -v runuser >/dev/null 2>&1; then
+        runuser -u "$activation_user" -- env HOME="$profile_home" mkdir -p "$profile_dir" || return 1
+        if [ ! -f "$profiles_ini" ]; then
+            runuser -u "$activation_user" -- env HOME="$profile_home" sh -c '
+                mkdir -p "$(dirname "$1")"
+                cat > "$1" <<EOF
+[General]
+StartWithLastProfile=1
+Version=2
+
+[Profile0]
+Name=openpath
+IsRelative=1
+Path=openpath.default
+Default=1
+EOF
+            ' sh "$profiles_ini" || true
+        fi
+    elif [ "$(id -u)" -eq 0 ] \
+        && [ -n "$activation_user" ] \
+        && [ "$activation_user" != "root" ] \
+        && [ "$activation_user" != "$current_user" ] \
+        && id "$activation_user" >/dev/null 2>&1 \
         && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "$activation_user" env HOME="$profile_home" mkdir -p "$profile_dir" || return 1
         if [ ! -f "$profiles_ini" ]; then
@@ -300,16 +397,16 @@ EOF
     printf '%s\n' "$profile_dir"
 }
 
-detect_firefox_extension_registration() {
-    local profile_home="$1"
+detect_firefox_extension_registration_in_profile() {
+    local profile_dir="$1"
     local extension_id="$2"
 
-    python3 - "$profile_home" "$extension_id" <<'PY'
+    python3 - "$profile_dir" "$extension_id" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-profile_home = Path(sys.argv[1])
+profile = Path(sys.argv[1])
 extension_id = sys.argv[2]
 
 def prefs_has_uuid(path: Path) -> bool:
@@ -332,29 +429,35 @@ def extensions_json_has_addon(path: Path) -> bool:
         return False
     return any(isinstance(addon, dict) and addon.get("id") == extension_id for addon in addons)
 
-candidate_roots = []
-for root in (
-    profile_home / ".mozilla/firefox",
-    profile_home / "snap/firefox/common/.mozilla/firefox",
-):
-    if root not in candidate_roots:
-        candidate_roots.append(root)
-
-for root in candidate_roots:
-    if not root.exists():
-        continue
-    for profile in root.glob("*"):
-        if not profile.is_dir():
-            continue
-        if prefs_has_uuid(profile / "prefs.js"):
-            print(f"prefs.js\t{profile}")
-            raise SystemExit(0)
-        if extensions_json_has_addon(profile / "extensions.json"):
-            print(f"extensions.json\t{profile}")
-            raise SystemExit(0)
+if profile.is_dir():
+    if prefs_has_uuid(profile / "prefs.js"):
+        print(f"prefs.js\t{profile}")
+        raise SystemExit(0)
+    if extensions_json_has_addon(profile / "extensions.json"):
+        print(f"extensions.json\t{profile}")
+        raise SystemExit(0)
 
 raise SystemExit(1)
 PY
+}
+
+detect_firefox_extension_registration() {
+    local profile_home="$1"
+    local extension_id="$2"
+    local firefox_root=""
+    local profile=""
+
+    for firefox_root in \
+        "$profile_home/.mozilla/firefox" \
+        "$profile_home/snap/firefox/common/.mozilla/firefox"; do
+        [ -d "$firefox_root" ] || continue
+        for profile in "$firefox_root"/*; do
+            [ -d "$profile" ] || continue
+            detect_firefox_extension_registration_in_profile "$profile" "$extension_id" && return 0
+        done
+    done
+
+    return 1
 }
 
 firefox_profile_has_extension_registration() {
@@ -380,19 +483,36 @@ run_firefox_activation_probe() {
     local firefox_binary="$1"
     local activation_user="$2"
     local profile_home="$3"
+    local activation_profile="${4:-}"
     local screenshot_path="/tmp/openpath-firefox-extension-activation.png"
     local current_user=""
-    local activation_profile=""
 
     force_browser_close || true
     current_user="$(id -un 2>/dev/null || true)"
-    activation_profile="$(ensure_firefox_activation_profile "$activation_user" "$profile_home")" || return 1
+    if [ -z "$activation_profile" ]; then
+        activation_profile="$(ensure_firefox_activation_profile "$activation_user" "$profile_home")" || return 1
+    else
+        mkdir -p "$activation_profile" || return 1
+    fi
 
     if [ "$(id -u)" -eq 0 ] \
         && [ -n "$activation_user" ] \
         && [ "$activation_user" != "root" ] \
         && [ "$activation_user" != "$current_user" ] \
-        && { [ -n "${SUDO_USER:-}" ] || [ -n "${OPENPATH_FIREFOX_PROFILE_USER:-}" ]; } \
+        && id "$activation_user" >/dev/null 2>&1 \
+        && command -v runuser >/dev/null 2>&1; then
+        runuser -u "$activation_user" -- \
+            env HOME="$profile_home" \
+            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --profile "$activation_profile" --screenshot "$screenshot_path" about:blank \
+            >/dev/null 2>&1
+        return $?
+    fi
+
+    if [ "$(id -u)" -eq 0 ] \
+        && [ -n "$activation_user" ] \
+        && [ "$activation_user" != "root" ] \
+        && [ "$activation_user" != "$current_user" ] \
+        && id "$activation_user" >/dev/null 2>&1 \
         && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "$activation_user" \
             env HOME="$profile_home" \
@@ -406,16 +526,18 @@ run_firefox_activation_probe() {
 }
 
 write_firefox_extension_ready_marker() {
-    local activation_user="$1"
-    local profile_home="$2"
+    local target_count="$1"
+    local registered_count="$2"
+    shift 2
     local marker_path="${FIREFOX_EXTENSION_READY_FILE:-$VAR_STATE_DIR/firefox-extension-ready}"
 
     mkdir -p "$(dirname "$marker_path")"
     {
         printf 'extension_id=%s\n' "$FIREFOX_EXTENSION_ID"
-        printf 'user=%s\n' "$activation_user"
-        printf 'profile_home=%s\n' "$profile_home"
+        printf 'target_count=%s\n' "$target_count"
+        printf 'registered_count=%s\n' "$registered_count"
         printf 'verified_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf '%s\n' "$@"
     } > "$marker_path"
     chmod 600 "$marker_path" 2>/dev/null || true
 }
@@ -431,6 +553,13 @@ verify_firefox_extension_registered() {
     local registration_info=""
     local registration_source="missing"
     local registration_profile=""
+    local targets=()
+    local target=""
+    local profile_dir=""
+    local target_count=0
+    local registered_count=0
+    local target_lines=()
+    local missing_targets=()
 
     rm -f "$marker_path" 2>/dev/null || true
 
@@ -438,55 +567,75 @@ verify_firefox_extension_registered() {
         log_error "Firefox executable not found after browser setup"
         return 1
     }
-    activation_user="$(resolve_firefox_activation_user)"
-    profile_home="$(resolve_firefox_activation_home "$activation_user")" || {
-        log_error "Firefox profile home could not be resolved for extension verification"
+    mapfile -t targets < <(enumerate_firefox_activation_targets)
+    target_count="${#targets[@]}"
+    if [ "$target_count" -eq 0 ]; then
+        log_error "No Firefox activation targets found for extension verification"
         return 1
-    }
+    fi
 
-    deadline=$((SECONDS + FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS))
-    while [ "$SECONDS" -le "$deadline" ] || [ "$activation_attempts" -lt "$FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES" ]; do
-        registration_info="$(detect_firefox_extension_registration "$profile_home" "$FIREFOX_EXTENSION_ID" 2>/dev/null || true)"
-        if [ -n "$registration_info" ]; then
-            registration_source="${registration_info%%$'\t'*}"
-            registration_profile="${registration_info#*$'\t'}"
-            log_firefox_registration_probe 0 "$activation_user" "$profile_home" 0 "$registration_source" "$registration_profile"
-            write_firefox_extension_ready_marker "$activation_user" "$profile_home"
-            return 0
-        fi
-
-        activation_attempts=$((activation_attempts + 1))
-        if run_firefox_activation_probe "$firefox_binary" "$activation_user" "$profile_home"; then
-            activation_status=0
-        else
-            activation_status=$?
-        fi
-
+    for target in "${targets[@]}"; do
+        IFS=$'\t' read -r activation_user profile_home profile_dir <<< "$target"
+        deadline=$((SECONDS + FIREFOX_EXTENSION_REGISTRATION_TIMEOUT_SECONDS))
+        activation_attempts=0
         registration_source="missing"
         registration_profile=""
-        registration_info="$(detect_firefox_extension_registration "$profile_home" "$FIREFOX_EXTENSION_ID" 2>/dev/null || true)"
-        if [ -n "$registration_info" ]; then
-            registration_source="${registration_info%%$'\t'*}"
-            registration_profile="${registration_info#*$'\t'}"
-        fi
-        log_firefox_registration_probe "$activation_attempts" "$activation_user" "$profile_home" "$activation_status" "$registration_source" "$registration_profile"
+
+        while [ "$SECONDS" -le "$deadline" ] || [ "$activation_attempts" -lt "$FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES" ]; do
+            registration_info="$(detect_firefox_extension_registration_in_profile "$profile_dir" "$FIREFOX_EXTENSION_ID" 2>/dev/null || true)"
+            if [ -n "$registration_info" ]; then
+                registration_source="${registration_info%%$'\t'*}"
+                registration_profile="${registration_info#*$'\t'}"
+                log_firefox_registration_probe "$activation_attempts" "$activation_user" "$profile_home" 0 "$registration_source" "$registration_profile"
+                break
+            fi
+
+            activation_attempts=$((activation_attempts + 1))
+            if run_firefox_activation_probe "$firefox_binary" "$activation_user" "$profile_home" "$profile_dir"; then
+                activation_status=0
+            else
+                activation_status=$?
+            fi
+
+            registration_source="missing"
+            registration_profile=""
+            registration_info="$(detect_firefox_extension_registration_in_profile "$profile_dir" "$FIREFOX_EXTENSION_ID" 2>/dev/null || true)"
+            if [ -n "$registration_info" ]; then
+                registration_source="${registration_info%%$'\t'*}"
+                registration_profile="${registration_info#*$'\t'}"
+            fi
+            log_firefox_registration_probe "$activation_attempts" "$activation_user" "$profile_home" "$activation_status" "$registration_source" "$profile_dir"
+
+            if [ "$registration_source" != "missing" ]; then
+                break
+            fi
+
+            if [ "$activation_status" -ne 0 ] \
+                && [ "$SECONDS" -gt "$deadline" ] \
+                && [ "$activation_attempts" -ge "$FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES" ]; then
+                break
+            fi
+
+            sleep 1
+        done
 
         if [ "$registration_source" != "missing" ]; then
-            write_firefox_extension_ready_marker "$activation_user" "$profile_home"
-            return 0
+            registered_count=$((registered_count + 1))
+            target_lines+=("profile=$activation_user|$profile_home|$profile_dir|registered|$registration_source")
+        else
+            target_lines+=("profile=$activation_user|$profile_home|$profile_dir|missing|missing")
+            missing_targets+=("$activation_user|$profile_home|$profile_dir")
         fi
-
-        if [ "$activation_status" -ne 0 ] \
-            && [ "$SECONDS" -gt "$deadline" ] \
-            && [ "$activation_attempts" -ge "$FIREFOX_EXTENSION_REGISTRATION_MIN_PROBES" ]; then
-            break
-        fi
-
-        sleep 1
     done
 
+    write_firefox_extension_ready_marker "$target_count" "$registered_count" "${target_lines[@]}"
+    log "Firefox managed extension registration targets: registered=$registered_count target_count=$target_count"
+    if [ "$registered_count" -eq "$target_count" ]; then
+        return 0
+    fi
+
     log_error \
-        "Firefox did not register managed extension: $FIREFOX_EXTENSION_ID activation_user=$activation_user profile_home=$profile_home probe_attempt=$activation_attempts registration_source=$registration_source"
+        "Firefox did not register managed extension for all profiles: $FIREFOX_EXTENSION_ID registered=$registered_count target_count=$target_count missing=${missing_targets[*]}"
     return 1
 }
 

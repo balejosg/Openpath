@@ -105,14 +105,8 @@ EOF
         # Step 7: Install Firefox extension only after request setup exists.
         echo "  Validando configuración de solicitudes del navegador..."
         if is_openpath_request_setup_complete; then
-            echo "  Instalando extensión Firefox..."
-            install_browser_integrations \
-                /usr/share/openpath/firefox-extension \
-                /usr/share/openpath/firefox-release \
-                --native-host \
-                --firefox-best-effort \
-                --chromium-best-effort \
-                --native-host-best-effort
+            echo "  Ejecutando configuración estricta Firefox..."
+            /usr/local/bin/openpath-browser-setup.sh
         else
             echo "  Skipping managed browser request integration until OpenPath setup is complete"
             echo "  Missing: $(describe_openpath_request_setup_missing)"
