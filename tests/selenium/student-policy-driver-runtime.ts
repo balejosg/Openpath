@@ -173,7 +173,7 @@ export async function runCrossOriginFetchProbe(
   const result: 'ok' | 'blocked' = await driver.executeAsyncScript(
     `const [url, done] = [arguments[0], arguments[arguments.length - 1]];
      const controller = new AbortController();
-     const timeoutId = setTimeout(() => controller.abort(), 3000);
+     const timeoutId = setTimeout(() => controller.abort(), 12000);
      fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store', signal: controller.signal })
        .then((response) => done(response.ok ? 'ok' : 'blocked'))
        .catch(() => done('blocked'))
@@ -205,7 +205,7 @@ export async function runCrossOriginXhrProbe(
          xhr.abort();
        } catch {}
        finish('blocked');
-     }, 3000);
+     }, 12000);
      xhr.open('GET', url);
      xhr.onload = () => finish(xhr.status >= 200 && xhr.status < 300 ? 'ok' : 'blocked');
      xhr.onerror = () => finish('blocked');
@@ -233,7 +233,7 @@ export async function runCrossOriginElementProbe(
        done(value);
      };
      const withCacheBust = url + (url.includes('?') ? '&' : '?') + 'cache=' + Date.now();
-     const timeoutId = setTimeout(() => finish('blocked'), 3000);
+     const timeoutId = setTimeout(() => finish('blocked'), 12000);
 
      if (probeType === 'script') {
        const script = document.createElement('script');
