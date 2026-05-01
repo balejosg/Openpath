@@ -69,6 +69,7 @@ interface StudentPolicyScenarioTiming {
 }
 
 interface PageResourceObserverState {
+  installed?: boolean;
   lastError?: string | null;
   lastNotification?: { kind?: string; url?: string } | null;
   notifications?: Record<string, number>;
@@ -294,6 +295,27 @@ async function readPageResourceObserverState(
     return null;
   }
   return state as PageResourceObserverState;
+}
+
+async function waitForPageResourceObserver(
+  driver: StudentPolicyDriver,
+  timeoutMs = 2000
+): Promise<PageResourceObserverState | null> {
+  const deadline = Date.now() + timeoutMs;
+  let lastState: PageResourceObserverState | null = null;
+
+  while (Date.now() < deadline) {
+    lastState = await readPageResourceObserverState(driver);
+    if (lastState?.installed === true) {
+      return lastState;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+  }
+
+  return lastState;
 }
 
 async function seedBaselineWhitelist(
@@ -539,10 +561,12 @@ async function runAjaxAutoAllowScenarioSet(
         });
       });
       await runLinuxDiagnosticPhase('page-observer', async () => {
-        const installed = await driver
-          .getDriver()
-          .executeScript('return window.__openpathPageResourceObserverInstalled === true;');
-        assert.strictEqual(installed, true, 'page resource observer should be installed');
+        const observerState = await waitForPageResourceObserver(driver);
+        assert.strictEqual(
+          observerState?.installed === true,
+          true,
+          'page resource observer should be installed'
+        );
       });
 
       const firstResult = await runLinuxDiagnosticPhase('probe-traffic', async () => {
