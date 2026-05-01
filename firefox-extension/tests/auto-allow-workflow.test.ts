@@ -237,6 +237,57 @@ await describe('auto allow workflow', async () => {
     await Promise.all([firstRequest, secondRequest]);
   });
 
+  await test('waits for an in-flight pending local update before reusing domain status', async () => {
+    let resolveLocalUpdate: ((value: boolean) => void) | undefined;
+    const { fixture, workflow } = createWorkflowFixture({
+      fetchImpl: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ success: true, status: 'approved' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        ),
+      requestLocalWhitelistUpdate: () => {
+        fixture.requestLocalWhitelistUpdateCalls += 1;
+        return new Promise<boolean>((resolve) => {
+          resolveLocalUpdate = resolve;
+        });
+      },
+    });
+
+    const firstRequest = workflow.autoAllowBlockedDomain(
+      5,
+      'cdn.example.com',
+      'https://portal.school/app',
+      'script',
+      'https://cdn.example.com/asset.js?attempt=1'
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    let secondRequestResolved = false;
+    const secondRequest = workflow
+      .autoAllowBlockedDomain(
+        5,
+        'cdn.example.com',
+        'https://portal.school/app',
+        'script',
+        'https://cdn.example.com/asset.js?attempt=2'
+      )
+      .then(() => {
+        secondRequestResolved = true;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    assert.equal(secondRequestResolved, false);
+    assert.equal(fixture.requestLocalWhitelistUpdateCalls, 1);
+
+    resolveLocalUpdate?.(true);
+    await Promise.all([firstRequest, secondRequest]);
+    assert.equal(secondRequestResolved, true);
+  });
+
   await test('does not repeat API calls for a host that was already auto-approved in the same tab', async () => {
     const requestBodies: unknown[] = [];
     const updatedHosts: string[][] = [];
