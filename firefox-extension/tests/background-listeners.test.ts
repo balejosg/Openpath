@@ -384,6 +384,26 @@ void describe('background listeners blocked-screen routing', () => {
     assert.equal(completed, true);
   });
 
+  void test('does not block main-frame navigations while probing auto-allow candidates', () => {
+    const harness = createListenerHarness({
+      currentTabUrl: 'https://allowed.example/app',
+      autoAllowBlockedDomain: (tabId, hostname, origin, requestType, targetUrl) => {
+        harness.autoAllowCalls.push({ tabId, hostname, origin, requestType, targetUrl });
+        return Promise.resolve();
+      },
+    });
+    assert.ok(harness.webRequestBefore);
+
+    const result = harness.webRequestBefore({
+      type: 'main_frame',
+      tabId: 3,
+      url: 'https://allowed.example/app',
+    } as WebRequest.OnBeforeRequestDetailsType);
+
+    assert.equal(result, undefined);
+    assert.deepEqual(harness.autoAllowCalls, []);
+  });
+
   void test('does not auto-allow requests cancelled by blocked subdomain policy', () => {
     const harness = createListenerHarness({
       evaluateBlockedSubdomain: () => ({

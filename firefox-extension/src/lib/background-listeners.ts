@@ -414,11 +414,18 @@ export function registerBackgroundListeners(options: BackgroundListenersOptions)
     });
   }
 
+  function isBlockingAutoAllowResource(details: { frameId?: number; type?: string }): boolean {
+    return !isTopFrameNavigation(details);
+  }
+
   options.browser.webRequest.onBeforeRequest.addListener(
     (details: WebRequest.OnBeforeRequestDetailsType) => {
       const result =
         options.evaluateBlockedPath(details) ?? options.evaluateBlockedSubdomain(details);
       if (!result) {
+        if (!isBlockingAutoAllowResource(details)) {
+          return;
+        }
         return waitForAutoAllowBeforeRequest(details);
       }
 
