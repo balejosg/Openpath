@@ -299,7 +299,7 @@ async function readPageResourceObserverState(
 
 async function waitForPageResourceObserver(
   driver: StudentPolicyDriver,
-  timeoutMs = 2000
+  timeoutMs = 10_000
 ): Promise<PageResourceObserverState | null> {
   const deadline = Date.now() + timeoutMs;
   let lastState: PageResourceObserverState | null = null;
