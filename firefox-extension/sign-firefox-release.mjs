@@ -15,13 +15,14 @@ const firefoxReleaseSourceEntries = ['manifest.json', 'dist', 'popup', 'blocked'
 const defaultWebExtSignMaxRetries = 2;
 const defaultWebExtSignRetryBufferSeconds = 10;
 const defaultWebExtSignMaxThrottleWaitSeconds = 900;
+const defaultWebExtSignApprovalTimeoutSeconds = 2700;
 
 function fail(message) {
   throw new Error(message);
 }
 
 export function buildWebExtSignArgs(options) {
-  const { apiKey, apiSecret, artifactsDir, sourceDir = extensionRoot } = options;
+  const { apiKey, apiSecret, artifactsDir, sourceDir = extensionRoot, approvalTimeoutMs } = options;
 
   if (!apiKey) {
     fail('WEB_EXT_API_KEY is required');
@@ -30,7 +31,7 @@ export function buildWebExtSignArgs(options) {
     fail('WEB_EXT_API_SECRET is required');
   }
 
-  return [
+  const args = [
     '--yes',
     'web-ext',
     'sign',
@@ -40,6 +41,12 @@ export function buildWebExtSignArgs(options) {
     `--api-key=${apiKey}`,
     `--api-secret=${apiSecret}`,
   ];
+
+  if (Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0) {
+    args.push(`--approval-timeout=${approvalTimeoutMs}`);
+  }
+
+  return args;
 }
 
 function parseNonNegativeInteger(value, fallback) {
@@ -329,6 +336,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
         apiSecret: process.env.WEB_EXT_API_SECRET?.trim(),
         artifactsDir,
         sourceDir: signingSource.sourceDir,
+        approvalTimeoutMs:
+          parseNonNegativeInteger(
+            process.env.WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS,
+            defaultWebExtSignApprovalTimeoutSeconds
+          ) * 1000,
       });
 
       const result = runWebExtSignWithRetry({

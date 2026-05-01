@@ -49,6 +49,7 @@ interface SignFirefoxReleaseModule {
     apiSecret: string;
     artifactsDir: string;
     sourceDir?: string;
+    approvalTimeoutMs?: number;
   }) => string[];
   computeFirefoxReleasePayloadHash: (options: { sourceDir?: string }) => string;
   findSignedXpiArtifact: (artifactsDir: string) => string;
@@ -181,6 +182,7 @@ void describe('Firefox release signing helpers', () => {
       apiSecret: 'top-secret',
       artifactsDir: 'build/firefox-release/raw-signed',
       sourceDir: extensionRoot,
+      approvalTimeoutMs: 2_700_000,
     });
 
     assert.deepEqual(args, [
@@ -192,6 +194,7 @@ void describe('Firefox release signing helpers', () => {
       '--artifacts-dir=build/firefox-release/raw-signed',
       '--api-key=user:123:456',
       '--api-secret=top-secret',
+      '--approval-timeout=2700000',
     ]);
   });
 
