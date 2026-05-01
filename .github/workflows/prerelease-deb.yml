@@ -81,6 +81,7 @@ jobs:
           WEB_EXT_SIGN_MAX_RETRIES: '2'
           WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30'
           WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700'
+          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '7200'
         run: |
           npm run sign:firefox-release --workspace=@openpath/firefox-extension -- --version "2.0.${{ github.run_number }}.${{ github.run_attempt }}"
 
