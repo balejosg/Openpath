@@ -258,6 +258,34 @@ After:
   Windows and Linux target-platform lanes skipped because the diff was
   release-infrastructure-only.
 
+## Pipeline Speed Baseline - 2026-05-01
+
+Current evidence:
+
+- `E2E Tests` run `25210255015` for commit
+  `b792a7311c01411d4c1473b9af11d8b2dee8e020` succeeded in `9m00s` wall-clock.
+  `Detect Relevant Changes` queued `2s` and executed `9s`; `Windows Student
+Policy` queued `13s` and executed `522s`; `Linux Student Policy` queued `13s`
+  and executed `459s`; `Windows E2E` and matrix `Linux E2E` were explicitly
+  skipped; `E2E Summary` executed after the platform lanes in `3s`.
+- `CI` run `25210255027` for the same commit succeeded in `1m32s`
+  wall-clock. `Detect Relevant Changes` queued `2s` and executed `7s`;
+  `Delivery Contracts (Node)` queued `17s` and executed `64s`; both Windows
+  Pester lanes and Linux BATS were explicitly skipped by routing; `CI Success`
+  queued behind the required job results for `89s` and executed `2s`.
+
+Decision:
+
+- Keep the current narrow Windows student-policy SSE groups. They already route
+  high-confidence single-family request lifecycle, AJAX auto-allow,
+  path-blocking, and exemption/schedule diffs without weakening full coverage
+  for mixed, workflow, runtime, installer, lockfile, shared, or Windows-client
+  changes.
+- Do not add another destructive Windows lane or split the current pinned
+  runner work. The latest representative run still shows the platform work
+  itself dominates; additional concurrency on the same VM would weaken the
+  target-platform signal.
+
 Policy:
 
 - Keep short Windows unit coverage on hosted Windows only while repeated hosted
