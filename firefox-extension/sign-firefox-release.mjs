@@ -15,7 +15,7 @@ const firefoxReleaseSourceEntries = ['manifest.json', 'dist', 'popup', 'blocked'
 const defaultWebExtSignMaxRetries = 2;
 const defaultWebExtSignRetryBufferSeconds = 10;
 const defaultWebExtSignMaxThrottleWaitSeconds = 900;
-const defaultWebExtSignApprovalTimeoutSeconds = 2700;
+const defaultWebExtSignApprovalTimeoutSeconds = 7200;
 
 function fail(message) {
   throw new Error(message);
