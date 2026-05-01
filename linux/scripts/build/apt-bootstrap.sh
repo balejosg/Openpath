@@ -298,6 +298,28 @@ bootstrap_os_id() {
 }
 
 configure_ubuntu_firefox_apt_source() {
+    if command -v curl >/dev/null 2>&1 && command -v gpg >/dev/null 2>&1; then
+        mkdir -p /etc/apt/keyrings
+        if curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg \
+            | gpg --dearmor -o /etc/apt/keyrings/packages.mozilla.org.gpg; then
+            cat > /etc/apt/sources.list.d/mozilla.list <<'EOF'
+deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.gpg] https://packages.mozilla.org/apt mozilla main
+EOF
+            mkdir -p "$(dirname "$OPENPATH_FIREFOX_APT_PREFERENCES_PATH")" 2>/dev/null || true
+            cat > "$OPENPATH_FIREFOX_APT_PREFERENCES_PATH" 2>/dev/null <<'EOF' || true
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1001
+
+Package: firefox
+Pin: version 1:1snap*
+Pin-Priority: -1
+EOF
+            return 0
+        fi
+        rm -f /etc/apt/keyrings/packages.mozilla.org.gpg
+    fi
+
     if ! command -v add-apt-repository >/dev/null 2>&1; then
         DEBIAN_FRONTEND=noninteractive run_maybe_verbose apt_install_with_retry "software-properties-common" \
             apt-get install -y software-properties-common || true

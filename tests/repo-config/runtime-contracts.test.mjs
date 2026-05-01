@@ -350,6 +350,17 @@ describe('repository verification contract', () => {
       /if ! command -v add-apt-repository[\s\S]*apt_update_with_retry[\s\S]*apt_install_with_retry "software-properties-common"/,
       'linux/lib/browser-firefox.sh should refresh package indexes before installing add-apt-repository on minimal Ubuntu images'
     );
+    assert.ok(
+      browserFirefox.includes('https://packages.mozilla.org/apt') &&
+        browserFirefox.includes('/etc/apt/keyrings/packages.mozilla.org.gpg') &&
+        browserFirefox.includes('Pin: origin packages.mozilla.org'),
+      'linux/lib/browser-firefox.sh should prefer the official Mozilla APT repository over Ubuntu snap-wrapper Firefox packages'
+    );
+    assert.match(
+      browserFirefox,
+      /if configure_mozilla_firefox_apt_repo;[\s\S]*else[\s\S]*add-apt-repository -y ppa:mozillateam\/ppa/,
+      'linux/lib/browser-firefox.sh should only use the Ubuntu PPA fallback when the official Mozilla APT repository cannot be configured'
+    );
 
     for (const [name, content] of [
       ['tests/e2e/Dockerfile', e2eDockerfile],
@@ -427,6 +438,13 @@ describe('repository verification contract', () => {
         `${name} should not run apt-get update directly`
       );
     }
+
+    assert.ok(
+      aptBootstrap.includes('https://packages.mozilla.org/apt') &&
+        aptBootstrap.includes('/etc/apt/keyrings/packages.mozilla.org.gpg') &&
+        aptBootstrap.includes('Pin: origin packages.mozilla.org'),
+      'linux/scripts/build/apt-bootstrap.sh should use the official Mozilla APT repository before the Ubuntu PPA fallback'
+    );
 
     assert.match(
       aptContractsRunner,

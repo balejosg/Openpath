@@ -29,6 +29,33 @@ browser_apt_has_candidate() {
     [ -n "$candidate" ] && [ "$candidate" != "(none)" ]
 }
 
+configure_mozilla_firefox_apt_repo() {
+    if ! command -v curl >/dev/null 2>&1 || ! command -v gpg >/dev/null 2>&1; then
+        return 1
+    fi
+
+    mkdir -p /etc/apt/keyrings
+    if ! curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/packages.mozilla.org.gpg; then
+        rm -f /etc/apt/keyrings/packages.mozilla.org.gpg
+        return 1
+    fi
+
+    cat > /etc/apt/sources.list.d/mozilla.list << 'EOF'
+deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.gpg] https://packages.mozilla.org/apt mozilla main
+EOF
+
+    cat > /etc/apt/preferences.d/mozilla-firefox << 'EOF'
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1001
+
+Package: firefox
+Pin: version 1:1snap*
+Pin-Priority: -1
+EOF
+}
+
 install_firefox_esr() {
     log "Verificando instalación de Firefox..."
 
@@ -71,16 +98,21 @@ install_firefox_esr() {
     fi
 
     if [ "$os_id" = "ubuntu" ]; then
-        if ! command -v add-apt-repository &>/dev/null 2>&1; then
-            apt_update_with_retry >/dev/null 2>&1 || true
-            DEBIAN_FRONTEND=noninteractive apt_install_with_retry "software-properties-common" \
-                apt-get install -y software-properties-common >/dev/null 2>&1 || true
-        fi
+        if configure_mozilla_firefox_apt_repo; then
+            log "✓ Mozilla Firefox APT repository configured"
+        else
+            log "⚠ Mozilla Firefox APT repository unavailable; trying Ubuntu PPA fallback"
 
-        if command -v add-apt-repository &>/dev/null 2>&1; then
-            add-apt-repository -y ppa:mozillateam/ppa 2>/dev/null || true
+            if ! command -v add-apt-repository &>/dev/null 2>&1; then
+                apt_update_with_retry >/dev/null 2>&1 || true
+                DEBIAN_FRONTEND=noninteractive apt_install_with_retry "software-properties-common" \
+                    apt-get install -y software-properties-common >/dev/null 2>&1 || true
+            fi
 
-            cat > /etc/apt/preferences.d/mozilla-firefox << 'EOF'
+            if command -v add-apt-repository &>/dev/null 2>&1; then
+                add-apt-repository -y ppa:mozillateam/ppa 2>/dev/null || true
+
+                cat > /etc/apt/preferences.d/mozilla-firefox << 'EOF'
 Package: *
 Pin: release o=LP-PPA-mozillateam
 Pin-Priority: 1001
@@ -89,8 +121,9 @@ Package: firefox
 Pin: version 1:1snap*
 Pin-Priority: -1
 EOF
-        else
-            log "⚠ add-apt-repository not available; skipping PPA setup"
+            else
+                log "⚠ add-apt-repository not available; skipping PPA setup"
+            fi
         fi
     fi
 
