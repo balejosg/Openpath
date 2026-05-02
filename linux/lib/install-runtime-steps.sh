@@ -32,14 +32,19 @@ step_install_extension() {
     echo "[12/13] Instalando extensiones del navegador..."
 
     if [ "$INSTALL_EXTENSION" = true ]; then
-        if [ "$INSTALL_NATIVE_HOST" = true ]; then
-            if ! is_openpath_request_setup_complete; then
+        if ! is_openpath_request_setup_complete; then
+            if [ "$INSTALL_NATIVE_HOST" = true ]; then
                 if ! run_classroom_registration; then
                     echo "✗ ERROR: no se pudo completar el registro requerido para solicitudes del navegador"
                     return 1
                 fi
+            else
+                echo "⊘ Extensiones del navegador omitidas hasta completar OpenPath setup"
+                return 0
             fi
+        fi
 
+        if [ "$INSTALL_NATIVE_HOST" = true ]; then
             require_openpath_request_setup_complete "source install browser request setup" || return 1
         fi
 

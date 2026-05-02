@@ -375,6 +375,11 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "linux install script skips browser extensions until request setup is complete" {
+    run grep -nF 'Extensiones del navegador omitidas hasta completar OpenPath setup' "$PROJECT_DIR/linux/lib/install-runtime-steps.sh"
+    [ "$status" -eq 0 ]
+}
+
 @test "linux e2e can require firefox extension presence explicitly" {
     run grep -n 'OPENPATH_EXPECT_FIREFOX_EXTENSION' "$PROJECT_DIR/tests/e2e/linux-e2e-tests.sh"
     [ "$status" -eq 0 ]
