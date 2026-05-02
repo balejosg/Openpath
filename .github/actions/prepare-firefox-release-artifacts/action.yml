@@ -27,6 +27,14 @@ inputs:
     description: Extra buffer before retrying an AMO throttle response.
     required: false
     default: '30'
+  sign-on-cache-miss:
+    description: Whether to sign with AMO when signed artifacts are not restored from cache.
+    required: false
+    default: 'true'
+  require-signed-artifacts:
+    description: Whether this action should fail when signed artifacts are unavailable.
+    required: false
+    default: 'true'
 
 outputs:
   payload-hash:
@@ -35,6 +43,12 @@ outputs:
   cache-hit:
     description: Whether signed Firefox Release artifacts were restored from cache.
     value: ${{ steps.cache.outputs.cache-hit }}
+  artifact-source:
+    description: 'Source of the Firefox Release artifacts: cache, signed, or skipped.'
+    value: ${{ steps.status.outputs.artifact-source }}
+  signed-artifacts-present:
+    description: Whether verified signed Firefox Release artifacts are present.
+    value: ${{ steps.status.outputs.signed-artifacts-present }}
 
 runs:
   using: composite
@@ -63,7 +77,7 @@ runs:
           --payload-hash "${{ steps.payload.outputs.hash }}"
 
     - name: Sign Firefox Release Extension
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.cache.outputs.cache-hit != 'true' && inputs.sign-on-cache-miss == 'true' }}
       shell: bash
       env:
         WEB_EXT_API_KEY: ${{ inputs.web-ext-api-key }}
@@ -76,7 +90,7 @@ runs:
         npm run sign:firefox-release --workspace=@openpath/firefox-extension -- --version "${{ inputs.amo-version }}"
 
     - name: Verify signed Firefox Release artifacts
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.cache.outputs.cache-hit != 'true' && inputs.sign-on-cache-miss == 'true' }}
       shell: bash
       run: |
         node firefox-extension/verify-firefox-release-artifacts.mjs \
@@ -84,9 +98,44 @@ runs:
           --payload-hash "${{ steps.payload.outputs.hash }}"
 
     - name: Save signed Firefox Release artifacts
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.cache.outputs.cache-hit != 'true' && inputs.sign-on-cache-miss == 'true' }}
       continue-on-error: true
       uses: actions/cache/save@v4
       with:
         path: firefox-extension/build/firefox-release
         key: openpath-firefox-release-${{ steps.payload.outputs.hash }}
+
+    - name: Skip AMO signing on cache miss
+      if: ${{ steps.cache.outputs.cache-hit != 'true' && inputs.sign-on-cache-miss != 'true' }}
+      shell: bash
+      run: |
+        echo "::notice title=Skipping AMO signing::Signed Firefox Release artifacts were not found in cache. Continuing without AMO because sign-on-cache-miss is false."
+
+    - name: Report Firefox Release artifact status
+      id: status
+      shell: bash
+      run: |
+        release_dir="firefox-extension/build/firefox-release"
+
+        if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+          artifact_source="cache"
+          signed_artifacts_present="true"
+        elif [ -f "$release_dir/metadata.json" ] && [ -f "$release_dir/openpath-firefox-extension.xpi" ]; then
+          artifact_source="signed"
+          signed_artifacts_present="true"
+        else
+          artifact_source="skipped"
+          signed_artifacts_present="false"
+        fi
+
+        echo "artifact-source=$artifact_source" >> "$GITHUB_OUTPUT"
+        echo "signed-artifacts-present=$signed_artifacts_present" >> "$GITHUB_OUTPUT"
+        echo "Firefox Release artifact source: $artifact_source"
+        echo "Signed Firefox Release artifacts present: $signed_artifacts_present"
+
+    - name: Require signed Firefox Release artifacts
+      if: ${{ inputs.require-signed-artifacts == 'true' && steps.status.outputs.signed-artifacts-present != 'true' }}
+      shell: bash
+      run: |
+        echo "::error title=Missing signed Firefox Release artifacts::Signed Firefox Release artifacts are required but were not restored or created."
+        exit 1

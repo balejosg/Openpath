@@ -79,19 +79,26 @@ jobs:
           build-extension: 'true'
 
       - name: Prepare Firefox Release Artifacts
+        id: firefox-release
         uses: ./.github/actions/prepare-firefox-release-artifacts
         with:
           amo-version: 2.0.${{ github.run_number }}.${{ github.run_attempt }}
           web-ext-api-key: ${{ secrets.WEB_EXT_API_KEY }}
           web-ext-api-secret: ${{ secrets.WEB_EXT_API_SECRET }}
-          approval-timeout-seconds: 1800
-          max-throttle-wait-seconds: 900
-          max-retries: 1
-          retry-buffer-seconds: 30
+          sign-on-cache-miss: 'false'
+          require-signed-artifacts: 'false'
+
+      - name: Summarize Firefox Release artifact source
+        run: |
+          {
+            echo "### Firefox Release artifacts"
+            echo "- Payload hash: ${{ steps.firefox-release.outputs.payload-hash }}"
+            echo "- Cache hit: ${{ steps.firefox-release.outputs.cache-hit }}"
+            echo "- Firefox Release artifact source: ${{ steps.firefox-release.outputs.artifact-source }}"
+            echo "- Signed artifacts present: ${{ steps.firefox-release.outputs.signed-artifacts-present }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Debian package
-        env:
-          OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'
         run: |
           chmod +x linux/scripts/build/build-deb.sh
           ./linux/scripts/build/build-deb.sh ${{ steps.version.outputs.version }} 1

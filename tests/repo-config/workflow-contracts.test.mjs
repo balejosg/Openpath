@@ -146,11 +146,24 @@ test('Firefox release signing workflows are resilient to AMO throttling and reru
       !workflow.includes('npm run sign:firefox-release'),
       `${name} should not call AMO signing directly from the Debian workflow`
     );
-    assert.ok(
-      workflow.includes("OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'"),
-      `${name} should still require signed Firefox release artifacts in the Debian package`
-    );
   }
+
+  assert.ok(
+    buildDebWorkflow.includes("OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'"),
+    'stable Debian publishing should still require signed Firefox release artifacts in the Debian package'
+  );
+  assert.ok(
+    !prereleaseWorkflow.includes("OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'"),
+    'prerelease publishing should allow the Debian package to fall back to unpacked Firefox assets on AMO cache misses'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes("sign-on-cache-miss: 'false'"),
+    'prerelease publishing should not start a synchronous AMO signing wait when signed assets are not cached'
+  );
+  assert.ok(
+    prereleaseWorkflow.includes("require-signed-artifacts: 'false'"),
+    'prerelease publishing should not fail solely because signed Firefox assets are absent from cache'
+  );
 
   assert.ok(
     prepareAction.includes('firefox-release-payload-hash.mjs'),
@@ -177,6 +190,25 @@ test('Firefox release signing workflows are resilient to AMO throttling and reru
     'cache-aware Firefox release action should expose an approval timeout input'
   );
   assert.ok(
+    prepareAction.includes('sign-on-cache-miss:') && prepareAction.includes("default: 'true'"),
+    'cache-aware Firefox release action should default to signing on cache miss for stable release safety'
+  );
+  assert.ok(
+    prepareAction.includes('require-signed-artifacts:') &&
+      prepareAction.includes("default: 'true'"),
+    'cache-aware Firefox release action should default to requiring signed artifacts for stable release safety'
+  );
+  assert.ok(
+    prepareAction.includes('artifact-source:') &&
+      prepareAction.includes('signed-artifacts-present:'),
+    'cache-aware Firefox release action should report whether artifacts came from cache, signing, or were skipped'
+  );
+  assert.ok(
+    prepareAction.includes('Skipping AMO signing') &&
+      prepareAction.includes('require-signed-artifacts'),
+    'cache-aware Firefox release action should have an explicit non-blocking cache-miss path and a strict guard'
+  );
+  assert.ok(
     prepareAction.includes("default: '7200'"),
     'cache-aware Firefox release action should keep the long approval timeout as the stable default'
   );
@@ -193,20 +225,8 @@ test('Firefox release signing workflows are resilient to AMO throttling and reru
     'cache-aware Firefox release action should keep the retry buffer as the stable default'
   );
   assert.ok(
-    prereleaseWorkflow.includes('approval-timeout-seconds: 1800'),
-    'prerelease publishing should bound AMO approval waits to 30 minutes'
-  );
-  assert.ok(
-    prereleaseWorkflow.includes('max-throttle-wait-seconds: 900'),
-    'prerelease publishing should not wait through long AMO throttle windows'
-  );
-  assert.ok(
-    prereleaseWorkflow.includes('max-retries: 1'),
-    'prerelease publishing should retry one short AMO throttle window before failing recoverably'
-  );
-  assert.ok(
-    prereleaseWorkflow.includes('retry-buffer-seconds: 30'),
-    'prerelease publishing should retain a small AMO retry buffer'
+    prereleaseWorkflow.includes('steps.firefox-release.outputs.artifact-source'),
+    'prerelease publishing should summarize whether signed Firefox assets were cached or skipped'
   );
   assert.ok(
     !buildDebWorkflow.includes('approval-timeout-seconds: 1800'),

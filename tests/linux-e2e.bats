@@ -336,20 +336,31 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "linux deb publish workflows require staged Firefox release XPI artifacts" {
+@test "stable linux deb publish workflow requires staged Firefox release XPI artifacts" {
     run grep -nF 'OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS=1' "$PROJECT_DIR/linux/scripts/build/build-deb.sh"
-    [ "$status" -eq 0 ]
-
-    run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
     [ "$status" -eq 0 ]
 
     run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 
+    run grep -nF 'uses: ./.github/actions/prepare-firefox-release-artifacts' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "prerelease linux deb publish workflow reuses signed Firefox cache without blocking on AMO" {
     run grep -nF 'uses: ./.github/actions/prepare-firefox-release-artifacts' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'uses: ./.github/actions/prepare-firefox-release-artifacts' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -nF "sign-on-cache-miss: 'false'" "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "require-signed-artifacts: 'false'" "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -eq 0 ]
+
+    run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    [ "$status" -ne 0 ]
+
+    run grep -nF 'Firefox Release artifact source: ${{ steps.firefox-release.outputs.artifact-source }}' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
     [ "$status" -eq 0 ]
 }
 
