@@ -311,6 +311,32 @@ void describe('Token delivery core flows', { timeout: 30000 }, async () => {
       assert.ok(updatedBody.includes('cdn.token-delivery.example.com'));
     });
 
+    await test('should not return 304 when direct rule writes change whitelist content without touching the group', async () => {
+      const initial = await fetch(`${harness.apiUrl}/w/${machineToken}/whitelist.txt`);
+      assert.strictEqual(initial.status, 200);
+      const initialEtag = initial.headers.get('etag');
+      assert.ok(initialEtag);
+      const ruleId = `etag-direct-rule-${Date.now().toString()}`;
+      const ruleValue = `${ruleId}.example.com`;
+
+      await db.execute(
+        sql.raw(`
+          INSERT INTO whitelist_rules (id, group_id, type, value, source)
+          VALUES ('${ruleId}', 'etag-group', 'whitelist', '${ruleValue}', 'manual')
+          ON CONFLICT (group_id, type, value) DO NOTHING
+        `)
+      );
+
+      const updated = await fetch(`${harness.apiUrl}/w/${machineToken}/whitelist.txt`, {
+        headers: { 'If-None-Match': initialEtag },
+      });
+      assert.strictEqual(updated.status, 200);
+      assert.notStrictEqual(updated.headers.get('etag'), initialEtag);
+
+      const updatedBody = await updated.text();
+      assert.ok(updatedBody.includes(ruleValue));
+    });
+
     await test('should return fail-open for invalid token', async () => {
       const response = await fetch(`${harness.apiUrl}/w/invalid-token-here/whitelist.txt`);
       assert.strictEqual(response.status, 200);

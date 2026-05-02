@@ -121,10 +121,16 @@ export async function resolveMachineWhitelist(
     return failOpenResponse();
   }
 
+  const content = await groupsStorage.exportGroup(effectiveContext.groupId);
+  if (!content) {
+    return failOpenResponse();
+  }
+
   const etag = buildWhitelistEtag({
     groupId: group.id,
     updatedAt: group.updatedAt,
     enabled: group.enabled,
+    content,
   });
   if (matchesIfNoneMatchHeader(ifNoneMatchHeader, etag)) {
     await touchMachine(machine.hostname);
@@ -133,11 +139,6 @@ export async function resolveMachineWhitelist(
       etag,
       cacheControl: 'private, no-cache',
     };
-  }
-
-  const content = await groupsStorage.exportGroup(effectiveContext.groupId);
-  if (!content) {
-    return failOpenResponse();
   }
 
   await touchMachine(machine.hostname);

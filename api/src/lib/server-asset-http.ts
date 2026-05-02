@@ -24,8 +24,14 @@ export function buildWhitelistEtag(params: {
   groupId: string;
   updatedAt: Date;
   enabled: boolean;
+  content?: string;
 }): string {
-  const version = `${params.groupId}:${params.updatedAt.toISOString()}:${params.enabled ? '1' : '0'}`;
+  const version = [
+    params.groupId,
+    params.updatedAt.toISOString(),
+    params.enabled ? '1' : '0',
+    params.content ?? '',
+  ].join(':');
   const hash = createHash('sha256').update(version).digest('base64url');
   return `"${hash}"`;
 }

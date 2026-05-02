@@ -87,7 +87,7 @@ function New-OpenPathFilePathRuleXml {
     $escapedSid = ConvertTo-OpenPathXmlAttribute -Value $Sid
     $escapedPath = ConvertTo-OpenPathXmlAttribute -Value $Path
     $escapedAction = ConvertTo-OpenPathXmlAttribute -Value $Action
-    $xml = "      <FilePathRule Id=`"{$id}`" Name=`"$escapedName`" Description=`"Managed by OpenPath`" UserOrGroupSid=`"$escapedSid`" Action=`"$escapedAction`">`n"
+    $xml = "      <FilePathRule Id=`"$id`" Name=`"$escapedName`" Description=`"Managed by OpenPath`" UserOrGroupSid=`"$escapedSid`" Action=`"$escapedAction`">`n"
     $xml += "        <Conditions>`n"
     $xml += "          <FilePathCondition Path=`"$escapedPath`" />`n"
     $xml += "        </Conditions>`n"

@@ -104,7 +104,12 @@ export async function exportGroup(groupId: string): Promise<string | null> {
   const group = await getGroupMetaById(groupId);
   if (!group) return null;
 
-  const version = `${group.updatedAt.toISOString()}:${group.enabled ? '1' : '0'}`;
+  const rules = await getRulesByGroup(groupId);
+  const rulesVersion = rules
+    .map((rule) => `${rule.id}:${rule.type}:${rule.value}:${rule.source}:${rule.comment ?? ''}`)
+    .sort()
+    .join('|');
+  const version = `${group.updatedAt.toISOString()}:${group.enabled ? '1' : '0'}:${rulesVersion}`;
   const cached = exportCache.get(groupId);
   const hit = cached?.version === version ? cached : null;
   if (hit) {
@@ -113,7 +118,6 @@ export async function exportGroup(groupId: string): Promise<string | null> {
     return hit.content;
   }
 
-  const rules = await getRulesByGroup(groupId);
   if (!group.enabled) {
     const disabledContent = '#DESACTIVADO\n';
     exportCache.delete(groupId);

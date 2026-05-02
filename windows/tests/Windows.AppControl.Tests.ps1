@@ -28,5 +28,18 @@ Describe "AppControl Module" {
             $spec.Mode | Should -Be 'AuditOnly'
             $spec.NonAdminSid | Should -Be 'S-1-5-32-545'
         }
+
+        It "Generates AppLocker rule ids without braces for GuidType compatibility" {
+            $spec = New-OpenPathNonAdminAppLockerPolicySpec -OpenPathRoot 'C:\OpenPath'
+            [xml]$policy = New-OpenPathAppLockerPolicyXml -Spec $spec
+
+            $rules = @($policy.AppLockerPolicy.RuleCollection.FilePathRule | Where-Object { $null -ne $_ })
+            $rules.Count | Should -BeGreaterThan 0
+            foreach ($rule in $rules) {
+                $ruleId = $rule.GetAttribute('Id')
+                $ruleId | Should -Match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                $ruleId | Should -Not -Match '^\{'
+            }
+        }
     }
 }
