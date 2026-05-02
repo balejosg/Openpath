@@ -793,6 +793,10 @@ async function runBlockedSubdomainScenarios(
     'Block CDN subdomain for Selenium policy test'
   );
 
+  await driver.forceLocalUpdate();
+  await driver.refreshBlockedSubdomainRules();
+  await driver.restart();
+
   await settlePolicyChange(
     driver,
     mode,
