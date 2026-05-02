@@ -1,7 +1,9 @@
-Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
+BeforeAll {
+    Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
 
-$modulePath = Join-Path $PSScriptRoot ".." "lib"
-Import-Module "$modulePath\Browser.FirefoxConfig.psm1" -Force -Global -ErrorAction Stop
+    $modulePath = Join-Path $PSScriptRoot ".." "lib"
+    Import-Module "$modulePath\Browser.FirefoxConfig.psm1" -Force -Global -ErrorAction Stop
+}
 
 Describe "Firefox network autoconfig" {
     Context "New-OpenPathFirefoxNetworkAutoconfigContent" {
