@@ -336,7 +336,7 @@ EOF
     [ "$(cat "$TEST_TMP_DIR/unpacked-source")" = "$TEST_TMP_DIR/firefox-extension" ]
 }
 
-@test "install_firefox_extension prefers local unpacked bundle over managed api when signed artifacts are absent" {
+@test "install_firefox_extension prefers managed api over local unpacked bundle when signed artifacts are absent" {
     local release_dir="$TEST_TMP_DIR/firefox-release"
     local ext_dir="$TEST_TMP_DIR/firefox-extension"
     mkdir -p "$release_dir" "$ext_dir"
@@ -361,6 +361,9 @@ EOF
 
     run install_firefox_extension "$ext_dir" "$release_dir"
     [ "$status" -eq 0 ]
-    [ "$(cat "$TEST_TMP_DIR/unpacked-source")" = "$ext_dir" ]
-    [ ! -f "$TEST_TMP_DIR/managed-policy-args" ]
+    [ ! -f "$TEST_TMP_DIR/unpacked-source" ]
+    mapfile -t policy_args < "$TEST_TMP_DIR/managed-policy-args"
+    [ "${policy_args[0]}" = "monitor-bloqueos@openpath" ]
+    [ "${policy_args[1]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
+    [ "${policy_args[2]}" = "https://school.example/api/extensions/firefox/openpath.xpi" ]
 }

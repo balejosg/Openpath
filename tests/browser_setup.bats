@@ -471,6 +471,27 @@ JSON
     [[ "$output" == *"signedState=-1"* ]]
 }
 
+@test "firefox activation plan rejects disabled registration even when prefs has uuid" {
+    local profile_dir="$TEST_TMP_DIR/profile"
+
+    mkdir -p "$profile_dir"
+    cat > "$profile_dir/extensions.json" <<'JSON'
+{"addons":[{"id":"monitor-bloqueos@openpath","active":false,"userDisabled":true,"signedState":-1,"location":"app-system-share","rootURI":"moz-extension://openpath-test-uuid/"}]}
+JSON
+    cat > "$profile_dir/prefs.js" <<'PREFS'
+user_pref("extensions.webextensions.uuids", "{\"monitor-bloqueos@openpath\":\"openpath-test-uuid\"}");
+PREFS
+
+    run bash -c 'source "$1"; detect_firefox_extension_registration_in_profile "$2" "monitor-bloqueos@openpath"' \
+        bash "$PROJECT_DIR/linux/lib/firefox-activation-plan.sh" "$profile_dir"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"extensions.json-disabled"* ]]
+    [[ "$output" == *"active=false"* ]]
+    [[ "$output" == *"userDisabled=true"* ]]
+    [[ "$output" == *"signedState=-1"* ]]
+}
+
 @test "browser request readiness facts reject policy-only firefox setup" {
     local policies_file="$TEST_TMP_DIR/firefox-policies.json"
     local etc_dir="$TEST_TMP_DIR/etc/openpath"

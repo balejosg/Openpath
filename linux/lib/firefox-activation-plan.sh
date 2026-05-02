@@ -323,15 +323,15 @@ def extensions_json_addon_state(path: Path):
     return None
 
 if profile.is_dir():
-    if prefs_has_uuid(profile / "prefs.js"):
-        print(f"prefs.js\t{profile}")
-        raise SystemExit(0)
     addon_reasons = extensions_json_addon_state(profile / "extensions.json")
     if addon_reasons is not None:
         if any(reason in addon_reasons for reason in ("active=false", "userDisabled=true", "signedState=-1")):
             print(f"extensions.json-disabled\t{profile}\t{';'.join(addon_reasons)}")
             raise SystemExit(1)
         print(f"extensions.json\t{profile}")
+        raise SystemExit(0)
+    if prefs_has_uuid(profile / "prefs.js"):
+        print(f"prefs.js\t{profile}")
         raise SystemExit(0)
 
 raise SystemExit(1)

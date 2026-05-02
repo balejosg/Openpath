@@ -210,9 +210,9 @@ install_firefox_extension() {
         return 0
     fi
 
-    if install_firefox_unpacked_extension "$ext_source"; then
+    if sync_firefox_managed_extension_policy "$release_source"; then
         return 0
     fi
 
-    sync_firefox_managed_extension_policy "$release_source"
+    install_firefox_unpacked_extension "$ext_source"
 }
