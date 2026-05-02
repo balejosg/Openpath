@@ -9,6 +9,6 @@
     "sourceMap": true,
     "types": ["webextension-polyfill", "node"]
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*", "tests/**/*", "*.d.mts"],
   "exclude": ["node_modules", "dist"]
 }

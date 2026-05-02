@@ -1,0 +1,76 @@
+name: Prepare Firefox Release Artifacts
+description: Restore or create AMO-signed Firefox Release artifacts for Debian packaging.
+
+inputs:
+  amo-version:
+    description: AMO extension version to use when signing is required.
+    required: true
+  web-ext-api-key:
+    description: AMO web-ext API key.
+    required: true
+  web-ext-api-secret:
+    description: AMO web-ext API secret.
+    required: true
+
+outputs:
+  payload-hash:
+    description: Firefox Release runtime payload hash.
+    value: ${{ steps.payload.outputs.hash }}
+  cache-hit:
+    description: Whether signed Firefox Release artifacts were restored from cache.
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute Firefox Release payload hash
+      id: payload
+      shell: bash
+      run: |
+        hash="$(node firefox-extension/firefox-release-payload-hash.mjs)"
+        echo "hash=$hash" >> "$GITHUB_OUTPUT"
+        echo "Firefox Release payload hash: $hash"
+
+    - name: Restore signed Firefox Release artifacts
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: firefox-extension/build/firefox-release
+        key: openpath-firefox-release-${{ steps.payload.outputs.hash }}
+
+    - name: Verify cached Firefox Release artifacts
+      if: ${{ steps.cache.outputs.cache-hit == 'true' }}
+      shell: bash
+      run: |
+        node firefox-extension/verify-firefox-release-artifacts.mjs \
+          --release-dir firefox-extension/build/firefox-release \
+          --payload-hash "${{ steps.payload.outputs.hash }}"
+
+    - name: Sign Firefox Release Extension
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      env:
+        WEB_EXT_API_KEY: ${{ inputs.web-ext-api-key }}
+        WEB_EXT_API_SECRET: ${{ inputs.web-ext-api-secret }}
+        WEB_EXT_SIGN_MAX_RETRIES: '2'
+        WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30'
+        WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700'
+        WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '7200'
+      run: |
+        npm run sign:firefox-release --workspace=@openpath/firefox-extension -- --version "${{ inputs.amo-version }}"
+
+    - name: Verify signed Firefox Release artifacts
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        node firefox-extension/verify-firefox-release-artifacts.mjs \
+          --release-dir firefox-extension/build/firefox-release \
+          --payload-hash "${{ steps.payload.outputs.hash }}"
+
+    - name: Save signed Firefox Release artifacts
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: firefox-extension/build/firefox-release
+        key: openpath-firefox-release-${{ steps.payload.outputs.hash }}

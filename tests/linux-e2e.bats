@@ -346,10 +346,10 @@ EOF
     run grep -nF "OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'" "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'npm run sign:firefox-release --workspace=@openpath/firefox-extension' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
+    run grep -nF 'uses: ./.github/actions/prepare-firefox-release-artifacts' "$PROJECT_DIR/.github/workflows/prerelease-deb.yml"
     [ "$status" -eq 0 ]
 
-    run grep -nF 'npm run sign:firefox-release --workspace=@openpath/firefox-extension' "$PROJECT_DIR/.github/workflows/build-deb.yml"
+    run grep -nF 'uses: ./.github/actions/prepare-firefox-release-artifacts' "$PROJECT_DIR/.github/workflows/build-deb.yml"
     [ "$status" -eq 0 ]
 }
 

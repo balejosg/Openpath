@@ -89,16 +89,12 @@ jobs:
           build-api: 'false'
           build-extension: 'true'
 
-      - name: Sign Firefox Release Extension
-        env:
-          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
-          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
-          WEB_EXT_SIGN_MAX_RETRIES: '2'
-          WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30'
-          WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700'
-          WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '7200'
-        run: |
-          npm run sign:firefox-release --workspace=@openpath/firefox-extension -- --version "2.0.${{ github.run_number }}.${{ github.run_attempt }}"
+      - name: Prepare Firefox Release Artifacts
+        uses: ./.github/actions/prepare-firefox-release-artifacts
+        with:
+          amo-version: 2.0.${{ github.run_number }}.${{ github.run_attempt }}
+          web-ext-api-key: ${{ secrets.WEB_EXT_API_KEY }}
+          web-ext-api-secret: ${{ secrets.WEB_EXT_API_SECRET }}
 
       - name: Build Debian package
         env:

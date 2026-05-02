@@ -22,6 +22,7 @@ interface FirefoxReleaseMetadata {
   extensionId: string;
   version: string;
   installUrl?: string;
+  payloadHash?: string;
 }
 
 interface PrepareFirefoxReleaseArtifactsResult {
@@ -40,6 +41,7 @@ interface PrepareFirefoxReleaseArtifactsModule {
     manifestPath?: string;
     extensionId?: string;
     version?: string;
+    payloadHash?: string;
   }) => PrepareFirefoxReleaseArtifactsResult;
 }
 
@@ -74,6 +76,13 @@ interface SignFirefoxReleaseModule {
   }) => SpawnSyncReturns<string> | { status: number };
 }
 
+interface VerifyFirefoxReleaseArtifactsModule {
+  verifyFirefoxReleaseArtifacts: (options: {
+    releaseDir: string;
+    payloadHash: string;
+  }) => FirefoxReleaseMetadata;
+}
+
 const { prepareFirefoxReleaseArtifacts } =
   (await import('../build-firefox-release.mjs')) as PrepareFirefoxReleaseArtifactsModule;
 const {
@@ -84,6 +93,8 @@ const {
   prepareSigningSourceDir,
   runWebExtSignWithRetry,
 } = (await import('../sign-firefox-release.mjs')) as SignFirefoxReleaseModule;
+const { verifyFirefoxReleaseArtifacts } =
+  (await import('../verify-firefox-release-artifacts.mjs')) as VerifyFirefoxReleaseArtifactsModule;
 
 const tempDirectories: string[] = [];
 
@@ -164,6 +175,7 @@ void describe('Firefox release signing helpers', () => {
       signedXpiPath,
       installUrl: 'https://downloads.example/openpath-firefox-extension.xpi',
       outputDir,
+      payloadHash: 'a'.repeat(64),
     });
 
     assert.equal(result.metadata.extensionId, 'monitor-bloqueos@openpath');
@@ -172,8 +184,87 @@ void describe('Firefox release signing helpers', () => {
       result.metadata.installUrl,
       'https://downloads.example/openpath-firefox-extension.xpi'
     );
+    assert.equal(result.metadata.payloadHash, 'a'.repeat(64));
     assert.equal(result.outputXpiPath, path.join(outputDir, 'openpath-firefox-extension.xpi'));
     assert.equal(result.metadataPath, path.join(outputDir, 'metadata.json'));
+  });
+
+  void test('verifyFirefoxReleaseArtifacts accepts a matching signed release directory', () => {
+    const workingDir = createTempDir('openpath-firefox-release-verify-');
+    const releaseDir = path.join(workingDir, 'firefox-release');
+
+    mkdirSync(releaseDir, { recursive: true });
+    writeFileSync(path.join(releaseDir, 'openpath-firefox-extension.xpi'), 'signed');
+    writeFileSync(
+      path.join(releaseDir, 'metadata.json'),
+      `${JSON.stringify(
+        {
+          extensionId: 'monitor-bloqueos@openpath',
+          version: '2.0.0.123.1',
+          payloadHash: 'b'.repeat(64),
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    const metadata = verifyFirefoxReleaseArtifacts({
+      releaseDir,
+      payloadHash: 'b'.repeat(64),
+    });
+
+    assert.equal(metadata.extensionId, 'monitor-bloqueos@openpath');
+    assert.equal(metadata.version, '2.0.0.123.1');
+    assert.equal(metadata.payloadHash, 'b'.repeat(64));
+  });
+
+  void test('verifyFirefoxReleaseArtifacts rejects a mismatched payload hash', () => {
+    const workingDir = createTempDir('openpath-firefox-release-verify-');
+    const releaseDir = path.join(workingDir, 'firefox-release');
+
+    mkdirSync(releaseDir, { recursive: true });
+    writeFileSync(path.join(releaseDir, 'openpath-firefox-extension.xpi'), 'signed');
+    writeFileSync(
+      path.join(releaseDir, 'metadata.json'),
+      `${JSON.stringify({
+        extensionId: 'monitor-bloqueos@openpath',
+        version: '2.0.0.123.1',
+        payloadHash: 'c'.repeat(64),
+      })}\n`
+    );
+
+    assert.throws(
+      () =>
+        verifyFirefoxReleaseArtifacts({
+          releaseDir,
+          payloadHash: 'd'.repeat(64),
+        }),
+      /payloadHash mismatch/
+    );
+  });
+
+  void test('verifyFirefoxReleaseArtifacts rejects missing signed XPI', () => {
+    const workingDir = createTempDir('openpath-firefox-release-verify-');
+    const releaseDir = path.join(workingDir, 'firefox-release');
+
+    mkdirSync(releaseDir, { recursive: true });
+    writeFileSync(
+      path.join(releaseDir, 'metadata.json'),
+      `${JSON.stringify({
+        extensionId: 'monitor-bloqueos@openpath',
+        version: '2.0.0.123.1',
+        payloadHash: 'e'.repeat(64),
+      })}\n`
+    );
+
+    assert.throws(
+      () =>
+        verifyFirefoxReleaseArtifacts({
+          releaseDir,
+          payloadHash: 'e'.repeat(64),
+        }),
+      /openpath-firefox-extension\.xpi not found/
+    );
   });
 
   void test('buildWebExtSignArgs requests unlisted signing with explicit artifact output', () => {

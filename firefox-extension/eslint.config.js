@@ -47,6 +47,7 @@ export default tseslint.config(
       'eslint.config.js',
       'firefox-release-payload-hash.mjs',
       'sign-firefox-release.mjs',
+      'verify-firefox-release-artifacts.mjs',
     ],
   }
 );

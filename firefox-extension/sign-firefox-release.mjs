@@ -329,6 +329,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
       sourceDir: extensionRoot,
       version,
     });
+    const payloadHash = computeFirefoxReleasePayloadHash({ sourceDir: extensionRoot });
 
     try {
       const args = buildWebExtSignArgs({
@@ -358,6 +359,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
         signedXpiPath,
         installUrl,
         version: signingSource.effectiveVersion,
+        payloadHash,
       });
 
       console.log(

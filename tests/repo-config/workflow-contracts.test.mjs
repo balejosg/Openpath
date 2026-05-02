@@ -115,31 +115,12 @@ test('prerelease deb publish keys off the CI Success summary job instead of the 
 test('Firefox release signing workflows are resilient to AMO throttling and reruns', () => {
   const buildDebWorkflow = readText('.github/workflows/build-deb.yml');
   const prereleaseWorkflow = readText('.github/workflows/prerelease-deb.yml');
+  const prepareAction = readText('.github/actions/prepare-firefox-release-artifacts/action.yml');
 
   for (const [name, workflow] of [
     ['build-deb.yml', buildDebWorkflow],
     ['prerelease-deb.yml', prereleaseWorkflow],
   ]) {
-    assert.ok(
-      workflow.includes('WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: "2700"') ||
-        workflow.includes("WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700'"),
-      `${name} should allow long AMO throttle waits in CI`
-    );
-    assert.ok(
-      workflow.includes('WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: "30"') ||
-        workflow.includes("WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30'"),
-      `${name} should add a buffer before retrying AMO signing`
-    );
-    assert.ok(
-      workflow.includes('WEB_EXT_SIGN_MAX_RETRIES: "2"') ||
-        workflow.includes("WEB_EXT_SIGN_MAX_RETRIES: '2'"),
-      `${name} should retry enough times to survive repeated AMO throttles`
-    );
-    assert.ok(
-      workflow.includes('WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: "7200"') ||
-        workflow.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '7200'"),
-      `${name} should allow slow AMO approval before failing release package publication`
-    );
     assert.ok(
       workflow.includes('2.0.${{ github.run_number }}.${{ github.run_attempt }}'),
       `${name} should include github.run_attempt in the AMO version so reruns avoid Version already exists`
@@ -148,7 +129,56 @@ test('Firefox release signing workflows are resilient to AMO throttling and reru
       !workflow.includes('2.0.${{ github.run_number }}"'),
       `${name} should not reuse the same AMO version across reruns`
     );
+    assert.ok(
+      workflow.includes('uses: ./.github/actions/prepare-firefox-release-artifacts'),
+      `${name} should prepare Firefox release artifacts through the cache-aware action`
+    );
+    assert.ok(
+      !workflow.includes('npm run sign:firefox-release'),
+      `${name} should not call AMO signing directly from the Debian workflow`
+    );
+    assert.ok(
+      workflow.includes("OPENPATH_REQUIRE_FIREFOX_RELEASE_ARTIFACTS: '1'"),
+      `${name} should still require signed Firefox release artifacts in the Debian package`
+    );
   }
+
+  assert.ok(
+    prepareAction.includes('firefox-release-payload-hash.mjs'),
+    'cache-aware Firefox release action should key reuse by the release payload hash'
+  );
+  assert.ok(
+    prepareAction.includes('actions/cache/restore@v4'),
+    'cache-aware Firefox release action should restore previously signed release artifacts'
+  );
+  assert.ok(
+    prepareAction.includes('actions/cache/save@v4'),
+    'cache-aware Firefox release action should save newly signed release artifacts'
+  );
+  assert.ok(
+    prepareAction.includes('verify-firefox-release-artifacts.mjs'),
+    'cache-aware Firefox release action should verify restored and newly signed artifacts'
+  );
+  assert.ok(
+    prepareAction.includes('npm run sign:firefox-release'),
+    'cache-aware Firefox release action should still sign through AMO when the cache misses'
+  );
+  assert.ok(
+    prepareAction.includes("WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700'"),
+    'cache-aware Firefox release action should allow long AMO throttle waits in CI'
+  );
+  assert.ok(
+    prepareAction.includes("WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30'"),
+    'cache-aware Firefox release action should add a buffer before retrying AMO signing'
+  );
+  assert.ok(
+    prepareAction.includes("WEB_EXT_SIGN_MAX_RETRIES: '2'"),
+    'cache-aware Firefox release action should retry enough times to survive repeated AMO throttles'
+  );
+  assert.ok(
+    prepareAction.includes("WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: '7200'"),
+    'cache-aware Firefox release action should allow slow AMO approval before failing release package publication'
+  );
 });
 
 test('self-hosted Linux runner smoke workflow is manual and pinned to the OpenPath runner', () => {

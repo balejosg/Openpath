@@ -45,6 +45,7 @@ export function prepareFirefoxReleaseArtifacts(options) {
     manifestPath = path.join(explicitExtensionRoot, 'manifest.json'),
     extensionId = '',
     version = '',
+    payloadHash = '',
   } = options;
 
   if (!signedXpiPath) {
@@ -72,6 +73,7 @@ export function prepareFirefoxReleaseArtifacts(options) {
     extensionId: effectiveExtensionId,
     version: effectiveVersion,
     ...(installUrl ? { installUrl } : {}),
+    ...(payloadHash ? { payloadHash } : {}),
   };
 
   fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
