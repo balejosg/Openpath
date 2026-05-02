@@ -16,13 +16,22 @@ const defaultWebExtSignMaxRetries = 2;
 const defaultWebExtSignRetryBufferSeconds = 10;
 const defaultWebExtSignMaxThrottleWaitSeconds = 900;
 const defaultWebExtSignApprovalTimeoutSeconds = 7200;
+const defaultWebExtSignRequestTimeoutSeconds = 120;
+const defaultWebExtSignProcessTimeoutBufferSeconds = 120;
 
 function fail(message) {
   throw new Error(message);
 }
 
 export function buildWebExtSignArgs(options) {
-  const { apiKey, apiSecret, artifactsDir, sourceDir = extensionRoot, approvalTimeoutMs } = options;
+  const {
+    apiKey,
+    apiSecret,
+    artifactsDir,
+    sourceDir = extensionRoot,
+    approvalTimeoutMs,
+    requestTimeoutMs,
+  } = options;
 
   if (!apiKey) {
     fail('WEB_EXT_API_KEY is required');
@@ -33,6 +42,7 @@ export function buildWebExtSignArgs(options) {
 
   const args = [
     '--yes',
+    '--no-install',
     'web-ext',
     'sign',
     '--channel=unlisted',
@@ -44,6 +54,9 @@ export function buildWebExtSignArgs(options) {
 
   if (Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0) {
     args.push(`--approval-timeout=${approvalTimeoutMs}`);
+  }
+  if (Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0) {
+    args.push(`--timeout=${requestTimeoutMs}`);
   }
 
   return args;
@@ -78,6 +91,7 @@ export function runWebExtSignWithRetry(options) {
     sleepSyncImpl = sleepSync,
     stdout = process.stdout,
     stderr = process.stderr,
+    processTimeoutMs,
   } = options;
   const maxRetries = parseNonNegativeInteger(
     env.WEB_EXT_SIGN_MAX_RETRIES,
@@ -96,6 +110,7 @@ export function runWebExtSignWithRetry(options) {
     const result = spawnSyncImpl('npx', args, {
       cwd,
       encoding: 'utf8',
+      timeout: processTimeoutMs,
     });
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
 
@@ -108,6 +123,16 @@ export function runWebExtSignWithRetry(options) {
 
     if (result.status === 0) {
       return result;
+    }
+
+    if (result.error && result.error.code === 'ETIMEDOUT') {
+      stderr.write(
+        `[sign:firefox-release] web-ext sign exceeded the parent process timeout of ${processTimeoutMs}ms\n`
+      );
+      return {
+        ...result,
+        status: 124,
+      };
     }
 
     const throttleDelaySeconds = parseWebExtThrottleDelaySeconds(output);
@@ -153,6 +178,17 @@ function readManifest(manifestPath) {
   }
 
   return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+}
+
+function readDeclaredWebExtVersion() {
+  try {
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf8')
+    );
+    return packageJson.devDependencies?.['web-ext'] ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function walkFiles(rootDir, relativeRoot = '') {
@@ -332,21 +368,50 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     const payloadHash = computeFirefoxReleasePayloadHash({ sourceDir: extensionRoot });
 
     try {
+      const approvalTimeoutMs =
+        parseNonNegativeInteger(
+          process.env.WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS,
+          defaultWebExtSignApprovalTimeoutSeconds
+        ) * 1000;
+      const requestTimeoutMs =
+        parseNonNegativeInteger(
+          process.env.WEB_EXT_SIGN_REQUEST_TIMEOUT_SECONDS,
+          defaultWebExtSignRequestTimeoutSeconds
+        ) * 1000;
+      const processTimeoutBufferMs =
+        parseNonNegativeInteger(
+          process.env.WEB_EXT_SIGN_PROCESS_TIMEOUT_BUFFER_SECONDS,
+          defaultWebExtSignProcessTimeoutBufferSeconds
+        ) * 1000;
+      const processTimeoutMs =
+        approvalTimeoutMs > 0 ? approvalTimeoutMs + processTimeoutBufferMs : undefined;
+
+      console.log(
+        [
+          '[sign:firefox-release] Starting AMO signing',
+          `version=${signingSource.effectiveVersion}`,
+          `sourceDir=${signingSource.sourceDir}`,
+          `artifactsDir=${artifactsDir}`,
+          `webExt=${readDeclaredWebExtVersion()}`,
+          `approvalTimeoutMs=${approvalTimeoutMs}`,
+          `requestTimeoutMs=${requestTimeoutMs}`,
+          `processTimeoutMs=${processTimeoutMs ?? 'disabled'}`,
+        ].join(' ')
+      );
+
       const args = buildWebExtSignArgs({
         apiKey: process.env.WEB_EXT_API_KEY?.trim(),
         apiSecret: process.env.WEB_EXT_API_SECRET?.trim(),
         artifactsDir,
         sourceDir: signingSource.sourceDir,
-        approvalTimeoutMs:
-          parseNonNegativeInteger(
-            process.env.WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS,
-            defaultWebExtSignApprovalTimeoutSeconds
-          ) * 1000,
+        approvalTimeoutMs,
+        requestTimeoutMs,
       });
 
       const result = runWebExtSignWithRetry({
         args,
         cwd: extensionRoot,
+        processTimeoutMs,
       });
 
       if (result.status !== 0) {

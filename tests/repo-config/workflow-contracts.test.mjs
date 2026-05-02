@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { extractWorkflowJobBlock, projectRoot, readText } from './support.mjs';
@@ -231,6 +231,25 @@ test('Firefox release signing workflows are resilient to AMO throttling and reru
       'WEB_EXT_SIGN_APPROVAL_TIMEOUT_SECONDS: ${{ inputs.approval-timeout-seconds }}'
     ),
     'cache-aware Firefox release action should wire the approval timeout input into signing'
+  );
+
+  const firefoxPackageJson = JSON.parse(
+    readFileSync(resolve(projectRoot, 'firefox-extension/package.json'), 'utf8')
+  );
+  assert.equal(
+    firefoxPackageJson.devDependencies?.['web-ext'],
+    '10.1.0',
+    'Firefox AMO signing should use a pinned repo-local web-ext version'
+  );
+
+  const signingScript = readText('firefox-extension/sign-firefox-release.mjs');
+  assert.ok(
+    signingScript.includes("'--no-install'"),
+    'Firefox AMO signing should not let npx install or float web-ext at runtime'
+  );
+  assert.ok(
+    signingScript.includes('timeout: processTimeoutMs'),
+    'Firefox AMO signing should enforce a parent process timeout around web-ext'
   );
 });
 

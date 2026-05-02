@@ -52,6 +52,7 @@ interface SignFirefoxReleaseModule {
     artifactsDir: string;
     sourceDir?: string;
     approvalTimeoutMs?: number;
+    requestTimeoutMs?: number;
   }) => string[];
   computeFirefoxReleasePayloadHash: (options: { sourceDir?: string }) => string;
   findSignedXpiArtifact: (artifactsDir: string) => string;
@@ -68,11 +69,12 @@ interface SignFirefoxReleaseModule {
     spawnSyncImpl?: (
       command: string,
       args: string[],
-      options: { cwd: string; encoding: 'utf8' }
+      options: { cwd: string; encoding: 'utf8'; timeout?: number }
     ) => SpawnSyncReturns<string>;
     sleepSyncImpl?: (milliseconds: number) => void;
     stdout?: { write: (chunk: string) => unknown };
     stderr?: { write: (chunk: string) => unknown };
+    processTimeoutMs?: number;
   }) => SpawnSyncReturns<string> | { status: number };
 }
 
@@ -274,10 +276,12 @@ void describe('Firefox release signing helpers', () => {
       artifactsDir: 'build/firefox-release/raw-signed',
       sourceDir: extensionRoot,
       approvalTimeoutMs: 2_700_000,
+      requestTimeoutMs: 120_000,
     });
 
     assert.deepEqual(args, [
       '--yes',
+      '--no-install',
       'web-ext',
       'sign',
       '--channel=unlisted',
@@ -286,6 +290,7 @@ void describe('Firefox release signing helpers', () => {
       '--api-key=user:123:456',
       '--api-secret=top-secret',
       '--approval-timeout=2700000',
+      '--timeout=120000',
     ]);
   });
 
@@ -321,9 +326,11 @@ void describe('Firefox release signing helpers', () => {
     const spawnSyncImpl = (
       command: string,
       args: string[],
-      options: { cwd: string; encoding: 'utf8' }
+      options: { cwd: string; encoding: 'utf8'; timeout?: number }
     ): SpawnSyncReturns<string> => {
-      attempts.push(`${command} ${args.join(' ')} ${options.cwd} ${options.encoding}`);
+      attempts.push(
+        `${command} ${args.join(' ')} ${options.cwd} ${options.encoding} ${String(options.timeout)}`
+      );
       if (attempts.length === 1) {
         return {
           status: 1,
@@ -359,10 +366,12 @@ void describe('Firefox release signing helpers', () => {
       sleepSyncImpl: (milliseconds) => waits.push(milliseconds),
       stdout: { write: (chunk) => stdoutChunks.push(chunk) },
       stderr: { write: (chunk) => stderrChunks.push(chunk) },
+      processTimeoutMs: 1_920_000,
     });
 
     assert.equal(result.status, 0);
     assert.equal(attempts.length, 2);
+    assert.ok(attempts.every((attempt) => attempt.endsWith(' 1920000')));
     assert.deepEqual(waits, [633_000]);
     assert.deepEqual(stdoutChunks, ['signed\n']);
     assert.equal(stderrChunks.length, 1);
@@ -439,6 +448,41 @@ void describe('Firefox release signing helpers', () => {
     });
 
     assert.equal(result.status, 1);
+  });
+
+  void test('runWebExtSignWithRetry fails explicitly when the parent process timeout fires', () => {
+    const stderrChunks: string[] = [];
+    const timeoutError = new Error('spawnSync npx ETIMEDOUT') as NodeJS.ErrnoException;
+    timeoutError.code = 'ETIMEDOUT';
+
+    const spawnSyncImpl = (): SpawnSyncReturns<string> => ({
+      status: null,
+      signal: 'SIGTERM',
+      output: [],
+      pid: 123,
+      stdout: '',
+      stderr: '',
+      error: timeoutError,
+    });
+
+    const result = runWebExtSignWithRetry({
+      args: ['--yes', '--no-install', 'web-ext', 'sign'],
+      cwd: extensionRoot,
+      env: {
+        WEB_EXT_SIGN_MAX_RETRIES: '2',
+        WEB_EXT_SIGN_RETRY_BUFFER_SECONDS: '30',
+        WEB_EXT_SIGN_MAX_THROTTLE_WAIT_SECONDS: '2700',
+      },
+      spawnSyncImpl,
+      sleepSyncImpl: () => {
+        throw new Error('process timeouts should not sleep/retry');
+      },
+      stderr: { write: (chunk) => stderrChunks.push(chunk) },
+      processTimeoutMs: 1_920_000,
+    });
+
+    assert.equal(result.status, 124);
+    assert.match(stderrChunks.join(''), /parent process timeout of 1920000ms/);
   });
 
   void test('prepareSigningSourceDir can override the manifest version in a temporary copy', () => {
