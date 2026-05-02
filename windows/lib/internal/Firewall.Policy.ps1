@@ -26,6 +26,7 @@ function Set-OpenPathFirewall {
         $enableKnownDnsIpBlocking = $true
         $enableDohIpBlocking = $true
         $dohResolvers = Get-DefaultDohResolverIps
+        $resolverBypassClients = Get-DefaultResolverBypassClientPrograms
         $vpnPorts = Get-DefaultVpnBlockRules
         $torPorts = Get-DefaultTorBlockPorts
 
@@ -142,15 +143,27 @@ function Set-OpenPathFirewall {
                     continue
                 }
 
-                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) { continue }
-
                 $resolverId = $resolverIp -replace '[^0-9A-Za-z]', '-'
-                foreach ($protocol in @('TCP', 'UDP')) {
-                    New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-Known-DNS-$resolverId-$protocol-53" `
-                        -Direction Outbound -Protocol $protocol -RemoteAddress $resolverIp -RemotePort 53 `
-                        -Action Block -Profile Any `
-                        -Description "Block direct DNS bypass to resolver $resolverIp over $protocol/53" | Out-Null
-                    $dns53RuleCount++
+                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) {
+                    foreach ($clientProgram in @($resolverBypassClients)) {
+                        foreach ($protocol in @('TCP', 'UDP')) {
+                            $clientId = ([System.IO.Path]::GetFileNameWithoutExtension($clientProgram)) -replace '[^0-9A-Za-z]', '-'
+                            New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-Known-DNS-$resolverId-$clientId-$protocol-53" `
+                                -Direction Outbound -Protocol $protocol -RemoteAddress $resolverIp -RemotePort 53 `
+                                -Action Block -Program $clientProgram -Profile Any `
+                                -Description "Block direct DNS bypass from $clientProgram to resolver $resolverIp over $protocol/53" | Out-Null
+                            $dns53RuleCount++
+                        }
+                    }
+                }
+                else {
+                    foreach ($protocol in @('TCP', 'UDP')) {
+                        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-Known-DNS-$resolverId-$protocol-53" `
+                            -Direction Outbound -Protocol $protocol -RemoteAddress $resolverIp -RemotePort 53 `
+                            -Action Block -Profile Any `
+                            -Description "Block direct DNS bypass to resolver $resolverIp over $protocol/53" | Out-Null
+                        $dns53RuleCount++
+                    }
                 }
             }
 
@@ -172,19 +185,33 @@ function Set-OpenPathFirewall {
                     continue
                 }
 
-                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) { continue }
-
                 $resolverId = $resolverIp -replace '[^0-9A-Za-z]', '-'
 
-                New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-TCP443" `
-                    -Direction Outbound -Protocol TCP -RemoteAddress $resolverIp -RemotePort 443 `
-                    -Action Block -Profile Any -Description "Block DoH resolver $resolverIp over TCP/443" | Out-Null
+                if ($resolverIp -in @($UpstreamDNS, $secondaryDns)) {
+                    foreach ($clientProgram in @($resolverBypassClients)) {
+                        $clientId = ([System.IO.Path]::GetFileNameWithoutExtension($clientProgram)) -replace '[^0-9A-Za-z]', '-'
+                        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-$clientId-TCP443" `
+                            -Direction Outbound -Protocol TCP -RemoteAddress $resolverIp -RemotePort 443 `
+                            -Action Block -Program $clientProgram -Profile Any -Description "Block DoH resolver $resolverIp from $clientProgram over TCP/443" | Out-Null
 
-                New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-UDP443" `
-                    -Direction Outbound -Protocol UDP -RemoteAddress $resolverIp -RemotePort 443 `
-                    -Action Block -Profile Any -Description "Block DoH resolver $resolverIp over UDP/443" | Out-Null
+                        New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-$clientId-UDP443" `
+                            -Direction Outbound -Protocol UDP -RemoteAddress $resolverIp -RemotePort 443 `
+                            -Action Block -Program $clientProgram -Profile Any -Description "Block DoH resolver $resolverIp from $clientProgram over UDP/443" | Out-Null
 
-                $dohRuleCount += 2
+                        $dohRuleCount += 2
+                    }
+                }
+                else {
+                    New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-TCP443" `
+                        -Direction Outbound -Protocol TCP -RemoteAddress $resolverIp -RemotePort 443 `
+                        -Action Block -Profile Any -Description "Block DoH resolver $resolverIp over TCP/443" | Out-Null
+
+                    New-NetFirewallRule -DisplayName "$script:RulePrefix-Block-DoH-$resolverId-UDP443" `
+                        -Direction Outbound -Protocol UDP -RemoteAddress $resolverIp -RemotePort 443 `
+                        -Action Block -Profile Any -Description "Block DoH resolver $resolverIp over UDP/443" | Out-Null
+
+                    $dohRuleCount += 2
+                }
             }
 
             Write-OpenPathLog "Added $dohRuleCount DoH egress block rules"

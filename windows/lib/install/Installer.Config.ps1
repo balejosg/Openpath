@@ -57,6 +57,8 @@ function New-OpenPathInstallerConfig {
         enableIntegrityChecks = $true
         enableKnownDnsIpBlocking = $true
         enableDohIpBlocking = $true
+        enableNonAdminAppControl = $true
+        nonAdminAppControlMode = 'Enforced'
         dohResolverIps = @(Get-DefaultDohResolverIps)
         vpnBlockRules = @(Get-DefaultVpnBlockRules)
         torBlockPorts = @(Get-DefaultTorBlockPorts)

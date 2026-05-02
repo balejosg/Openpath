@@ -222,9 +222,31 @@ function Invoke-OpenPathWatchdogChecks {
         if (Sync-OpenPathFirefoxManagedExtensionPolicy) {
             Write-OpenPathLog "Watchdog: refreshed Firefox managed extension policy"
         }
+        if (Get-Command -Name 'Sync-OpenPathFirefoxNetworkAutoconfig' -ErrorAction SilentlyContinue) {
+            Sync-OpenPathFirefoxNetworkAutoconfig | Out-Null
+        }
     }
     catch {
         Write-OpenPathLog "Watchdog: Firefox managed extension policy refresh failed: $_" -Level WARN
+    }
+
+    try {
+        if (Get-Command -Name 'Test-OpenPathNonAdminAppControlActive' -ErrorAction SilentlyContinue) {
+            $enableNonAdminAppControl = $true
+            if ($Config -and $Config.PSObject.Properties['enableNonAdminAppControl']) {
+                $enableNonAdminAppControl = [bool]$Config.enableNonAdminAppControl
+            }
+            if ($enableNonAdminAppControl -and -not (Test-OpenPathNonAdminAppControlActive)) {
+                $mode = 'Enforced'
+                if ($Config -and $Config.PSObject.Properties['nonAdminAppControlMode'] -and $Config.nonAdminAppControlMode) {
+                    $mode = [string]$Config.nonAdminAppControlMode
+                }
+                Set-OpenPathNonAdminAppControl -OpenPathRoot $OpenPathRoot -Mode $mode | Out-Null
+            }
+        }
+    }
+    catch {
+        Write-OpenPathLog "Watchdog: AppLocker non-admin app control refresh failed: $_" -Level WARN
     }
 
     return [PSCustomObject]@{

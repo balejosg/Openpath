@@ -186,6 +186,7 @@ Copy-OpenPathInstallerRuntime `
 
 Import-Module "$OpenPathRoot\lib\Common.psm1" -Force
 Import-Module "$OpenPathRoot\lib\Firewall.psm1" -Force
+Import-Module "$OpenPathRoot\lib\AppControl.psm1" -Force
 
 Show-InstallerProgress -Step 3 -Total 7 -Status 'Creando configuracion'
 $primaryDNS = Get-InstallerPrimaryDNS
@@ -308,6 +309,23 @@ Invoke-OpenPathInstallerFirstUpdate `
 Start-OpenPathInstallerRealtimeUpdates `
     -ClassroomModeRequested:$classroomModeRequested `
     -MachineRegistered $machineRegistered | Out-Null
+
+try {
+    $enableNonAdminAppControl = $true
+    if ($config.PSObject.Properties['enableNonAdminAppControl']) {
+        $enableNonAdminAppControl = [bool]$config.enableNonAdminAppControl
+    }
+    $nonAdminAppControlMode = 'Enforced'
+    if ($config.PSObject.Properties['nonAdminAppControlMode'] -and $config.nonAdminAppControlMode) {
+        $nonAdminAppControlMode = [string]$config.nonAdminAppControlMode
+    }
+    if ($enableNonAdminAppControl) {
+        Set-OpenPathNonAdminAppControl -OpenPathRoot $OpenPathRoot -Mode $nonAdminAppControlMode | Out-Null
+    }
+}
+catch {
+    Write-Host "  ADVERTENCIA: No se pudo configurar AppLocker para usuarios no administradores: $_" -ForegroundColor Yellow
+}
 
 Initialize-OpenPathInstallerIntegrity
 

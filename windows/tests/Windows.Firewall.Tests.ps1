@@ -1,3 +1,5 @@
+Import-Module (Join-Path $PSScriptRoot "TestHelpers.psm1") -Force
+
 Describe "Firewall Module" {
     BeforeAll {
         $modulePath = Join-Path $PSScriptRoot ".." "lib"
@@ -75,9 +77,10 @@ Describe "Firewall Module" {
                 }).Count | Should -Be 1
         }
 
-        It "Skips upstream DNS and invalid DoH resolver entries" {
+        It "Creates program-scoped resolver blocks for upstream DNS and skips invalid DoH resolver entries" {
             Mock Get-OpenPathConfig {
                 [PSCustomObject]@{
+                    enableKnownDnsIpBlocking = $true
                     enableDohIpBlocking = $true
                     dohResolverIps = @('8.8.8.8', 'invalid-ip', '6.6.6.6')
                 }
@@ -86,7 +89,15 @@ Describe "Firewall Module" {
             $result = Set-OpenPathFirewall -UpstreamDNS '8.8.8.8' -AcrylicPath 'C:\OpenPath\Acrylic DNS Proxy'
             $result | Should -BeTrue
 
-            (@(Get-CapturedFirewallRules) | Where-Object { $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
+            (@(Get-CapturedFirewallRules) | Where-Object {
+                    $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '443' -and $_.Program
+                }).Count | Should -BeGreaterThan 0
+            (@(Get-CapturedFirewallRules) | Where-Object {
+                    $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '53' -and $_.Program
+                }).Count | Should -BeGreaterThan 0
+            (@(Get-CapturedFirewallRules) | Where-Object {
+                    $_.RemoteAddress -eq '8.8.8.8' -and $_.RemotePort -eq '443' -and -not $_.Program
+                }).Count | Should -Be 0
             (@(Get-CapturedFirewallRules) | Where-Object { $_.RemoteAddress -eq 'invalid-ip' -and $_.RemotePort -eq '443' }).Count | Should -Be 0
 
             (@(Get-CapturedFirewallRules) | Where-Object {
@@ -261,4 +272,3 @@ Describe "Firewall Module" {
         }
     }
 }
-

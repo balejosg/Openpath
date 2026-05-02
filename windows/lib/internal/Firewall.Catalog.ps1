@@ -37,3 +37,30 @@ function Get-DefaultTorBlockPorts {
     #>
     return @(9001, 9030, 9050, 9051, 9150)
 }
+
+function Get-DefaultResolverBypassClientPrograms {
+    <#
+    .SYNOPSIS
+        Returns user-facing clients that must not reach public resolver IPs directly.
+    #>
+    $windowsRoot = if ($env:SystemRoot) { [string]$env:SystemRoot } elseif ($env:WINDIR) { [string]$env:WINDIR } else { 'C:\Windows' }
+    $programFiles = if ($env:ProgramFiles) { [string]$env:ProgramFiles } else { 'C:\Program Files' }
+    $programFilesX86 = if (${env:ProgramFiles(x86)}) { [string]${env:ProgramFiles(x86)} } else { 'C:\Program Files (x86)' }
+
+    return @(
+        "$windowsRoot\System32\curl.exe",
+        "$windowsRoot\SysWOW64\curl.exe",
+        "$windowsRoot\System32\nslookup.exe",
+        "$windowsRoot\SysWOW64\nslookup.exe",
+        "$windowsRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "$windowsRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
+        "$programFiles\PowerShell\7\pwsh.exe",
+        "$programFilesX86\PowerShell\7\pwsh.exe",
+        "$programFiles\Mozilla Firefox\firefox.exe",
+        "$programFilesX86\Mozilla Firefox\firefox.exe",
+        "$programFiles\Google\Chrome\Application\chrome.exe",
+        "$programFilesX86\Google\Chrome\Application\chrome.exe",
+        "$programFiles\Microsoft\Edge\Application\msedge.exe",
+        "$programFilesX86\Microsoft\Edge\Application\msedge.exe"
+    ) | Where-Object { $_ } | Select-Object -Unique
+}

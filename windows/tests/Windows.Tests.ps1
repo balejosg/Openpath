@@ -12,6 +12,7 @@ $suiteFiles = @(
     "Windows.Common.Tests.ps1",
     "Windows.DNS.Tests.ps1",
     "Windows.Firewall.Tests.ps1",
+    "Windows.AppControl.Tests.ps1",
     "Windows.Services.Tests.ps1",
     "Windows.Cli.Tests.ps1",
     "Windows.Update.Tests.ps1",
@@ -21,7 +22,8 @@ $suiteFiles = @(
     "Windows.Whitelist.Tests.ps1",
     "Windows.Browser.RequestReadiness.Tests.ps1",
     "Windows.Browser.NativeHost.Tests.ps1",
-    "Windows.Browser.Diagnostics.Tests.ps1"
+    "Windows.Browser.Diagnostics.Tests.ps1",
+    "Windows.Browser.FirefoxConfig.Tests.ps1"
 )
 
 foreach ($suiteFile in $suiteFiles) {

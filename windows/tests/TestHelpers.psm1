@@ -50,7 +50,12 @@ function Initialize-FirewallRuleCaptureMocks {
     $script:createdFirewallRules = @()
     $script:acrylicServicePresent = $false
 
+    if (-not (Get-Command -Name New-NetFirewallRule -ErrorAction SilentlyContinue)) {
+        function global:New-NetFirewallRule { }
+    }
+
     Mock Test-AdminPrivileges { $true } -ModuleName Firewall
+    Mock Write-OpenPathLog { } -ModuleName Firewall
     Mock Remove-OpenPathFirewall { $true } -ModuleName Firewall
 
     Mock New-NetFirewallRule {

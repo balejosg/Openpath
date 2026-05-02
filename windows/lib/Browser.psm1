@@ -5,6 +5,7 @@ $script:OpenPathRoot = "C:\OpenPath"
 Import-Module "$PSScriptRoot\Common.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.Common.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.FirefoxPolicy.psm1" -Force -ErrorAction Stop
+Import-Module "$PSScriptRoot\Browser.FirefoxConfig.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.FirefoxNativeHost.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.RequestReadiness.psm1" -Force -ErrorAction Stop
 Import-Module "$PSScriptRoot\Browser.Diagnostics.psm1" -Force -ErrorAction Stop
@@ -112,6 +113,13 @@ function Sync-OpenPathFirefoxManagedExtensionPolicy {
     Browser.FirefoxPolicy\Sync-OpenPathFirefoxManagedExtensionPolicy
 }
 
+function Sync-OpenPathFirefoxNetworkAutoconfig {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    Browser.FirefoxConfig\Sync-OpenPathFirefoxNetworkAutoconfig
+}
+
 function Set-ChromePolicy {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -198,6 +206,7 @@ function Remove-BrowserPolicy {
         }
     }
     Browser.FirefoxPolicy\Remove-OpenPathFirefoxMachineExtensionPolicy | Out-Null
+    Browser.FirefoxConfig\Remove-OpenPathFirefoxNetworkAutoconfig | Out-Null
 
     $regPaths = @(
         "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist",
@@ -226,6 +235,7 @@ function Set-AllBrowserPolicy {
     }
 
     Sync-OpenPathFirefoxManagedExtensionPolicy
+    Sync-OpenPathFirefoxNetworkAutoconfig
     Set-ChromePolicy -BlockedPaths $BlockedPaths
 }
 
@@ -237,6 +247,7 @@ Export-ModuleMember -Function @(
     'Sync-OpenPathFirefoxNativeHostState',
     'Unregister-OpenPathFirefoxNativeHost',
     'Sync-OpenPathFirefoxManagedExtensionPolicy',
+    'Sync-OpenPathFirefoxNetworkAutoconfig',
     'Set-ChromePolicy',
     'Remove-BrowserPolicy',
     'Set-AllBrowserPolicy'

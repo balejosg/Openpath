@@ -8,7 +8,7 @@ Describe "Watchdog Script" {
                 'Import-Module "$OpenPathRoot\lib\ScriptBootstrap.psm1" -Force',
                 'Initialize-OpenPathScriptSession `',
                 '-OpenPathRoot $OpenPathRoot',
-                '-DependentModules @(''DNS'', ''Firewall'', ''Browser'', ''CaptivePortal'')',
+                '-DependentModules @(''DNS'', ''Firewall'', ''Browser'', ''CaptivePortal'', ''AppControl'')',
                 '-RequiredCommands @(',
                 '-ScriptName ''Test-DNSHealth.ps1''',
                 '''Sync-OpenPathFirefoxManagedExtensionPolicy''',

@@ -160,6 +160,9 @@ if (Test-Path "$OpenPathRoot\lib\DNS.psm1") {
 if (Test-Path "$OpenPathRoot\lib\Firewall.psm1") {
     Import-Module "$OpenPathRoot\lib\Firewall.psm1" -Force -ErrorAction SilentlyContinue
 }
+if (Test-Path "$OpenPathRoot\lib\AppControl.psm1") {
+    Import-Module "$OpenPathRoot\lib\AppControl.psm1" -Force -ErrorAction SilentlyContinue
+}
 if (Test-Path "$OpenPathRoot\lib\Browser.psm1") {
     Import-Module "$OpenPathRoot\lib\Browser.psm1" -Force -ErrorAction SilentlyContinue
 }
@@ -177,6 +180,10 @@ Write-Host "[2/6] Eliminando reglas de firewall..." -ForegroundColor Yellow
 Get-NetFirewallRule -DisplayName "OpenPath-DNS-*" -ErrorAction SilentlyContinue | 
     Remove-NetFirewallRule -ErrorAction SilentlyContinue
 Write-Host "  Reglas eliminadas" -ForegroundColor Green
+
+if (Get-Command -Name Remove-OpenPathNonAdminAppControl -ErrorAction SilentlyContinue) {
+    Remove-OpenPathNonAdminAppControl | Out-Null
+}
 
 # Step 3: Restore DNS
 Write-Host "[3/6] Restaurando configuracion DNS..." -ForegroundColor Yellow

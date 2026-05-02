@@ -13,6 +13,7 @@ $script:FirewallHelperRoot = Join-Path $PSScriptRoot 'internal'
 
 Export-ModuleMember -Function @(
     'Get-DefaultDohResolverIps',
+    'Get-DefaultResolverBypassClientPrograms',
     'Get-DefaultVpnBlockRules',
     'Get-DefaultTorBlockPorts',
     'Set-OpenPathFirewall',
