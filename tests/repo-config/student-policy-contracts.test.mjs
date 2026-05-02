@@ -343,6 +343,11 @@ describe('repository verification contract', () => {
       !linuxStudentDockerfile.includes('/pub/firefox/releases/'),
       'Linux student-policy image should not download Firefox Release/ESR builds for unsigned extension tests'
     );
+    assert.match(
+      linuxStudentDockerfile,
+      /xz-utils/,
+      'Linux student-policy image should install xz-utils so Firefox Developer Edition tar.xz archives can be extracted'
+    );
   });
 
   test('student policy selenium driver supports overriding the Firefox binary path', () => {

@@ -49,6 +49,7 @@ RUN . /tmp/openpath-apt.sh \
     systemd-sysv \
     unzip \
     wget \
+    xz-utils \
     zip \
     && rm -rf /var/lib/apt/lists/*
 
