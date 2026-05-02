@@ -23,6 +23,7 @@ FIREFOX_XPI_HASH_PATH="$ARTIFACTS_DIR/firefox-xpi-sha256.txt"
 CURRENT_TIMING_NAME=""
 CURRENT_TIMING_STARTED_AT=""
 CURRENT_TIMING_STARTED_NS=""
+STUDENT_USE_MANAGED_FIREFOX_EXTENSION=false
 
 write_timing_evidence() {
     if [[ ! -s "$TIMINGS_TSV" ]]; then
@@ -477,7 +478,6 @@ prepare_firefox_release_artifacts() {
     local release_root="$extension_dir/build/firefox-release"
     local payload_hash
     local release_xpi_path="$release_root/openpath-firefox-extension.xpi"
-    local allow_unsigned="${OPENPATH_ALLOW_UNSIGNED_FIREFOX_E2E:-false}"
 
     payload_hash="$(node "$extension_dir/firefox-release-payload-hash.mjs")"
     if [[ -s "$release_root/metadata.json" && -s "$release_xpi_path" ]]; then
@@ -487,16 +487,12 @@ prepare_firefox_release_artifacts() {
         mkdir -p "$ARTIFACTS_DIR"
         sha256sum "$release_xpi_path" >"$FIREFOX_XPI_HASH_PATH"
         echo "Using existing signed Firefox release artifact: $release_xpi_path"
+        STUDENT_USE_MANAGED_FIREFOX_EXTENSION=true
         return 0
     fi
 
-    if [[ "$allow_unsigned" != "true" ]]; then
-        echo "Signed Firefox release artifacts are required for Linux student-policy managed-extension coverage." >&2
-        echo "Prepare firefox-extension/build/firefox-release with .github/actions/prepare-firefox-release-artifacts or set OPENPATH_ALLOW_UNSIGNED_FIREFOX_E2E=true for local unsigned debugging only." >&2
-        return 1
-    fi
-
-    echo "OPENPATH_ALLOW_UNSIGNED_FIREFOX_E2E=true set; building unsigned Firefox XPI for local debugging only." >&2
+    echo "Signed Firefox release artifacts not present; Linux student-policy Selenium will load the unsigned XPI directly and keep native-host readiness checks." >&2
+    STUDENT_USE_MANAGED_FIREFOX_EXTENSION=false
     version="$(
         node -e 'const fs = require("node:fs"); const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(manifest.version);' \
             "$manifest_path"
@@ -707,7 +703,22 @@ configure_client() {
     docker exec "$CONTAINER_NAME" bash -lc \
         "/usr/local/bin/openpath setup --api-url 'http://host.docker.internal:$API_PORT' --classroom-id '$classroom_id' --enrollment-token '$enrollment_token' --machine-name '$MACHINE_NAME'"
 
-    docker exec "$CONTAINER_NAME" bash -lc '/usr/local/bin/openpath-browser-setup.sh'
+    if [[ "$STUDENT_USE_MANAGED_FIREFOX_EXTENSION" == "true" ]]; then
+        docker exec "$CONTAINER_NAME" bash -lc '/usr/local/bin/openpath-browser-setup.sh'
+    else
+        docker exec "$CONTAINER_NAME" bash -lc '
+set -euo pipefail
+source /usr/local/lib/openpath/lib/common.sh
+source /usr/local/lib/openpath/lib/browser.sh
+install_browser_integrations \
+    /openpath/firefox-extension \
+    /openpath/firefox-extension/build/firefox-release \
+    --native-host \
+    --firefox-best-effort \
+    --chromium-best-effort \
+    --native-host-required
+'
+    fi
     docker exec "$CONTAINER_NAME" bash -lc '/usr/local/bin/openpath-update.sh'
     docker exec "$CONTAINER_NAME" bash -lc 'mkdir -p /root/.mozilla/native-messaging-hosts && cp /usr/lib/mozilla/native-messaging-hosts/whitelist_native_host.json /root/.mozilla/native-messaging-hosts/whitelist_native_host.json'
 
@@ -874,6 +885,9 @@ run_student_suite() {
     local coverage_profile="${2:-full}"
     local group_label="${STUDENT_SCENARIO_GROUP:-full}"
     local docker_env_args=()
+    if [[ "$STUDENT_USE_MANAGED_FIREFOX_EXTENSION" == "true" ]]; then
+        docker_env_args+=(-e OPENPATH_SKIP_EXTENSION_BUNDLE=1)
+    fi
     if [[ -n "$STUDENT_SCENARIO_GROUP" ]]; then
         docker_env_args+=(-e OPENPATH_STUDENT_SCENARIO_GROUP="$STUDENT_SCENARIO_GROUP")
     fi
@@ -885,7 +899,6 @@ run_student_suite() {
         -e OPENPATH_FIXTURE_PORT="$FIXTURE_PORT" \
         -e OPENPATH_STUDENT_HOST_SUFFIX="$OPENPATH_STUDENT_HOST_SUFFIX" \
         -e OPENPATH_EXTENSION_PATH=/openpath/firefox-extension/openpath-firefox-extension.xpi \
-        -e OPENPATH_SKIP_EXTENSION_BUNDLE=1 \
         -e OPENPATH_WHITELIST_PATH=/var/lib/openpath/whitelist.txt \
         -e OPENPATH_FORCE_UPDATE_COMMAND=/usr/local/bin/openpath-update.sh \
         -e OPENPATH_DISABLE_SSE_COMMAND='systemctl stop openpath-sse-listener.service' \

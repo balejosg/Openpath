@@ -1320,18 +1320,23 @@ describe('repository verification contract', () => {
     );
   });
 
-  test('Linux student-policy Selenium uses the installed Firefox extension', () => {
+  test('Linux student-policy Selenium uses managed Firefox only when signed artifacts exist', () => {
     const linuxRunner = readText('tests/e2e/ci/run-linux-student-flow.sh');
 
     assert.match(
       linuxRunner,
-      /-e OPENPATH_SKIP_EXTENSION_BUNDLE=1/,
-      'Linux Selenium must not hide managed-install regressions by loading the XPI directly into a temporary profile'
+      /STUDENT_USE_MANAGED_FIREFOX_EXTENSION=true/,
+      'Linux Selenium should switch to managed-extension coverage when a signed Firefox artifact is available'
     );
     assert.match(
       linuxRunner,
-      /assert_linux_firefox_extension_ready[\s\S]*?OPENPATH_SKIP_EXTENSION_BUNDLE=1[\s\S]*?npm run test:student-policy:ci/,
-      'Linux Selenium should use the installed extension only after the managed Firefox readiness gate'
+      /if \[\[ "\$STUDENT_USE_MANAGED_FIREFOX_EXTENSION" == "true" \]\][\s\S]*?OPENPATH_SKIP_EXTENSION_BUNDLE=1/,
+      'Linux Selenium should skip direct XPI loading only in signed managed-extension mode'
+    );
+    assert.match(
+      linuxRunner,
+      /Signed Firefox release artifacts not present[\s\S]*?Selenium will load the unsigned XPI directly/,
+      'Linux Selenium should avoid AMO signing waits in ordinary E2E runs by using the unsigned bundle path'
     );
   });
 

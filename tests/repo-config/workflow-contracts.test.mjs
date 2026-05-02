@@ -1236,10 +1236,6 @@ test('Firefox extension changes exercise platform readiness gates before release
     'Linux student-policy workflow should continue using the runner that gates Selenium on DNS and Firefox readiness'
   );
   assert.ok(
-    linuxStudentPolicyBlock.includes('uses: ./.github/actions/prepare-firefox-release-artifacts'),
-    'Linux student-policy workflow should prepare signed Firefox release artifacts before managed-extension Selenium coverage'
-  );
-  assert.ok(
     windowsStudentPolicyBlock.includes('run-windows-student-flow.ps1'),
     'Windows student-policy workflow should continue using the runner that gates Selenium on Acrylic and Firefox readiness'
   );
