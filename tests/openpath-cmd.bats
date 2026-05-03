@@ -634,6 +634,8 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"Firefox extension: ⚠ registration deferred"* ]]
+    [[ "$output" == *"Overall status:"* ]]
+    [[ "$output" == *"HEALTHY"* ]]
     [[ "$output" != *"ISSUES DETECTED"* ]]
 }
 
@@ -668,6 +670,7 @@ export WHITELIST_FILE="$whitelist_file"
 export FIREFOX_POLICIES="$state_dir/firefox-policies.json"
 export FIREFOX_EXTENSION_READY_FILE="$state_dir/firefox-extension-ready"
 export ETC_CONFIG_DIR="$etc_dir"
+export OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION=1
 cat > "$FIREFOX_POLICIES" <<'JSON'
 {"policies":{"ExtensionSettings":{"monitor-bloqueos@openpath":{"installation_mode":"force_installed","install_url":"https://control.example/api/extensions/firefox/openpath.xpi"}}}}
 JSON
@@ -729,6 +732,7 @@ EOF
 
     [ "$status" -eq 1 ]
     [[ "$output" == *"Firefox extension: ✗ disabled or unsigned"* ]]
+    [[ "$output" != *"registration deferred"* ]]
     [[ "$output" == *"active=false"* ]]
     [[ "$output" == *"userDisabled=true"* ]]
     [[ "$output" == *"signedState=-1"* ]]
