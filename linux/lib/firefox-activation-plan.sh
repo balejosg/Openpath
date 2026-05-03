@@ -379,6 +379,27 @@ run_firefox_activation_probe() {
         mkdir -p "$activation_profile" || return 1
     fi
 
+    local display_env=()
+    local firefox_args=()
+    local xauthority_path="$profile_home/.Xauthority"
+
+    if [ -n "${DISPLAY:-}" ]; then
+        display_env+=("DISPLAY=$DISPLAY")
+    elif [ -S /tmp/.X11-unix/X0 ]; then
+        display_env+=("DISPLAY=:0")
+    fi
+    if [ -n "${XAUTHORITY:-}" ]; then
+        display_env+=("XAUTHORITY=$XAUTHORITY")
+    elif [ -f "$xauthority_path" ]; then
+        display_env+=("XAUTHORITY=$xauthority_path")
+    fi
+
+    if [ "${#display_env[@]}" -gt 0 ]; then
+        firefox_args=("--profile" "$activation_profile" "about:blank")
+    else
+        firefox_args=("--headless" "--profile" "$activation_profile" "--screenshot" "$screenshot_path" "about:blank")
+    fi
+
     if [ "$(id -u)" -eq 0 ] \
         && [ -n "$activation_user" ] \
         && [ "$activation_user" != "root" ] \
@@ -386,8 +407,8 @@ run_firefox_activation_probe() {
         && id "$activation_user" >/dev/null 2>&1 \
         && command -v runuser >/dev/null 2>&1; then
         runuser -u "$activation_user" -- \
-            env HOME="$profile_home" \
-            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --profile "$activation_profile" --screenshot "$screenshot_path" about:blank \
+            env HOME="$profile_home" "${display_env[@]}" \
+            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" "${firefox_args[@]}" \
             >/dev/null 2>&1
         return $?
     fi
@@ -399,13 +420,13 @@ run_firefox_activation_probe() {
         && id "$activation_user" >/dev/null 2>&1 \
         && command -v sudo >/dev/null 2>&1; then
         sudo -H -u "$activation_user" \
-            env HOME="$profile_home" \
-            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --profile "$activation_profile" --screenshot "$screenshot_path" about:blank \
+            env HOME="$profile_home" "${display_env[@]}" \
+            timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" "${firefox_args[@]}" \
             >/dev/null 2>&1
         return $?
     fi
 
-    HOME="$profile_home" timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" --headless --profile "$activation_profile" --screenshot "$screenshot_path" about:blank \
+    env HOME="$profile_home" "${display_env[@]}" timeout --kill-after=5s "${FIREFOX_ACTIVATION_PROBE_TIMEOUT_SECONDS}s" "$firefox_binary" "${firefox_args[@]}" \
         >/dev/null 2>&1
 }
 
@@ -546,6 +567,12 @@ verify_firefox_extension_registered() {
     write_firefox_extension_ready_marker "$target_count" "$registered_count" "${target_lines[@]}"
     log "Firefox managed extension registration targets: registered=$registered_count target_count=$target_count"
     if [ "$registered_count" -eq "$target_count" ]; then
+        return 0
+    fi
+
+    if [ "${OPENPATH_ALLOW_DEFERRED_FIREFOX_REGISTRATION:-0}" = "1" ] \
+        && [ "${#disabled_targets[@]}" -eq 0 ]; then
+        log "Firefox managed extension registration deferred: registered=$registered_count target_count=$target_count"
         return 0
     fi
 
